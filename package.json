@@ -1,0 +1,14 @@
+{
+  "name": "medication-tracker",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@10.33.0",
+  "scripts": {
+    "dev:web": "pnpm --filter web dev",
+    "dev:mobile": "pnpm --filter mobile start",
+    "build:web": "pnpm --filter web build",
+    "lint": "pnpm --filter web lint",
+    "typecheck:mobile": "pnpm --filter mobile exec tsc --noEmit",
+    "test:api": "dotnet test MedicationTracker.slnx"
+  }
+}

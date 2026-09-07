@@ -1,0 +1,33 @@
+# Build output
+**/bin/
+**/obj/
+**/node_modules/
+**/.next/
+**/.expo/
+**/dist/
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+*.user
+*.suo
+
+# Operating systems and editors
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Mobile build artifacts
+*.apk
+*.aab
+apps/mobile/android/
+apps/mobile/ios/
+
+# Local data and coverage
+coverage/
+TestResults/
+*.db
+*.sqlite
+*.sqlite3

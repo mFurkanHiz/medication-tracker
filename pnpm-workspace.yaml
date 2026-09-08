@@ -2,3 +2,7 @@ packages:
   - "apps/web"
   - "apps/mobile"
   - "packages/*"
+
+# Keep native Android CMake paths below the Windows path-length limit.
+virtualStoreDir: .p
+virtualStoreDirMaxLength: 20

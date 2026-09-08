@@ -57,3 +57,23 @@ an internal container network and must not publish PostgreSQL on a host port. Se
 Medication Tracker records user-entered treatment instructions. It does not diagnose, prescribe, or recommend dose changes. Only synthetic demonstration data belongs in this public repository.
 
 See [PROJECT.md](PROJECT.md), [architecture](docs/architecture.md), [domain model](docs/domain-model.md), and [roadmap](docs/roadmap.md).
+
+## Android physical-device development
+
+Enable USB debugging on the phone, connect it by USB, unlock it, and accept the
+computer's RSA authorization prompt. On Windows, point the shell at JDK 17 and the
+installed Android SDK before building:
+
+```powershell
+$env:JAVA_HOME = 'C:\Program Files\Java\jdk-17.0.2'
+$env:ANDROID_HOME = "$env:LOCALAPPDATA\Android\Sdk"
+$env:Path = "$env:JAVA_HOME\bin;$env:ANDROID_HOME\platform-tools;$env:Path"
+adb devices -l
+pnpm --filter mobile android:device
+```
+
+The expected Android application ID is `com.rapidconfigs.medicationtracker`. Expo
+generates the native `apps/mobile/android` directory for local builds; it remains
+git-ignored and must not contain committed signing material. The workspace keeps
+pnpm's virtual store at the short `.p` path so native CMake builds remain within
+Windows path-length limits.

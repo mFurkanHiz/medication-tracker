@@ -7,7 +7,10 @@ Medication Tracker is a public portfolio project for household medication invent
 - Local repository: `C:\Users\mfspe\source\repos\medication-tracker`
 - GitHub repository: `https://github.com/mFurkanHiz/medication-tracker`
 - Notion research: `https://app.notion.com/p/3d4afec61a3f81928cace707a08da80e`
-- Notion project, sprint, and task URLs: add after creation
+- Notion project: `https://app.notion.com/p/3d4afec61a3f81fba16cd94cf9c5fdee`
+- Active Sprint 0: `https://app.notion.com/p/3d4afec61a3f81afaf46da73db2ccf48`
+- Planned Sprint 1: `https://app.notion.com/p/3d5afec61a3f81dbaa3bdad4bc7c00ec`
+- Next vertical-slice task: `https://app.notion.com/p/3d4afec61a3f8139a1b4e062ca00a497`
 
 ## Current decisions
 

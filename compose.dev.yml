@@ -1,14 +1,14 @@
 services:
   database:
-    image: postgres:18-alpine
+    image: postgres:18.4-alpine
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-medication_tracker}
       POSTGRES_USER: ${POSTGRES_USER:-medication_tracker}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-medication_tracker_dev_only}
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "${POSTGRES_BIND_ADDRESS:-127.0.0.1}:${POSTGRES_PORT:-5432}:5432"
     volumes:
-      - medication-tracker-postgres:/var/lib/postgresql/data
+      - medication-tracker-postgres:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s

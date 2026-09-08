@@ -33,6 +33,20 @@ An account can belong to zero or more households. A household can contain severa
 
 The initial UI creates one default household. No persistence rule assumes that it is the only household.
 
+Persistence keeps these concepts in separate PostgreSQL schemas and tables:
+
+- `identity.accounts` stores user identity without implying household access.
+- `households.households` and effective-dated `households.household_memberships`
+  store authorization membership independently from identity.
+- `subscriptions.subscriptions` and `subscriptions.entitlements` are a future
+  commercial boundary. A subscription belongs to exactly one account or one
+  household and never grants a household role by itself.
+
+EF Core migrations live with the API under `Persistence/Migrations`. The API does
+not apply migrations at startup. Deployment must first generate and review an
+idempotent SQL script, then run it as a separate controlled step. Migration history
+uses the `infrastructure` schema.
+
 ## Offline and synchronization
 
 - Client-generated UUIDs allow offline creation.

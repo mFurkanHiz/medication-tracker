@@ -6,6 +6,8 @@ Medication Tracker is a public portfolio project for household medication invent
 
 - Local repository: `C:\Users\mfspe\source\repos\medication-tracker`
 - GitHub repository: `https://github.com/mFurkanHiz/medication-tracker`
+- Planned primary web URL: `https://medicationtracker.rapidconfigs.com`
+- Reserved test web URL: `https://medicationtracker.test.rapidconfigs.com`
 - Notion research: `https://app.notion.com/p/3d4afec61a3f81928cace707a08da80e`
 - Notion project: `https://app.notion.com/p/3d4afec61a3f81fba16cd94cf9c5fdee`
 - Active Sprint 0: `https://app.notion.com/p/3d4afec61a3f81afaf46da73db2ccf48`
@@ -25,6 +27,11 @@ Medication Tracker is a public portfolio project for household medication invent
 - Modular monolith and ledger-based inventory
 - Initial experience defaults to one household; the domain supports multiple households
 - Authentication and authorization seams are built from the start; paid membership is deferred
+- EF Core migrations are explicit deployment artifacts; the API does not migrate its database on startup
+- The initial hosted environment doubles as the product's test environment, so the primary
+  `medicationtracker.rapidconfigs.com` hostname is sufficient for the first deployment
+- Keep `medicationtracker.test.rapidconfigs.com` reserved for a separate test environment if one is introduced
+- DNS is managed in Cloudflare; do not create or change records until deployment is explicitly authorized
 
 ## Immediate milestone
 

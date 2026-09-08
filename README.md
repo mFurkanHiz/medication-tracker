@@ -20,7 +20,7 @@ tests          automated .NET tests
 - Node.js 22 or later
 - pnpm 10
 - Android SDK for device builds
-- Docker for the complete local infrastructure (added in the infrastructure milestone)
+- Docker for the local PostgreSQL infrastructure
 
 ## Validate the workspace
 
@@ -31,6 +31,26 @@ pnpm lint
 pnpm typecheck:mobile
 pnpm build:web
 ```
+
+## Local PostgreSQL
+
+Copy `.env.example` to a git-ignored `.env`, replace the development-only password,
+and start PostgreSQL:
+
+```bash
+docker compose -f compose.dev.yml up -d database
+dotnet tool restore
+dotnet ef database update --project apps/api --startup-project apps/api
+```
+
+Supply `ConnectionStrings__Database` to run the API. Supply
+`MEDICATION_TRACKER_TEST_POSTGRES` and run `dotnet test MedicationTracker.slnx` to
+include the PostgreSQL migration, readiness-health, and transaction rollback test.
+Without that variable, only the Docker-dependent test is reported as skipped.
+
+The development database port binds to `127.0.0.1` by default. Production must use
+an internal container network and must not publish PostgreSQL on a host port. See
+[local database development](docs/local-database-development.md).
 
 ## Product safety
 

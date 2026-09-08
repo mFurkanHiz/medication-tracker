@@ -2,6 +2,7 @@
 **/bin/
 **/obj/
 **/node_modules/
+.pnpm-store/
 **/.next/
 **/.expo/
 **/dist/

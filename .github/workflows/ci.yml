@@ -12,6 +12,22 @@ jobs:
   api:
     name: API tests
     runs-on: ubuntu-latest
+    env:
+      MEDICATION_TRACKER_TEST_POSTGRES: Host=127.0.0.1;Port=5432;Database=medication_tracker_test;Username=medication_tracker;Password=medication_tracker_ci_only
+    services:
+      postgres:
+        image: postgres:18.4-alpine
+        env:
+          POSTGRES_DB: medication_tracker_test
+          POSTGRES_USER: medication_tracker
+          POSTGRES_PASSWORD: medication_tracker_ci_only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U medication_tracker -d medication_tracker_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-dotnet@v6

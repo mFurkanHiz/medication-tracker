@@ -7,22 +7,24 @@ public static class PersistenceServiceCollectionExtensions
     public const string MigrationsHistorySchema = "infrastructure";
 
     public static IServiceCollection AddMedicationTrackerPersistence(
-        this IServiceCollection services,
-        IConfiguration configuration)
+        this IServiceCollection services)
     {
-        var connectionString = configuration.GetConnectionString("Database");
-        if (string.IsNullOrWhiteSpace(connectionString))
+        services.AddDbContext<MedicationTrackerDbContext>((serviceProvider, options) =>
         {
-            throw new InvalidOperationException(
-                "ConnectionStrings:Database must be supplied through runtime configuration.");
-        }
+            var runtimeConfiguration = serviceProvider.GetRequiredService<IConfiguration>();
+            var connectionString = runtimeConfiguration.GetConnectionString("Database");
+            if (string.IsNullOrWhiteSpace(connectionString))
+            {
+                throw new InvalidOperationException(
+                    "ConnectionStrings:Database must be supplied through runtime configuration.");
+            }
 
-        services.AddDbContext<MedicationTrackerDbContext>(options =>
             options.UseNpgsql(
                 connectionString,
                 npgsql => npgsql.MigrationsHistoryTable(
                     "__ef_migrations_history",
-                    MigrationsHistorySchema)));
+                    MigrationsHistorySchema));
+        });
 
         return services;
     }

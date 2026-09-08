@@ -4,7 +4,7 @@ using MedicationTracker.Api.Persistence;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddMedicationTrackerPersistence(builder.Configuration);
+builder.Services.AddMedicationTrackerPersistence();
 builder.Services
     .AddHealthChecks()
     .AddCheck("self", () => HealthCheckResult.Healthy(), tags: ["live"])

@@ -11,8 +11,8 @@ Medication Tracker is a public portfolio project for household medication invent
 - Notion research: `https://app.notion.com/p/3d4afec61a3f81928cace707a08da80e`
 - Notion project: `https://app.notion.com/p/3d4afec61a3f81fba16cd94cf9c5fdee`
 - Completed Sprint 0: `https://app.notion.com/p/3d4afec61a3f81afaf46da73db2ccf48`
-- Active Sprint 1: `https://app.notion.com/p/3d5afec61a3f81dbaa3bdad4bc7c00ec`
-- Next vertical-slice task: `https://app.notion.com/p/3d4afec61a3f8139a1b4e062ca00a497`
+- Completed Sprint 1: `https://app.notion.com/p/3d5afec61a3f81dbaa3bdad4bc7c00ec`
+- Completed vertical-slice task: `https://app.notion.com/p/3d4afec61a3f8139a1b4e062ca00a497`
 
 ## Current decisions
 
@@ -35,9 +35,9 @@ Medication Tracker is a public portfolio project for household medication invent
 - Sprint 1 commands use a durable mobile SQLite outbox and a household-scoped server idempotency key
 - Medication quantities are normalized rational values stored as integer numerator and denominator pairs
 
-## Immediate milestone
+## Completed milestone
 
-Deliver a tested vertical slice:
+The tested Sprint 1 vertical slice delivers:
 
 1. Create a person.
 2. Add a tablet medication and physical stock.

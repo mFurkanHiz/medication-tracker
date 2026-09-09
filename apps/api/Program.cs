@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using MedicationTracker.Api.Persistence;
+using MedicationTracker.Api.Modules.Care;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -25,6 +26,7 @@ app.MapHealthChecks("/health/ready", new HealthCheckOptions
     Predicate = registration => registration.Tags.Contains("ready")
 });
 app.MapHealthChecks("/health");
+app.MapCareEndpoints();
 
 app.Run();
 

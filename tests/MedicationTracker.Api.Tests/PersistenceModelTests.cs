@@ -2,6 +2,7 @@ using MedicationTracker.Api.Modules.Households;
 using MedicationTracker.Api.Modules.Identity;
 using MedicationTracker.Api.Modules.Subscriptions;
 using MedicationTracker.Api.Persistence;
+using MedicationTracker.Api.Modules.Care;
 using Microsoft.EntityFrameworkCore;
 
 namespace MedicationTracker.Api.Tests;
@@ -36,5 +37,19 @@ public sealed class PersistenceModelTests
         Assert.Equal(
             [nameof(HouseholdMembership.HouseholdId), nameof(HouseholdMembership.AccountId), nameof(HouseholdMembership.ValidFrom)],
             uniqueIndex.Properties.Select(property => property.Name));
+    }
+
+    [Fact]
+    public void Care_history_and_sync_entities_are_persisted_separately()
+    {
+        var model = _dbContext.Model;
+        Assert.NotNull(model.FindEntityType(typeof(Person)));
+        Assert.NotNull(model.FindEntityType(typeof(RegimenVersion)));
+        Assert.NotNull(model.FindEntityType(typeof(InventoryLedgerEntry)));
+        var command = model.FindEntityType(typeof(ProcessedAdministrationCommand));
+        Assert.Contains(command!.GetIndexes(), index => index.IsUnique &&
+            index.Properties.Select(property => property.Name).SequenceEqual([
+                nameof(ProcessedAdministrationCommand.HouseholdId),
+                nameof(ProcessedAdministrationCommand.IdempotencyKey)]));
     }
 }

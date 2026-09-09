@@ -1,26 +1,40 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #f1eee5;
+  --foreground: #17322d;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: "Segoe UI", Arial, sans-serif;
+  margin: 0;
 }
+
+* { box-sizing: border-box; }
+.shell { min-height: 100vh; max-width: 1180px; margin: auto; padding: 34px 28px 72px; }
+header { display: flex; align-items: center; justify-content: space-between; }
+.brand { display: flex; gap: 12px; align-items: center; font-weight: 800; letter-spacing: -.02em; }
+.brandMark { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 13px; color: #fffaf0; background: #d5643c; }
+.status { display: flex; align-items: center; gap: 8px; color: #49615b; font-size: 13px; font-weight: 700; }
+.status i { width: 8px; height: 8px; border-radius: 50%; background: #3e8c77; }
+.hero { padding: 110px 0 64px; max-width: 850px; }
+.eyebrow { color: #a04f32; text-transform: uppercase; letter-spacing: .16em; font-weight: 800; font-size: 13px; }
+h1 { margin: 18px 0; font-family: Georgia, serif; font-size: clamp(48px, 8vw, 92px); font-weight: 500; line-height: .98; letter-spacing: -.055em; }
+.intro { max-width: 660px; color: #586b65; font-size: 19px; line-height: 1.65; }
+.dashboard { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 14px; }
+.dashboard article, .principles article { border-radius: 26px; padding: 26px; }
+.todayCard { background: #fffaf0; border: 1px solid #ded8ca; }
+.sectionTitle, .doseRow { display: flex; justify-content: space-between; align-items: flex-start; gap: 18px; }
+.sectionTitle h2, .doseRow h3 { margin: 0; }.date { color: #83918c; font-weight: 700; }.doseRow { margin-top: 44px; }.doseRow small, .metric small { color: #6e7c78; }.doseRow h3 { font-size: 24px; margin-top: 5px; }.doseRow p { color: #6e7c78; margin-bottom: 0; }
+.due { color: #9d4c2f; background: #f3ddd2; border-radius: 99px; padding: 8px 12px; font-size: 12px; font-weight: 800; }
+.metric { min-height: 220px; display: flex; flex-direction: column; }.metric strong { margin-top: auto; font-size: 30px; }.metric span { margin-top: 9px; font-size: 13px; line-height: 1.45; opacity: .75; }
+.stock { color: #fffaf0; background: #d5643c; }.stock small { color: #ffe2d6; }.sync { color: #f8f3e9; background: #17322d; }.sync small { color: #b7cec7; }
+.principles { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 14px; }.principles article { border: 1px solid #d7d1c4; }.principles span { color: #b56242; font-weight: 800; }.principles h2 { margin: 35px 0 8px; }.principles p { margin: 0; color: #61716c; line-height: 1.55; }
+@media (max-width: 760px) { .hero { padding-top: 78px; }.dashboard { grid-template-columns: 1fr; }.principles { grid-template-columns: 1fr; }.metric { min-height: 175px; } }

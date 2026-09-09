@@ -41,4 +41,6 @@ Accepting a count creates one reconciliation ledger entry per difference. Bulk c
 
 A `DoseOccurrence` is an expected dose. An `AdministrationEvent` records what actually happened: taken, skipped, late, partial, extra, unknown, or corrected. Forecasting derives expected consumption from active regimen versions and adjusts projected stock with actual administration and inventory ledger events.
 
+The Sprint 1 tablet slice persists exact quantities as normalized integer numerator and denominator pairs. Recording an administration appends both an `AdministrationEvent` and a linked negative `InventoryLedgerEntry`; neither record overwrites earlier history. A `ProcessedAdministrationCommand` stores the household-scoped idempotency receipt separately from the clinical and inventory events.
+
 Refill eligibility belongs to prescription/insurance data and is not inferred from physical stock. The application compares projected depletion with eligibility to expose a potential coverage gap.

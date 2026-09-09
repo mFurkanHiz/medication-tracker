@@ -151,8 +151,10 @@ public static class CareEndpoints
             var administrationId = request.AdministrationId ?? Guid.NewGuid(); var now = DateTimeOffset.UtcNow;
             await using var transaction = await db.Database.BeginTransactionAsync(ct);
             if (request.Outcome is not ("taken" or "skipped")) return Results.ValidationProblem(Error("outcome", "unsupported_outcome"));
-            db.AdministrationEvents.Add(new AdministrationEvent(administrationId, householdId, row.regimen.PersonId, row.regimen.MedicationId, row.version.Id, request.Outcome, request.ScheduledFor, request.TakenAt, now));
-            if (request.Outcome == "taken") db.InventoryLedgerEntries.Add(new InventoryLedgerEntry(Guid.NewGuid(), householdId, item.Id, administrationId, -row.version.DoseNumerator, row.version.DoseDenominator, "administration", request.TakenAt, now));
+            var scheduledForUtc = request.ScheduledFor.ToUniversalTime();
+            var occurredAtUtc = request.TakenAt.ToUniversalTime();
+            db.AdministrationEvents.Add(new AdministrationEvent(administrationId, householdId, row.regimen.PersonId, row.regimen.MedicationId, row.version.Id, request.Outcome, scheduledForUtc, occurredAtUtc, now));
+            if (request.Outcome == "taken") db.InventoryLedgerEntries.Add(new InventoryLedgerEntry(Guid.NewGuid(), householdId, item.Id, administrationId, -row.version.DoseNumerator, row.version.DoseDenominator, "administration", occurredAtUtc, now));
             db.ProcessedAdministrationCommands.Add(new ProcessedAdministrationCommand(Guid.NewGuid(), householdId, accountId!.Value, request.IdempotencyKey, administrationId, now));
             await db.SaveChangesAsync(ct); await transaction.CommitAsync(ct);
             return Results.Ok(new { administrationEventId = administrationId, replayed = false });

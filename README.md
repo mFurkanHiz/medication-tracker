@@ -48,6 +48,19 @@ Supply `ConnectionStrings__Database` to run the API. Supply
 include the PostgreSQL migration, readiness-health, and transaction rollback test.
 Without that variable, only the Docker-dependent test is reported as skipped.
 
+## Mobile offline sync
+
+The mobile app always commits person, medication, regimen, administration, ledger,
+and outbox changes to SQLite first. To exercise upload against a local API, copy
+`apps/mobile/.env.example` to `apps/mobile/.env.local` and set the API URL plus the
+synthetic development account and household UUIDs. These UUID headers are only the
+current authentication seam; do not treat them as production authentication.
+
+Outbox rows are sent in creation order whenever the app becomes active or the user
+chooses **Şimdi eşitle**. A server acknowledgement is recorded locally only after a
+successful response, so a crash or connection loss safely retries the same
+household-scoped idempotency key.
+
 The development database port binds to `127.0.0.1` by default. Production must use
 an internal container network and must not publish PostgreSQL on a host port. See
 [local database development](docs/local-database-development.md).

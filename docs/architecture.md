@@ -50,7 +50,7 @@ uses the `infrastructure` schema.
 ## Offline and synchronization
 
 - Client-generated UUIDs allow offline creation.
-- Every mutation carries an idempotency key, device ID, logical timestamp, and base record version.
+- Sprint 1 mutations carry client-generated UUIDs and a household-scoped idempotency key. The full conflict protocol will add device ID, logical timestamp, and base record version before multi-device editing ships.
 - Server changes are read incrementally with an opaque cursor.
 - Deletions use tombstones until all relevant devices have synchronized.
 - Clinical and inventory conflicts are surfaced; they are never silently resolved with last-write-wins.

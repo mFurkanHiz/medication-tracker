@@ -26,6 +26,7 @@ public sealed class MedicationTrackerDbContext(DbContextOptions<MedicationTracke
     public DbSet<RegimenVersion> RegimenVersions => Set<RegimenVersion>();
     public DbSet<AdministrationEvent> AdministrationEvents => Set<AdministrationEvent>();
     public DbSet<ProcessedAdministrationCommand> ProcessedAdministrationCommands => Set<ProcessedAdministrationCommand>();
+    public DbSet<SyncCommandReceipt> SyncCommandReceipts => Set<SyncCommandReceipt>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

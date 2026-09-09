@@ -56,10 +56,14 @@ public sealed class PostgreSqlIntegrationTests
         var accountId = await PostAndReadId(client, "/api/accounts", new { email = $"OWNER-{Guid.NewGuid():N}@EXAMPLE.INVALID" }, "id");
         client.DefaultRequestHeaders.Add("X-Account-Id", accountId.ToString());
         var householdId = await PostAndReadId(client, "/api/households", new { name = "Synthetic household" }, "id");
-        var personId = await PostAndReadId(client, $"/api/households/{householdId}/people", new { name = "Synthetic person" }, "id");
-        var medicationId = await PostAndReadId(client, $"/api/households/{householdId}/medications", new { personId, name = "Synthetic tablet", form = "tablet", stockNumerator = 15, stockDenominator = 2 }, "medicationId");
+        var personId = Guid.NewGuid(); var medicationId = Guid.NewGuid(); var inventoryItemId = Guid.NewGuid(); var regimenId = Guid.NewGuid(); var versionId = Guid.NewGuid();
+        var personCommand = new { idempotencyKey = $"person:{personId}", kind = "person.created", payload = new { id = personId, name = "Synthetic person" } };
+        (await client.PostAsJsonAsync($"/api/households/{householdId}/sync/commands", personCommand)).EnsureSuccessStatusCode();
+        var personReplay = await client.PostAsJsonAsync($"/api/households/{householdId}/sync/commands", personCommand);
+        Assert.True((await personReplay.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("replayed").GetBoolean());
+        (await client.PostAsJsonAsync($"/api/households/{householdId}/sync/commands", new { idempotencyKey = $"medication:{medicationId}", kind = "medication.created", payload = new { id = medicationId, personId, inventoryItemId, name = "Synthetic tablet", stockNumerator = 15, stockDenominator = 2 } })).EnsureSuccessStatusCode();
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
-        var versionId = await PostAndReadId(client, $"/api/households/{householdId}/regimens", new { personId, medicationId, validFrom = today, validTo = (DateOnly?)null, doseNumerator = 1, doseDenominator = 2, localTime = new TimeOnly(9, 0), timeZoneId = "Europe/Istanbul" }, "regimenVersionId");
+        (await client.PostAsJsonAsync($"/api/households/{householdId}/sync/commands", new { idempotencyKey = $"regimen:{regimenId}", kind = "regimen.created", payload = new { id = regimenId, versionId, personId, medicationId, validFrom = today, doseNumerator = 1, doseDenominator = 2, localTime = new TimeOnly(9, 0), timeZoneId = "Europe/Istanbul" } })).EnsureSuccessStatusCode();
         var scheduledFor = new DateTimeOffset(today.ToDateTime(new TimeOnly(9, 0)), TimeSpan.FromHours(3));
         var command = new { idempotencyKey = $"test-{Guid.NewGuid():N}", regimenVersionId = versionId, scheduledFor, takenAt = DateTimeOffset.UtcNow };
         var first = await client.PostAsJsonAsync($"/api/households/{householdId}/sync/administrations", command);
@@ -74,6 +78,13 @@ public sealed class PostgreSqlIntegrationTests
         var entries = await db.InventoryLedgerEntries.Where(x => x.HouseholdId == householdId).ToListAsync();
         var balance = entries.Aggregate(new ExactQuantity(0), (sum, entry) => sum + new ExactQuantity(entry.QuantityNumerator, entry.QuantityDenominator));
         Assert.Equal(new ExactQuantity(7), balance);
+        var forecast = await client.GetFromJsonAsync<JsonElement>($"/api/households/{householdId}/medications/{medicationId}/forecast?date={today:yyyy-MM-dd}");
+        Assert.Equal(7, forecast.GetProperty("remainingNumerator").GetInt64()); Assert.Equal(14, forecast.GetProperty("fullDaysRemaining").GetInt64());
+
+        var skipped = new { idempotencyKey = $"skip-{Guid.NewGuid():N}", regimenVersionId = versionId, scheduledFor = scheduledFor.AddDays(1), takenAt = DateTimeOffset.UtcNow, outcome = "skipped" };
+        (await client.PostAsJsonAsync($"/api/households/{householdId}/sync/administrations", skipped)).EnsureSuccessStatusCode();
+        Assert.Equal(2, await db.AdministrationEvents.CountAsync(x => x.HouseholdId == householdId));
+        Assert.Equal(1, await db.InventoryLedgerEntries.CountAsync(x => x.HouseholdId == householdId && x.Reason == "administration"));
 
         using var anonymous = factory.CreateClient();
         var outsiderId = await PostAndReadId(anonymous, "/api/accounts", new { email = $"OUTSIDER-{Guid.NewGuid():N}@EXAMPLE.INVALID" }, "id");

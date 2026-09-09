@@ -2,14 +2,15 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 
 export type TodayDose = {
   regimenVersionId: string; personName: string; medicationName: string;
-  doseNumerator: number; doseDenominator: number; scheduledFor: string; taken: boolean;
+  doseNumerator: number; doseDenominator: number; scheduledFor: string; outcome: 'due' | 'taken' | 'skipped';
 };
 
 export async function migrateDatabase(db: SQLiteDatabase) {
   const row = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
-  if ((row?.user_version ?? 0) >= 1) return;
-  await db.withExclusiveTransactionAsync(async transaction => {
-    await transaction.execAsync(`
+  let version = row?.user_version ?? 0;
+  if (version < 1) {
+    await db.withExclusiveTransactionAsync(async transaction => {
+      await transaction.execAsync(`
       PRAGMA journal_mode = WAL;
       PRAGMA foreign_keys = ON;
       CREATE TABLE people (id TEXT PRIMARY KEY, name TEXT NOT NULL);
@@ -22,10 +23,15 @@ export async function migrateDatabase(db: SQLiteDatabase) {
       CREATE TABLE outbox (id TEXT PRIMARY KEY, idempotency_key TEXT NOT NULL UNIQUE, kind TEXT NOT NULL, payload TEXT NOT NULL, created_at TEXT NOT NULL, synced_at TEXT);
       PRAGMA user_version = 1;
     `);
+    });
+    version = 1;
+  }
+  if (version < 2) await db.withExclusiveTransactionAsync(async transaction => {
+    await transaction.execAsync("ALTER TABLE administrations ADD COLUMN outcome TEXT NOT NULL DEFAULT 'taken' CHECK(outcome IN ('taken', 'skipped')); PRAGMA user_version = 2;");
   });
 }
 
-const id = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+const id = () => globalThis.crypto.randomUUID();
 const localDate = () => new Date().toLocaleDateString('en-CA');
 
 export async function createSamplePlan(db: SQLiteDatabase, personName: string, medicationName: string) {
@@ -33,36 +39,41 @@ export async function createSamplePlan(db: SQLiteDatabase, personName: string, m
   await db.withExclusiveTransactionAsync(async transaction => {
     const personId = id(), medicationId = id(), itemId = id(), regimenId = id(), versionId = id();
     await transaction.runAsync('INSERT INTO people VALUES (?, ?)', personId, personName);
+    await addOutbox(transaction, `person:${personId}`, 'person.created', { id: personId, name: personName });
     await transaction.runAsync('INSERT INTO medications VALUES (?, ?, ?, ?)', medicationId, personId, medicationName, 'tablet');
     await transaction.runAsync('INSERT INTO inventory_items VALUES (?, ?)', itemId, medicationId);
     await transaction.runAsync('INSERT INTO inventory_ledger VALUES (?, ?, NULL, ?, ?, ?, ?)', id(), itemId, 15, 2, 'acquisition', new Date().toISOString());
+    await addOutbox(transaction, `medication:${medicationId}`, 'medication.created', { id: medicationId, personId, inventoryItemId: itemId, name: medicationName, stockNumerator: 15, stockDenominator: 2 });
     await transaction.runAsync('INSERT INTO regimens VALUES (?, ?, ?)', regimenId, personId, medicationId);
     await transaction.runAsync('INSERT INTO regimen_versions VALUES (?, ?, ?, NULL, ?, ?, ?)', versionId, regimenId, localDate(), 1, 2, '09:00');
+    await addOutbox(transaction, `regimen:${regimenId}`, 'regimen.created', { id: regimenId, versionId, personId, medicationId, validFrom: localDate(), doseNumerator: 1, doseDenominator: 2, localTime: '09:00:00', timeZoneId: 'Europe/Istanbul' });
   });
 }
 
 export async function getToday(db: SQLiteDatabase): Promise<TodayDose[]> {
-  const rows = await db.getAllAsync<Omit<TodayDose, 'taken'> & { administrationId: string | null }>(`
+  const rows = await db.getAllAsync<Omit<TodayDose, 'outcome'> & { administrationOutcome: 'taken' | 'skipped' | null }>(`
     SELECT rv.id regimenVersionId, p.name personName, m.name medicationName,
       rv.dose_numerator doseNumerator, rv.dose_denominator doseDenominator,
-      date('now', 'localtime') || 'T' || rv.local_time || ':00' scheduledFor, a.id administrationId
+      date('now', 'localtime') || 'T' || rv.local_time || ':00' scheduledFor, a.outcome administrationOutcome
     FROM regimen_versions rv JOIN regimens r ON r.id = rv.regimen_id
     JOIN people p ON p.id = r.person_id JOIN medications m ON m.id = r.medication_id
     LEFT JOIN administrations a ON a.regimen_version_id = rv.id AND date(a.scheduled_for) = date('now', 'localtime')
     WHERE rv.valid_from <= date('now', 'localtime') AND (rv.valid_to IS NULL OR rv.valid_to >= date('now', 'localtime'))`);
-  return rows.map(row => ({ ...row, taken: row.administrationId !== null }));
+  return rows.map(row => ({ ...row, outcome: row.administrationOutcome ?? 'due' }));
 }
 
-export async function markTaken(db: SQLiteDatabase, dose: TodayDose) {
+export async function recordOutcome(db: SQLiteDatabase, dose: TodayDose, outcome: 'taken' | 'skipped') {
   await db.withExclusiveTransactionAsync(async transaction => {
     const administrationId = id();
-    const result = await transaction.runAsync('INSERT OR IGNORE INTO administrations VALUES (?, ?, ?, ?)', administrationId, dose.regimenVersionId, dose.scheduledFor, new Date().toISOString());
+    const occurredAt = new Date().toISOString();
+    const result = await transaction.runAsync('INSERT OR IGNORE INTO administrations (id, regimen_version_id, scheduled_for, taken_at, outcome) VALUES (?, ?, ?, ?, ?)', administrationId, dose.regimenVersionId, dose.scheduledFor, occurredAt, outcome);
     if (result.changes === 0) return;
-    const item = await transaction.getFirstAsync<{ id: string }>('SELECT i.id FROM inventory_items i JOIN medications m ON m.id = i.medication_id JOIN regimens r ON r.medication_id = m.id JOIN regimen_versions rv ON rv.regimen_id = r.id WHERE rv.id = ?', dose.regimenVersionId);
-    if (!item) throw new Error('inventory_item_missing');
-    await transaction.runAsync('INSERT INTO inventory_ledger VALUES (?, ?, ?, ?, ?, ?, ?)', id(), item.id, administrationId, -dose.doseNumerator, dose.doseDenominator, 'administration', new Date().toISOString());
-    const outboxId = id();
-    await transaction.runAsync('INSERT INTO outbox VALUES (?, ?, ?, ?, ?, NULL)', outboxId, `administration:${administrationId}`, 'administration.recorded', JSON.stringify({ administrationId, regimenVersionId: dose.regimenVersionId, scheduledFor: dose.scheduledFor }), new Date().toISOString());
+    if (outcome === 'taken') {
+      const item = await transaction.getFirstAsync<{ id: string }>('SELECT i.id FROM inventory_items i JOIN medications m ON m.id = i.medication_id JOIN regimens r ON r.medication_id = m.id JOIN regimen_versions rv ON rv.regimen_id = r.id WHERE rv.id = ?', dose.regimenVersionId);
+      if (!item) throw new Error('inventory_item_missing');
+      await transaction.runAsync('INSERT INTO inventory_ledger VALUES (?, ?, ?, ?, ?, ?, ?)', id(), item.id, administrationId, -dose.doseNumerator, dose.doseDenominator, 'administration', occurredAt);
+    }
+    await addOutbox(transaction, `administration:${administrationId}`, 'administration.recorded', { administrationId, regimenVersionId: dose.regimenVersionId, scheduledFor: dose.scheduledFor, takenAt: occurredAt, outcome });
   });
 }
 
@@ -70,7 +81,32 @@ export async function getSummary(db: SQLiteDatabase) {
   const entries = await db.getAllAsync<{ numerator: number; denominator: number }>('SELECT quantity_numerator numerator, quantity_denominator denominator FROM inventory_ledger');
   const value = entries.reduce((sum, entry) => normalize(sum.numerator * entry.denominator + entry.numerator * sum.denominator, sum.denominator * entry.denominator), { numerator: 0, denominator: 1 });
   const pending = await db.getFirstAsync<{ count: number }>('SELECT count(*) count FROM outbox WHERE synced_at IS NULL');
-  return { stock: formatQuantity(value.numerator, value.denominator), pending: pending?.count ?? 0 };
+  const dailyRows = await db.getAllAsync<{ numerator: number; denominator: number }>("SELECT dose_numerator numerator, dose_denominator denominator FROM regimen_versions WHERE valid_from <= date('now', 'localtime') AND (valid_to IS NULL OR valid_to >= date('now', 'localtime'))");
+  const daily = dailyRows.reduce((sum, entry) => normalize(sum.numerator * entry.denominator + entry.numerator * sum.denominator, sum.denominator * entry.denominator), { numerator: 0, denominator: 1 });
+  const depletionDays = value.numerator > 0 && daily.numerator > 0 ? Math.trunc((value.numerator * daily.denominator) / (value.denominator * daily.numerator)) : 0;
+  return { stock: formatQuantity(value.numerator, value.denominator), pending: pending?.count ?? 0, depletionDays };
+}
+
+async function addOutbox(transaction: SQLiteDatabase, idempotencyKey: string, kind: string, payload: object) {
+  await transaction.runAsync('INSERT INTO outbox VALUES (?, ?, ?, ?, ?, NULL)', id(), idempotencyKey, kind, JSON.stringify(payload), new Date().toISOString());
+}
+
+export type SyncConfig = { apiUrl: string; accountId: string; householdId: string };
+export async function syncPending(db: SQLiteDatabase, config: SyncConfig) {
+  const rows = await db.getAllAsync<{ id: string; idempotencyKey: string; kind: string; payload: string }>('SELECT id, idempotency_key idempotencyKey, kind, payload FROM outbox WHERE synced_at IS NULL ORDER BY rowid');
+  let synced = 0;
+  for (const row of rows) {
+    const administration = row.kind === 'administration.recorded';
+    const payload = JSON.parse(row.payload) as Record<string, unknown>;
+    const response = await fetch(`${config.apiUrl.replace(/\/$/, '')}/api/households/${config.householdId}/sync/${administration ? 'administrations' : 'commands'}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Account-Id': config.accountId },
+      body: JSON.stringify(administration ? { idempotencyKey: row.idempotencyKey, ...payload } : { idempotencyKey: row.idempotencyKey, kind: row.kind, payload }),
+    });
+    if (!response.ok) throw new Error(`sync_failed_${response.status}`);
+    await db.runAsync('UPDATE outbox SET synced_at = ? WHERE id = ?', new Date().toISOString(), row.id);
+    synced += 1;
+  }
+  return synced;
 }
 
 function normalize(numerator: number, denominator: number) {

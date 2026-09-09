@@ -79,9 +79,20 @@ public sealed class AdministrationEventConfiguration : IEntityTypeConfiguration<
 {
     public void Configure(EntityTypeBuilder<AdministrationEvent> b)
     {
-        b.ToTable("administration_events", "administrations"); b.HasKey(x => x.Id);
-        b.Property(x => x.Id).HasColumnName("id"); b.Property(x => x.HouseholdId).HasColumnName("household_id"); b.Property(x => x.PersonId).HasColumnName("person_id"); b.Property(x => x.MedicationId).HasColumnName("medication_id"); b.Property(x => x.RegimenVersionId).HasColumnName("regimen_version_id"); b.Property(x => x.ScheduledFor).HasColumnName("scheduled_for"); b.Property(x => x.TakenAt).HasColumnName("taken_at"); b.Property(x => x.RecordedAt).HasColumnName("recorded_at");
+        b.ToTable("administration_events", "administrations", t => t.HasCheckConstraint("ck_administration_events_outcome", "outcome IN ('taken', 'skipped')")); b.HasKey(x => x.Id);
+        b.Property(x => x.Id).HasColumnName("id"); b.Property(x => x.HouseholdId).HasColumnName("household_id"); b.Property(x => x.PersonId).HasColumnName("person_id"); b.Property(x => x.MedicationId).HasColumnName("medication_id"); b.Property(x => x.RegimenVersionId).HasColumnName("regimen_version_id"); b.Property(x => x.Outcome).HasColumnName("outcome").HasMaxLength(20).IsRequired(); b.Property(x => x.ScheduledFor).HasColumnName("scheduled_for"); b.Property(x => x.OccurredAt).HasColumnName("occurred_at"); b.Property(x => x.RecordedAt).HasColumnName("recorded_at");
         b.HasOne<RegimenVersion>().WithMany().HasForeignKey(x => x.RegimenVersionId).OnDelete(DeleteBehavior.Restrict); b.HasIndex(x => new { x.HouseholdId, x.RegimenVersionId, x.ScheduledFor }).IsUnique();
+    }
+}
+
+public sealed class SyncCommandReceiptConfiguration : IEntityTypeConfiguration<SyncCommandReceipt>
+{
+    public void Configure(EntityTypeBuilder<SyncCommandReceipt> b)
+    {
+        b.ToTable("command_receipts", "sync"); b.HasKey(x => x.Id);
+        b.Property(x => x.Id).HasColumnName("id"); b.Property(x => x.HouseholdId).HasColumnName("household_id"); b.Property(x => x.AccountId).HasColumnName("account_id"); b.Property(x => x.IdempotencyKey).HasColumnName("idempotency_key").HasMaxLength(100).IsRequired(); b.Property(x => x.Kind).HasColumnName("kind").HasMaxLength(60).IsRequired(); b.Property(x => x.ResultEntityId).HasColumnName("result_entity_id"); b.Property(x => x.ProcessedAt).HasColumnName("processed_at");
+        b.HasOne<Household>().WithMany().HasForeignKey(x => x.HouseholdId).OnDelete(DeleteBehavior.Restrict); b.HasOne<Account>().WithMany().HasForeignKey(x => x.AccountId).OnDelete(DeleteBehavior.Restrict);
+        b.HasIndex(x => new { x.HouseholdId, x.IdempotencyKey }).IsUnique();
     }
 }
 

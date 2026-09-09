@@ -87,17 +87,34 @@ public sealed class AdministrationEvent
 {
     private AdministrationEvent() { }
     public AdministrationEvent(Guid id, Guid householdId, Guid personId, Guid medicationId, Guid regimenVersionId,
-        DateTimeOffset scheduledFor, DateTimeOffset takenAt, DateTimeOffset recordedAt) =>
-        (Id, HouseholdId, PersonId, MedicationId, RegimenVersionId, ScheduledFor, TakenAt, RecordedAt) =
-        (id, householdId, personId, medicationId, regimenVersionId, scheduledFor, takenAt, recordedAt);
+        string outcome, DateTimeOffset scheduledFor, DateTimeOffset occurredAt, DateTimeOffset recordedAt) =>
+        (Id, HouseholdId, PersonId, MedicationId, RegimenVersionId, Outcome, ScheduledFor, OccurredAt, RecordedAt) =
+        (id, householdId, personId, medicationId, regimenVersionId, outcome, scheduledFor, occurredAt, recordedAt);
     public Guid Id { get; private set; }
     public Guid HouseholdId { get; private set; }
     public Guid PersonId { get; private set; }
     public Guid MedicationId { get; private set; }
     public Guid RegimenVersionId { get; private set; }
+    public string Outcome { get; private set; } = string.Empty;
     public DateTimeOffset ScheduledFor { get; private set; }
-    public DateTimeOffset TakenAt { get; private set; }
+    public DateTimeOffset OccurredAt { get; private set; }
     public DateTimeOffset RecordedAt { get; private set; }
+}
+
+public sealed class SyncCommandReceipt
+{
+    private SyncCommandReceipt() { }
+    public SyncCommandReceipt(Guid id, Guid householdId, Guid accountId, string idempotencyKey, string kind,
+        Guid resultEntityId, DateTimeOffset processedAt) =>
+        (Id, HouseholdId, AccountId, IdempotencyKey, Kind, ResultEntityId, ProcessedAt) =
+        (id, householdId, accountId, idempotencyKey, kind, resultEntityId, processedAt);
+    public Guid Id { get; private set; }
+    public Guid HouseholdId { get; private set; }
+    public Guid AccountId { get; private set; }
+    public string IdempotencyKey { get; private set; } = string.Empty;
+    public string Kind { get; private set; } = string.Empty;
+    public Guid ResultEntityId { get; private set; }
+    public DateTimeOffset ProcessedAt { get; private set; }
 }
 
 public sealed class ProcessedAdministrationCommand

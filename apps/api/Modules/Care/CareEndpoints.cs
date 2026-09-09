@@ -1,9 +1,11 @@
 using MedicationTracker.Api.Domain.Quantities;
+using MedicationTracker.Api.Domain.Inventory;
 using MedicationTracker.Api.Modules.Households;
 using MedicationTracker.Api.Modules.Identity;
 using MedicationTracker.Api.Persistence;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.Text.Json;
 
 namespace MedicationTracker.Api.Modules.Care;
 
@@ -78,6 +80,65 @@ public static class CareEndpoints
             return Results.Ok(rows.Select(x => { var scheduledFor = ScheduledInstant(day, x.version.LocalTime, x.version.TimeZoneId); return new { regimenVersionId = x.version.Id, personId = x.person.Id, personName = x.person.Name, medicationId = x.medication.Id, medicationName = x.medication.Name, doseNumerator = x.version.DoseNumerator, doseDenominator = x.version.DoseDenominator, scheduledFor, status = taken.Any(a => a.RegimenVersionId == x.version.Id && a.ScheduledFor == scheduledFor) ? "taken" : "due" }; }));
         });
 
+        api.MapGet("/households/{householdId:guid}/medications/{medicationId:guid}/forecast", async (Guid householdId, Guid medicationId, DateOnly? date, [FromHeader(Name = "X-Account-Id")] Guid? accountId, MedicationTrackerDbContext db, CancellationToken ct) =>
+        {
+            if (!await IsMember(db, householdId, accountId, ct)) return Results.StatusCode(StatusCodes.Status403Forbidden);
+            var item = await db.InventoryItems.AsNoTracking().SingleOrDefaultAsync(x => x.HouseholdId == householdId && x.MedicationId == medicationId, ct);
+            if (item is null) return Results.NotFound();
+            var entries = await db.InventoryLedgerEntries.AsNoTracking().Where(x => x.HouseholdId == householdId && x.InventoryItemId == item.Id).ToListAsync(ct);
+            var balance = entries.Aggregate(new ExactQuantity(0), (sum, entry) => sum + new ExactQuantity(entry.QuantityNumerator, entry.QuantityDenominator));
+            var day = date ?? DateOnly.FromDateTime(DateTime.UtcNow);
+            var doses = await (from version in db.RegimenVersions.AsNoTracking()
+                               join regimen in db.Regimens.AsNoTracking() on version.RegimenId equals regimen.Id
+                               where regimen.HouseholdId == householdId && regimen.MedicationId == medicationId && version.ValidFrom <= day && (version.ValidTo == null || version.ValidTo >= day)
+                               select new { version.DoseNumerator, version.DoseDenominator }).ToListAsync(ct);
+            var daily = doses.Aggregate(new ExactQuantity(0), (sum, dose) => sum + new ExactQuantity(dose.DoseNumerator, dose.DoseDenominator));
+            var depletionDate = StockProjection.DepletionDate(day, balance, daily);
+            return Results.Ok(new { remainingNumerator = balance.Numerator, remainingDenominator = balance.Denominator, dailyNumerator = daily.Numerator, dailyDenominator = daily.Denominator, fullDaysRemaining = StockProjection.FullDaysRemaining(balance, daily), depletionDate });
+        });
+
+        api.MapPost("/households/{householdId:guid}/sync/commands", async (Guid householdId, SyncOfflineCommandRequest request, [FromHeader(Name = "X-Account-Id")] Guid? accountId, MedicationTrackerDbContext db, CancellationToken ct) =>
+        {
+            if (!await IsMember(db, householdId, accountId, ct)) return Results.StatusCode(StatusCodes.Status403Forbidden);
+            if (string.IsNullOrWhiteSpace(request.IdempotencyKey) || request.IdempotencyKey.Length > 100) return Results.ValidationProblem(Error("idempotencyKey", "required"));
+            var prior = await db.SyncCommandReceipts.AsNoTracking().SingleOrDefaultAsync(x => x.HouseholdId == householdId && x.IdempotencyKey == request.IdempotencyKey, ct);
+            if (prior is not null) return Results.Ok(new { resultEntityId = prior.ResultEntityId, replayed = true });
+
+            Guid resultEntityId;
+            await using var transaction = await db.Database.BeginTransactionAsync(ct);
+            switch (request.Kind)
+            {
+                case "person.created":
+                    var person = request.Payload.Deserialize<PersonCreatedPayload>(JsonSerializerOptions.Web);
+                    if (person is null || person.Id == Guid.Empty || string.IsNullOrWhiteSpace(person.Name)) return Results.ValidationProblem(Error("payload", "invalid_person"));
+                    db.People.Add(new Person(person.Id, householdId, person.Name.Trim(), DateTimeOffset.UtcNow)); resultEntityId = person.Id;
+                    break;
+                case "medication.created":
+                    var medication = request.Payload.Deserialize<MedicationCreatedPayload>(JsonSerializerOptions.Web);
+                    if (medication is null || medication.Id == Guid.Empty || medication.InventoryItemId == Guid.Empty || !TryPositive(medication.StockNumerator, medication.StockDenominator, out var stock)) return Results.ValidationProblem(Error("payload", "invalid_medication"));
+                    if (!await db.People.AnyAsync(x => x.Id == medication.PersonId && x.HouseholdId == householdId, ct)) return Results.NotFound();
+                    var now = DateTimeOffset.UtcNow;
+                    db.Medications.Add(new Medication(medication.Id, householdId, medication.PersonId, medication.Name.Trim(), "tablet", now));
+                    db.InventoryItems.Add(new InventoryItem(medication.InventoryItemId, householdId, medication.Id, now));
+                    db.InventoryLedgerEntries.Add(new InventoryLedgerEntry(Guid.NewGuid(), householdId, medication.InventoryItemId, null, stock.Numerator, stock.Denominator, "acquisition", now, now)); resultEntityId = medication.Id;
+                    break;
+                case "regimen.created":
+                    var regimenPayload = request.Payload.Deserialize<RegimenCreatedPayload>(JsonSerializerOptions.Web);
+                    if (regimenPayload is null || regimenPayload.Id == Guid.Empty || regimenPayload.VersionId == Guid.Empty || !TryPositive(regimenPayload.DoseNumerator, regimenPayload.DoseDenominator, out var dose)) return Results.ValidationProblem(Error("payload", "invalid_regimen"));
+                    try { _ = TimeZoneInfo.FindSystemTimeZoneById(regimenPayload.TimeZoneId); } catch (TimeZoneNotFoundException) { return Results.ValidationProblem(Error("payload", "unknown_time_zone")); }
+                    if (!await db.Medications.AnyAsync(x => x.Id == regimenPayload.MedicationId && x.PersonId == regimenPayload.PersonId && x.HouseholdId == householdId, ct)) return Results.NotFound();
+                    var createdAt = DateTimeOffset.UtcNow;
+                    db.Regimens.Add(new Regimen(regimenPayload.Id, householdId, regimenPayload.PersonId, regimenPayload.MedicationId, createdAt));
+                    db.RegimenVersions.Add(new RegimenVersion(regimenPayload.VersionId, regimenPayload.Id, regimenPayload.ValidFrom, null, dose.Numerator, dose.Denominator, regimenPayload.LocalTime, regimenPayload.TimeZoneId, createdAt)); resultEntityId = regimenPayload.Id;
+                    break;
+                default:
+                    return Results.ValidationProblem(Error("kind", "unsupported_command"));
+            }
+            db.SyncCommandReceipts.Add(new SyncCommandReceipt(Guid.NewGuid(), householdId, accountId!.Value, request.IdempotencyKey, request.Kind, resultEntityId, DateTimeOffset.UtcNow));
+            await db.SaveChangesAsync(ct); await transaction.CommitAsync(ct);
+            return Results.Ok(new { resultEntityId, replayed = false });
+        });
+
         api.MapPost("/households/{householdId:guid}/sync/administrations", async (Guid householdId, RecordAdministrationRequest request, [FromHeader(Name = "X-Account-Id")] Guid? accountId, MedicationTrackerDbContext db, CancellationToken ct) =>
         {
             if (!await IsMember(db, householdId, accountId, ct)) return Results.StatusCode(StatusCodes.Status403Forbidden);
@@ -87,10 +148,11 @@ public static class CareEndpoints
             var row = await (from version in db.RegimenVersions join regimen in db.Regimens on version.RegimenId equals regimen.Id where version.Id == request.RegimenVersionId && regimen.HouseholdId == householdId select new { version, regimen }).SingleOrDefaultAsync(ct);
             if (row is null) return Results.NotFound();
             var item = await db.InventoryItems.SingleAsync(x => x.HouseholdId == householdId && x.MedicationId == row.regimen.MedicationId, ct);
-            var administrationId = Guid.NewGuid(); var now = DateTimeOffset.UtcNow;
+            var administrationId = request.AdministrationId ?? Guid.NewGuid(); var now = DateTimeOffset.UtcNow;
             await using var transaction = await db.Database.BeginTransactionAsync(ct);
-            db.AdministrationEvents.Add(new AdministrationEvent(administrationId, householdId, row.regimen.PersonId, row.regimen.MedicationId, row.version.Id, request.ScheduledFor, request.TakenAt, now));
-            db.InventoryLedgerEntries.Add(new InventoryLedgerEntry(Guid.NewGuid(), householdId, item.Id, administrationId, -row.version.DoseNumerator, row.version.DoseDenominator, "administration", request.TakenAt, now));
+            if (request.Outcome is not ("taken" or "skipped")) return Results.ValidationProblem(Error("outcome", "unsupported_outcome"));
+            db.AdministrationEvents.Add(new AdministrationEvent(administrationId, householdId, row.regimen.PersonId, row.regimen.MedicationId, row.version.Id, request.Outcome, request.ScheduledFor, request.TakenAt, now));
+            if (request.Outcome == "taken") db.InventoryLedgerEntries.Add(new InventoryLedgerEntry(Guid.NewGuid(), householdId, item.Id, administrationId, -row.version.DoseNumerator, row.version.DoseDenominator, "administration", request.TakenAt, now));
             db.ProcessedAdministrationCommands.Add(new ProcessedAdministrationCommand(Guid.NewGuid(), householdId, accountId!.Value, request.IdempotencyKey, administrationId, now));
             await db.SaveChangesAsync(ct); await transaction.CommitAsync(ct);
             return Results.Ok(new { administrationEventId = administrationId, replayed = false });
@@ -121,4 +183,8 @@ public sealed record CreateHouseholdRequest(string Name);
 public sealed record CreatePersonRequest(string Name);
 public sealed record CreateMedicationRequest(Guid PersonId, string Name, string Form, long StockNumerator, long StockDenominator);
 public sealed record CreateRegimenRequest(Guid PersonId, Guid MedicationId, DateOnly ValidFrom, DateOnly? ValidTo, long DoseNumerator, long DoseDenominator, TimeOnly LocalTime, string TimeZoneId);
-public sealed record RecordAdministrationRequest(string IdempotencyKey, Guid RegimenVersionId, DateTimeOffset ScheduledFor, DateTimeOffset TakenAt);
+public sealed record RecordAdministrationRequest(string IdempotencyKey, Guid RegimenVersionId, DateTimeOffset ScheduledFor, DateTimeOffset TakenAt, string Outcome = "taken", Guid? AdministrationId = null);
+public sealed record SyncOfflineCommandRequest(string IdempotencyKey, string Kind, JsonElement Payload);
+public sealed record PersonCreatedPayload(Guid Id, string Name);
+public sealed record MedicationCreatedPayload(Guid Id, Guid PersonId, Guid InventoryItemId, string Name, long StockNumerator, long StockDenominator);
+public sealed record RegimenCreatedPayload(Guid Id, Guid VersionId, Guid PersonId, Guid MedicationId, DateOnly ValidFrom, long DoseNumerator, long DoseDenominator, TimeOnly LocalTime, string TimeZoneId);

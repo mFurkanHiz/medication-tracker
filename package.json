@@ -7,7 +7,7 @@
     "dev:web": "pnpm --filter web dev",
     "dev:mobile": "pnpm --filter mobile start",
     "build:web": "pnpm --filter web build",
-    "lint": "pnpm --filter web lint",
+    "lint": "node apps/web/node_modules/eslint/bin/eslint.js apps/web/src --config apps/web/eslint.config.mjs",
     "typecheck:mobile": "pnpm --filter mobile exec tsc --noEmit",
     "test:api": "dotnet test MedicationTracker.slnx"
   }

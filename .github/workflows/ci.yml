@@ -52,3 +52,5 @@ jobs:
       - run: pnpm lint
       - run: pnpm typecheck:mobile
       - run: pnpm build:web
+      - run: docker compose -f compose.web.yml config
+      - run: docker build --file apps/web/Dockerfile --tag medication-tracker-web:ci .

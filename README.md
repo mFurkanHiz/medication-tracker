@@ -81,6 +81,9 @@ runtime access to health data. The custom hostname is
 `medicationtracker.rapidconfigs.com`; Cloudflare DNS validation is managed outside
 the repository. The PostgreSQL-backed API remains a separate deployment boundary.
 
+For VPS hosting behind Cloudflare, the static site can instead run as an isolated
+container bound to `127.0.0.1:3022`. See [web VPS deployment](docs/web-vps-deployment.md).
+
 ## Android physical-device development
 
 Enable USB debugging on the phone, connect it by USB, unlock it, and accept the

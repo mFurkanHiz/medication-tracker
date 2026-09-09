@@ -12,7 +12,9 @@ credentials, real health data, or an unauthenticated API.
 ## Decision
 
 - Export the Next.js web application as static files.
-- Host the public preview independently from the API and PostgreSQL.
+- Host the public preview independently from the API and PostgreSQL. The static
+  artifact may run on Sites or in the repository's loopback-bound VPS container;
+  the selected public hostname must point to exactly one of those origins.
 - Keep only synthetic presentation data in the static bundle.
 - Store the non-secret hosting project identifier in `.openai/hosting.json`.
 - Attach `medicationtracker.rapidconfigs.com` through explicit DNS validation.

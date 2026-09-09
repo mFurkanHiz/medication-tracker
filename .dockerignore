@@ -1,0 +1,15 @@
+.git
+.sites
+.p
+.pnpm-store
+**/bin
+**/obj
+**/node_modules
+**/.next
+**/out
+**/.expo
+**/dist
+**/.env*
+!**/.env.example
+TestResults
+coverage

@@ -1,4 +1,5 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
+import { randomUUID } from 'expo-crypto';
 
 export type TodayDose = {
   regimenVersionId: string; personName: string; medicationName: string;
@@ -6,13 +7,12 @@ export type TodayDose = {
 };
 
 export async function migrateDatabase(db: SQLiteDatabase) {
+  await db.execAsync('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;');
   const row = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
   let version = row?.user_version ?? 0;
   if (version < 1) {
     await db.withExclusiveTransactionAsync(async transaction => {
       await transaction.execAsync(`
-      PRAGMA journal_mode = WAL;
-      PRAGMA foreign_keys = ON;
       CREATE TABLE people (id TEXT PRIMARY KEY, name TEXT NOT NULL);
       CREATE TABLE medications (id TEXT PRIMARY KEY, person_id TEXT NOT NULL, name TEXT NOT NULL, form TEXT NOT NULL CHECK(form = 'tablet'));
       CREATE TABLE inventory_items (id TEXT PRIMARY KEY, medication_id TEXT NOT NULL UNIQUE);
@@ -31,7 +31,7 @@ export async function migrateDatabase(db: SQLiteDatabase) {
   });
 }
 
-const id = () => globalThis.crypto.randomUUID();
+const id = () => randomUUID();
 const localDate = () => new Date().toLocaleDateString('en-CA');
 
 export async function createSamplePlan(db: SQLiteDatabase, personName: string, medicationName: string) {

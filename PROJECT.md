@@ -8,6 +8,7 @@ Medication Tracker is a public portfolio project for household medication invent
 - GitHub repository: `https://github.com/mFurkanHiz/medication-tracker`
 - Planned primary web URL: `https://medicationtracker.rapidconfigs.com`
 - Reserved test web URL: `https://medicationtracker.test.rapidconfigs.com`
+- Current public preview: `https://medication-tracker.mf-speed96.chatgpt.site`
 - Notion research: `https://app.notion.com/p/3d4afec61a3f81928cace707a08da80e`
 - Notion project: `https://app.notion.com/p/3d4afec61a3f81fba16cd94cf9c5fdee`
 - Completed Sprint 0: `https://app.notion.com/p/3d4afec61a3f81afaf46da73db2ccf48`
@@ -34,6 +35,8 @@ Medication Tracker is a public portfolio project for household medication invent
 - DNS is managed in Cloudflare; do not create or change records until deployment is explicitly authorized
 - Sprint 1 commands use a durable mobile SQLite outbox and a household-scoped server idempotency key
 - Medication quantities are normalized rational values stored as integer numerator and denominator pairs
+- The first public web preview is a static Next.js export hosted separately from the PostgreSQL-backed API
+- The public preview contains synthetic presentation data only and holds no runtime secrets
 
 ## Completed milestone
 

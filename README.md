@@ -2,6 +2,8 @@
 
 An offline-first household medication inventory and adherence platform for web and mobile.
 
+Public synthetic-data preview: [medication-tracker.mf-speed96.chatgpt.site](https://medication-tracker.mf-speed96.chatgpt.site)
+
 The project tracks the difference between a treatment plan, physical household stock, actual administrations, and official refill eligibility. Its core use cases include fractional tablet doses, effective-dated regimen changes, inventory counts, low-stock forecasting, and auditable lending or returning medication between people.
 
 ## Repository layout
@@ -70,6 +72,14 @@ an internal container network and must not publish PostgreSQL on a host port. Se
 Medication Tracker records user-entered treatment instructions. It does not diagnose, prescribe, or recommend dose changes. Only synthetic demonstration data belongs in this public repository.
 
 See [PROJECT.md](PROJECT.md), [architecture](docs/architecture.md), [domain model](docs/domain-model.md), and [roadmap](docs/roadmap.md).
+
+## Web hosting
+
+The public web preview is a static Next.js export hosted separately from the API.
+It contains synthetic presentation data only and has no database credentials or
+runtime access to health data. The custom hostname is
+`medicationtracker.rapidconfigs.com`; Cloudflare DNS validation is managed outside
+the repository. The PostgreSQL-backed API remains a separate deployment boundary.
 
 ## Android physical-device development
 

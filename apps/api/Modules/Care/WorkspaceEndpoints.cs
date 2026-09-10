@@ -36,12 +36,14 @@ public static class WorkspaceEndpoints
         app.MapGet("/api/households/{householdId:guid}/workspace", async (Guid householdId, HttpContext context, MedicationTrackerDbContext db, CancellationToken ct) =>
         {
             if (!await IsMember(db, householdId, context, ct)) return Results.StatusCode(403);
+            await using var snapshot = await db.Database.BeginTransactionAsync(System.Data.IsolationLevel.RepeatableRead, ct);
             var people = await db.People.AsNoTracking().Where(x => x.HouseholdId == householdId).OrderBy(x => x.CreatedAt).ToListAsync(ct);
             var medications = await db.Medications.AsNoTracking().Where(x => x.HouseholdId == householdId).OrderBy(x => x.CreatedAt).ToListAsync(ct);
             var items = await db.InventoryItems.AsNoTracking().Where(x => x.HouseholdId == householdId).ToListAsync(ct);
             var ledger = await db.InventoryLedgerEntries.AsNoTracking().Where(x => x.HouseholdId == householdId).OrderByDescending(x => x.RecordedAt).ToListAsync(ct);
-            var regimens = await (from r in db.Regimens.AsNoTracking() join v in db.RegimenVersions.AsNoTracking() on r.Id equals v.RegimenId where r.HouseholdId == householdId select new { r.Id, r.MedicationId, v.ValidFrom, v.ValidTo, v.LocalTime, v.TimeZoneId, v.DoseNumerator, v.DoseDenominator }).ToListAsync(ct);
-            return Results.Ok(new { people, medications = medications.Select(m => { var item = items.Single(x => x.MedicationId == m.Id); var stock = ledger.Where(x => x.InventoryItemId == item.Id).Aggregate(new ExactQuantity(0), (sum, x) => sum + new ExactQuantity(x.QuantityNumerator, x.QuantityDenominator)); return new { m.Id, m.PersonId, m.Name, m.Form, inventoryItemId = item.Id, stockNumerator = stock.Numerator, stockDenominator = stock.Denominator }; }), regimens, ledger });
+            var regimens = await (from r in db.Regimens.AsNoTracking() join v in db.RegimenVersions.AsNoTracking() on r.Id equals v.RegimenId where r.HouseholdId == householdId select new { r.Id, r.PersonId, r.MedicationId, versionId = v.Id, v.ValidFrom, v.ValidTo, v.LocalTime, v.TimeZoneId, v.DoseNumerator, v.DoseDenominator }).ToListAsync(ct);
+            var administrations = await db.AdministrationEvents.AsNoTracking().Where(x => x.HouseholdId == householdId).ToListAsync(ct);
+            return Results.Ok(new { people, medications = medications.Select(m => { var item = items.Single(x => x.MedicationId == m.Id); var stock = ledger.Where(x => x.InventoryItemId == item.Id).Aggregate(new ExactQuantity(0), (sum, x) => sum + new ExactQuantity(x.QuantityNumerator, x.QuantityDenominator)); return new { m.Id, m.PersonId, m.Name, m.Form, inventoryItemId = item.Id, stockNumerator = stock.Numerator, stockDenominator = stock.Denominator }; }), regimens, ledger, administrations });
         });
     }
 

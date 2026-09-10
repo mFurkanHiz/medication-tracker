@@ -17,8 +17,13 @@ retain the before/observed values and actor and append ledger reconciliation.
 Household advisory locks serialize sync and inventory commands. Duplicate scheduled
 administrations return the original outcome or a conflict, without double consumption.
 
-This increment is not completion of the full roadmap: mobile authenticated sync,
-count revisions, lending/returns, reliable notifications, privacy operations and
+Mobile sessions use the same revocable server sessions, with the token in Expo
+SecureStore. Each household has its own SQLite cache. Pending commands upload
+before pulling a consistent server snapshot; pending local writes prevent cache
+replacement. The old unscoped synthetic database is preserved and never uploaded.
+
+This increment is not completion of the full roadmap: count revisions,
+lending/returns, reliable notifications, privacy operations and
 advanced schedule rules still require implementation and verification.
 
 Deployment requires a successful PostgreSQL CI integration suite, reviewed explicit

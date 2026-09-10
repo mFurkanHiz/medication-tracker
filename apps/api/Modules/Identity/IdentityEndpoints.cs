@@ -31,7 +31,7 @@ public static class IdentityEndpoints
             {
                 context.Response.StatusCode = 403; return;
             }
-            var token = context.Request.Cookies[CookieName];
+            var token = ReadToken(context);
             if (token is { Length: 64 })
             {
                 var db = context.RequestServices.GetRequiredService<MedicationTrackerDbContext>();
@@ -66,8 +66,8 @@ public static class IdentityEndpoints
             db.Accounts.Add(account);
             db.Households.Add(household);
             db.HouseholdMemberships.Add(new HouseholdMembership(Guid.NewGuid(), household.Id, account.Id, "owner", now));
-            await IssueSession(context, db, account.Id, ct);
-            return Results.Ok(new { accountId = account.Id, householdId = household.Id });
+            var token = await IssueSession(context, db, account.Id, ct);
+            return Results.Ok(new { accountId = account.Id, householdId = household.Id, accessToken = request.Mobile ? token : null });
         });
         auth.MapPost("/login", async (Credentials request, HttpContext context, MedicationTrackerDbContext db, CancellationToken ct) =>
         {
@@ -75,8 +75,8 @@ public static class IdentityEndpoints
             var email = request.Email.Trim().ToUpperInvariant();
             var account = await db.Accounts.SingleOrDefaultAsync(x => x.NormalizedEmail == email, ct);
             if (account?.PasswordHash is null || new PasswordHasher<Account>().VerifyHashedPassword(account, account.PasswordHash, request.Password) == PasswordVerificationResult.Failed) return Results.Unauthorized();
-            await IssueSession(context, db, account.Id, ct);
-            return Results.Ok(new { accountId = account.Id });
+            var token = await IssueSession(context, db, account.Id, ct);
+            return Results.Ok(new { accountId = account.Id, accessToken = request.Mobile ? token : null });
         });
         auth.MapGet("/session", async (HttpContext context, MedicationTrackerDbContext db, CancellationToken ct) =>
         {
@@ -87,7 +87,7 @@ public static class IdentityEndpoints
         });
         auth.MapPost("/logout", async (HttpContext context, MedicationTrackerDbContext db, CancellationToken ct) =>
         {
-            var token = context.Request.Cookies[CookieName];
+            var token = ReadToken(context);
             if (token is not null) { var hash = Hash(token); await db.Set<AccountSession>().Where(x => x.TokenHash == hash).ExecuteDeleteAsync(ct); }
             context.Response.Cookies.Delete(CookieName, new CookieOptions { Secure = true, Path = "/" });
             return Results.NoContent();
@@ -98,14 +98,21 @@ public static class IdentityEndpoints
         && System.Net.Mail.MailAddress.TryCreate(request.Email.Trim(), out var parsed) && parsed.Address == request.Email.Trim()
         && request.Password is { Length: >= 12 and <= 128 };
 
-    private static async Task IssueSession(HttpContext context, MedicationTrackerDbContext db, Guid accountId, CancellationToken ct)
+    private static string? ReadToken(HttpContext context)
+    {
+        var bearer = context.Request.Headers.Authorization.ToString();
+        return bearer.StartsWith("Bearer ", StringComparison.Ordinal) ? bearer[7..] : context.Request.Cookies[CookieName];
+    }
+
+    private static async Task<string> IssueSession(HttpContext context, MedicationTrackerDbContext db, Guid accountId, CancellationToken ct)
     {
         var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
         var expires = DateTimeOffset.UtcNow.AddDays(7);
         db.Set<AccountSession>().Add(new AccountSession { TokenHash = Hash(token), AccountId = accountId, ExpiresAt = expires });
         await db.SaveChangesAsync(ct);
         context.Response.Cookies.Append(CookieName, token, new CookieOptions { HttpOnly = true, Secure = true, SameSite = SameSiteMode.Strict, Path = "/", Expires = expires });
+        return token;
     }
 }
 
-public sealed record Credentials(string Email, string Password);
+public sealed record Credentials(string Email, string Password, bool Mobile = false);

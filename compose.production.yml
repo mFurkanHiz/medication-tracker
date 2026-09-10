@@ -1,0 +1,39 @@
+services:
+  web:
+    image: medication-tracker-web:${IMAGE_TAG:-local}
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3022:80"
+    mem_limit: 96m
+    depends_on:
+      - api
+  api:
+    image: medication-tracker-api:${IMAGE_TAG:-local}
+    restart: unless-stopped
+    mem_limit: 384m
+    cpus: 0.75
+    environment:
+      ConnectionStrings__Database: "Host=database;Database=medication_tracker;Username=medication_tracker;Password=${DATABASE_PASSWORD:?required};Maximum Pool Size=20"
+      ASPNETCORE_ENVIRONMENT: Production
+      DOTNET_GCHeapHardLimit: "0x10000000"
+    depends_on:
+      database:
+        condition: service_healthy
+  database:
+    image: postgres:18.4-alpine
+    restart: unless-stopped
+    mem_limit: 256m
+    cpus: 0.5
+    environment:
+      POSTGRES_DB: medication_tracker
+      POSTGRES_USER: medication_tracker
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:?required}
+    volumes:
+      - database:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U medication_tracker -d medication_tracker"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+volumes:
+  database:

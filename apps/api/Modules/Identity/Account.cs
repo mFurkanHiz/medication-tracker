@@ -18,4 +18,8 @@ public sealed class Account
     public string NormalizedEmail { get; private set; } = string.Empty;
 
     public DateTimeOffset CreatedAt { get; private set; }
+
+    public string? PasswordHash { get; private set; }
+
+    public void SetPasswordHash(string hash) => PasswordHash = hash;
 }

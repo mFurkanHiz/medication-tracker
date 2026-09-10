@@ -52,10 +52,9 @@ public sealed class PostgreSqlIntegrationTests
         {
             await migrationScope.ServiceProvider.GetRequiredService<MedicationTrackerDbContext>().Database.MigrateAsync();
         }
-        using var client = factory.CreateClient();
-        var accountId = await PostAndReadId(client, "/api/accounts", new { email = $"OWNER-{Guid.NewGuid():N}@EXAMPLE.INVALID" }, "id");
-        client.DefaultRequestHeaders.Add("X-Account-Id", accountId.ToString());
-        var householdId = await PostAndReadId(client, "/api/households", new { name = "Synthetic household" }, "id");
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost") });
+        client.DefaultRequestHeaders.Add("X-Medication-Client", "1");
+        var householdId = await PostAndReadId(client, "/api/auth/register", new { email = $"OWNER-{Guid.NewGuid():N}@EXAMPLE.INVALID", password = "Synthetic-test-password-123" }, "householdId");
         var personId = Guid.NewGuid(); var medicationId = Guid.NewGuid(); var inventoryItemId = Guid.NewGuid(); var regimenId = Guid.NewGuid(); var versionId = Guid.NewGuid();
         var personCommand = new { idempotencyKey = $"person:{personId}", kind = "person.created", payload = new { id = personId, name = "Synthetic person" } };
         (await client.PostAsJsonAsync($"/api/households/{householdId}/sync/commands", personCommand)).EnsureSuccessStatusCode();
@@ -86,10 +85,34 @@ public sealed class PostgreSqlIntegrationTests
         Assert.Equal(2, await db.AdministrationEvents.CountAsync(x => x.HouseholdId == householdId));
         Assert.Equal(1, await db.InventoryLedgerEntries.CountAsync(x => x.HouseholdId == householdId && x.Reason == "administration"));
 
+        var skipDay = today.AddDays(1);
+        var skipRows = await client.GetFromJsonAsync<JsonElement>($"/api/households/{householdId}/today?date={skipDay:yyyy-MM-dd}");
+        Assert.Equal("skipped", skipRows[0].GetProperty("status").GetString());
+        var count = new { idempotencyKey = Guid.NewGuid().ToString(), kind = "count", numerator = 5, denominator = 2 };
+        (await client.PostAsJsonAsync($"/api/households/{householdId}/inventory/{medicationId}", count)).EnsureSuccessStatusCode();
+        (await client.PostAsJsonAsync($"/api/households/{householdId}/inventory/{medicationId}", count)).EnsureSuccessStatusCode();
+        Assert.Equal(1, await db.Set<InventoryCount>().CountAsync(x => x.HouseholdId == householdId));
+        var workspace = await client.GetFromJsonAsync<JsonElement>($"/api/households/{householdId}/workspace");
+        Assert.Equal(5, workspace.GetProperty("medications")[0].GetProperty("stockNumerator").GetInt64());
+        Assert.Equal(2, workspace.GetProperty("medications")[0].GetProperty("stockDenominator").GetInt64());
+        var refill = new { idempotencyKey = Guid.NewGuid().ToString(), kind = "refill", numerator = 10, denominator = 1 };
+        (await client.PostAsJsonAsync($"/api/households/{householdId}/inventory/{medicationId}", refill)).EnsureSuccessStatusCode();
+        var afterRefill = await client.GetFromJsonAsync<JsonElement>($"/api/households/{householdId}/workspace");
+        Assert.Equal(25, afterRefill.GetProperty("medications")[0].GetProperty("stockNumerator").GetInt64());
+
         using var anonymous = factory.CreateClient();
-        var outsiderId = await PostAndReadId(anonymous, "/api/accounts", new { email = $"OUTSIDER-{Guid.NewGuid():N}@EXAMPLE.INVALID" }, "id");
-        using var outsider = factory.CreateClient(); outsider.DefaultRequestHeaders.Add("X-Account-Id", outsiderId.ToString());
+        anonymous.DefaultRequestHeaders.Add("X-Account-Id", Guid.NewGuid().ToString());
+        Assert.Equal(HttpStatusCode.Unauthorized, (await anonymous.GetAsync($"/api/households/{householdId}/today")).StatusCode);
+        using var outsider = factory.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost") });
+        outsider.DefaultRequestHeaders.Add("X-Medication-Client", "1");
+        await PostAndReadId(outsider, "/api/auth/register", new { email = $"OUTSIDER-{Guid.NewGuid():N}@EXAMPLE.INVALID", password = "Synthetic-test-password-456" }, "accountId");
         Assert.Equal(HttpStatusCode.Forbidden, (await outsider.GetAsync($"/api/households/{householdId}/today?date={today:yyyy-MM-dd}")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await outsider.GetAsync($"/api/households/{householdId}/workspace")).StatusCode);
+        client.DefaultRequestHeaders.Remove("X-Medication-Client");
+        Assert.Equal(HttpStatusCode.Forbidden, (await client.PostAsJsonAsync("/api/auth/logout", new { })).StatusCode);
+        client.DefaultRequestHeaders.Add("X-Medication-Client", "1");
+        (await client.PostAsJsonAsync("/api/auth/logout", new { })).EnsureSuccessStatusCode();
+        Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync($"/api/households/{householdId}/today")).StatusCode);
     }
 
     private static async Task<Guid> PostAndReadId(HttpClient client, string path, object body, string property)

@@ -54,9 +54,10 @@ jobs:
       - run: pnpm build:web
       - run: docker compose -f compose.web.yml config
       - run: docker build --file apps/web/Dockerfile --tag medication-tracker-web:ci .
+      - run: docker build --file apps/api/Dockerfile --tag medication-tracker-api:ci .
       - name: Package VPS web image
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        run: docker save medication-tracker-web:ci | gzip -9 > medication-tracker-web.tar.gz
+        run: docker save medication-tracker-web:ci medication-tracker-api:ci | gzip -9 > medication-tracker-web.tar.gz
       - name: Upload VPS web image
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/upload-artifact@v7

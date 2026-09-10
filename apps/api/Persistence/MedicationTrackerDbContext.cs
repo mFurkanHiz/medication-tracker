@@ -31,5 +31,22 @@ public sealed class MedicationTrackerDbContext(DbContextOptions<MedicationTracke
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(MedicationTrackerDbContext).Assembly);
+        modelBuilder.Entity<InventoryCount>(b =>
+        {
+            b.ToTable("count_sessions", "inventory");
+            b.HasKey(x => x.Id);
+            b.HasOne<Household>().WithMany().HasForeignKey(x => x.HouseholdId).OnDelete(DeleteBehavior.Restrict);
+            b.HasOne<Account>().WithMany().HasForeignKey(x => x.AccountId).OnDelete(DeleteBehavior.Restrict);
+            b.HasOne<InventoryItem>().WithMany().HasForeignKey(x => x.InventoryItemId).OnDelete(DeleteBehavior.Restrict);
+            b.HasOne<InventoryLedgerEntry>().WithMany().HasForeignKey(x => x.LedgerEntryId).OnDelete(DeleteBehavior.Restrict);
+        });
+        modelBuilder.Entity<AccountSession>(b =>
+        {
+            b.ToTable("sessions", "identity");
+            b.HasKey(x => x.TokenHash);
+            b.Property(x => x.TokenHash).HasMaxLength(64);
+            b.HasOne<Account>().WithMany().HasForeignKey(x => x.AccountId).OnDelete(DeleteBehavior.Cascade);
+            b.HasIndex(x => x.ExpiresAt);
+        });
     }
 }

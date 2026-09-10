@@ -15,15 +15,6 @@ public static class CareEndpoints
     {
         var api = endpoints.MapGroup("/api");
 
-        api.MapPost("/accounts", async (CreateAccountRequest request, MedicationTrackerDbContext db, CancellationToken ct) =>
-        {
-            var email = request.Email.Trim().ToUpperInvariant();
-            if (email.Length is 0 or > 320) return Results.ValidationProblem(Error("email", "invalid_email"));
-            var account = new Account(Guid.NewGuid(), email, DateTimeOffset.UtcNow);
-            db.Accounts.Add(account); await db.SaveChangesAsync(ct);
-            return Results.Created($"/api/accounts/{account.Id}", new { account.Id });
-        });
-
         api.MapPost("/households", async (CreateHouseholdRequest request, [FromHeader(Name = "X-Account-Id")] Guid? accountId, MedicationTrackerDbContext db, CancellationToken ct) =>
         {
             if (accountId is null || !await db.Accounts.AnyAsync(x => x.Id == accountId, ct)) return Results.Unauthorized();
@@ -76,8 +67,8 @@ public static class CareEndpoints
                               where regimen.HouseholdId == householdId && version.ValidFrom <= day && (version.ValidTo == null || version.ValidTo >= day)
                               select new { version, regimen, person, medication }).ToListAsync(ct);
             var versionIds = rows.Select(x => x.version.Id).ToArray();
-            var taken = await db.AdministrationEvents.Where(x => x.HouseholdId == householdId && versionIds.Contains(x.RegimenVersionId)).Select(x => new { x.RegimenVersionId, x.ScheduledFor }).ToListAsync(ct);
-            return Results.Ok(rows.Select(x => { var scheduledFor = ScheduledInstant(day, x.version.LocalTime, x.version.TimeZoneId); return new { regimenVersionId = x.version.Id, personId = x.person.Id, personName = x.person.Name, medicationId = x.medication.Id, medicationName = x.medication.Name, doseNumerator = x.version.DoseNumerator, doseDenominator = x.version.DoseDenominator, scheduledFor, status = taken.Any(a => a.RegimenVersionId == x.version.Id && a.ScheduledFor == scheduledFor) ? "taken" : "due" }; }));
+            var taken = await db.AdministrationEvents.Where(x => x.HouseholdId == householdId && versionIds.Contains(x.RegimenVersionId)).Select(x => new { x.RegimenVersionId, x.ScheduledFor, x.Outcome }).ToListAsync(ct);
+            return Results.Ok(rows.Select(x => { var scheduledFor = ScheduledInstant(day, x.version.LocalTime, x.version.TimeZoneId); return new { regimenVersionId = x.version.Id, personId = x.person.Id, personName = x.person.Name, medicationId = x.medication.Id, medicationName = x.medication.Name, doseNumerator = x.version.DoseNumerator, doseDenominator = x.version.DoseDenominator, scheduledFor, status = taken.FirstOrDefault(a => a.RegimenVersionId == x.version.Id && a.ScheduledFor == scheduledFor)?.Outcome ?? "due" }; }));
         });
 
         api.MapGet("/households/{householdId:guid}/medications/{medicationId:guid}/forecast", async (Guid householdId, Guid medicationId, DateOnly? date, [FromHeader(Name = "X-Account-Id")] Guid? accountId, MedicationTrackerDbContext db, CancellationToken ct) =>
@@ -101,11 +92,12 @@ public static class CareEndpoints
         {
             if (!await IsMember(db, householdId, accountId, ct)) return Results.StatusCode(StatusCodes.Status403Forbidden);
             if (string.IsNullOrWhiteSpace(request.IdempotencyKey) || request.IdempotencyKey.Length > 100) return Results.ValidationProblem(Error("idempotencyKey", "required"));
+            await using var transaction = await db.Database.BeginTransactionAsync(ct);
+            await db.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock(hashtextextended({householdId.ToString()}, 0))", ct);
             var prior = await db.SyncCommandReceipts.AsNoTracking().SingleOrDefaultAsync(x => x.HouseholdId == householdId && x.IdempotencyKey == request.IdempotencyKey, ct);
             if (prior is not null) return Results.Ok(new { resultEntityId = prior.ResultEntityId, replayed = true });
 
             Guid resultEntityId;
-            await using var transaction = await db.Database.BeginTransactionAsync(ct);
             switch (request.Kind)
             {
                 case "person.created":
@@ -143,16 +135,21 @@ public static class CareEndpoints
         {
             if (!await IsMember(db, householdId, accountId, ct)) return Results.StatusCode(StatusCodes.Status403Forbidden);
             if (string.IsNullOrWhiteSpace(request.IdempotencyKey) || request.IdempotencyKey.Length > 100) return Results.ValidationProblem(Error("idempotencyKey", "required"));
+            await using var transaction = await db.Database.BeginTransactionAsync(ct);
+            await db.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock(hashtextextended({householdId.ToString()}, 0))", ct);
             var prior = await db.ProcessedAdministrationCommands.AsNoTracking().SingleOrDefaultAsync(x => x.HouseholdId == householdId && x.IdempotencyKey == request.IdempotencyKey, ct);
             if (prior is not null) return Results.Ok(new { administrationEventId = prior.AdministrationEventId, replayed = true });
             var row = await (from version in db.RegimenVersions join regimen in db.Regimens on version.RegimenId equals regimen.Id where version.Id == request.RegimenVersionId && regimen.HouseholdId == householdId select new { version, regimen }).SingleOrDefaultAsync(ct);
             if (row is null) return Results.NotFound();
             var item = await db.InventoryItems.SingleAsync(x => x.HouseholdId == householdId && x.MedicationId == row.regimen.MedicationId, ct);
             var administrationId = request.AdministrationId ?? Guid.NewGuid(); var now = DateTimeOffset.UtcNow;
-            await using var transaction = await db.Database.BeginTransactionAsync(ct);
             if (request.Outcome is not ("taken" or "skipped")) return Results.ValidationProblem(Error("outcome", "unsupported_outcome"));
             var scheduledForUtc = request.ScheduledFor.ToUniversalTime();
             var occurredAtUtc = request.TakenAt.ToUniversalTime();
+            var scheduledDay = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(scheduledForUtc, TimeZoneInfo.FindSystemTimeZoneById(row.version.TimeZoneId)).DateTime);
+            if (scheduledDay < row.version.ValidFrom || (row.version.ValidTo is not null && scheduledDay > row.version.ValidTo) || ScheduledInstant(scheduledDay, row.version.LocalTime, row.version.TimeZoneId) != scheduledForUtc) return Results.BadRequest();
+            var existing = await db.AdministrationEvents.AsNoTracking().SingleOrDefaultAsync(x => x.HouseholdId == householdId && x.RegimenVersionId == row.version.Id && x.ScheduledFor == scheduledForUtc, ct);
+            if (existing is not null) return existing.Outcome == request.Outcome ? Results.Ok(new { administrationEventId = existing.Id, replayed = true }) : Results.Conflict();
             db.AdministrationEvents.Add(new AdministrationEvent(administrationId, householdId, row.regimen.PersonId, row.regimen.MedicationId, row.version.Id, request.Outcome, scheduledForUtc, occurredAtUtc, now));
             if (request.Outcome == "taken") db.InventoryLedgerEntries.Add(new InventoryLedgerEntry(Guid.NewGuid(), householdId, item.Id, administrationId, -row.version.DoseNumerator, row.version.DoseDenominator, "administration", occurredAtUtc, now));
             db.ProcessedAdministrationCommands.Add(new ProcessedAdministrationCommand(Guid.NewGuid(), householdId, accountId!.Value, request.IdempotencyKey, administrationId, now));
@@ -168,7 +165,7 @@ public static class CareEndpoints
     private static bool TryPositive(long numerator, long denominator, out ExactQuantity quantity)
     {
         quantity = default;
-        if (numerator <= 0 || denominator <= 0) return false;
+        if (numerator is <= 0 or > 1000000 || denominator is <= 0 or > 10000) return false;
         quantity = new ExactQuantity(numerator, denominator); return true;
     }
     private static Dictionary<string, string[]> Error(string key, string value) => new() { [key] = [value] };

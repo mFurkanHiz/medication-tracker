@@ -3,6 +3,7 @@ using System;
 using MedicationTracker.Api.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace MedicationTracker.Api.Persistence.Migrations
 {
     [DbContext(typeof(MedicationTrackerDbContext))]
-    partial class MedicationTrackerDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260910130624_AuthenticatedSessions")]
+    partial class AuthenticatedSessions
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -74,52 +77,6 @@ namespace MedicationTracker.Api.Persistence.Migrations
                         {
                             t.HasCheckConstraint("ck_administration_events_outcome", "outcome IN ('taken', 'skipped')");
                         });
-                });
-
-            modelBuilder.Entity("MedicationTracker.Api.Modules.Care.InventoryCount", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTimeOffset>("AcceptedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid>("AccountId")
-                        .HasColumnType("uuid");
-
-                    b.Property<long>("BeforeDenominator")
-                        .HasColumnType("bigint");
-
-                    b.Property<long>("BeforeNumerator")
-                        .HasColumnType("bigint");
-
-                    b.Property<Guid>("HouseholdId")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("InventoryItemId")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("LedgerEntryId")
-                        .HasColumnType("uuid");
-
-                    b.Property<long>("ObservedDenominator")
-                        .HasColumnType("bigint");
-
-                    b.Property<long>("ObservedNumerator")
-                        .HasColumnType("bigint");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("AccountId");
-
-                    b.HasIndex("HouseholdId");
-
-                    b.HasIndex("InventoryItemId");
-
-                    b.HasIndex("LedgerEntryId");
-
-                    b.ToTable("count_sessions", "inventory");
                 });
 
             modelBuilder.Entity("MedicationTracker.Api.Modules.Care.InventoryItem", b =>
@@ -652,33 +609,6 @@ namespace MedicationTracker.Api.Persistence.Migrations
                     b.HasOne("MedicationTracker.Api.Modules.Care.RegimenVersion", null)
                         .WithMany()
                         .HasForeignKey("RegimenVersionId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-                });
-
-            modelBuilder.Entity("MedicationTracker.Api.Modules.Care.InventoryCount", b =>
-                {
-                    b.HasOne("MedicationTracker.Api.Modules.Identity.Account", null)
-                        .WithMany()
-                        .HasForeignKey("AccountId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("MedicationTracker.Api.Modules.Households.Household", null)
-                        .WithMany()
-                        .HasForeignKey("HouseholdId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("MedicationTracker.Api.Modules.Care.InventoryItem", null)
-                        .WithMany()
-                        .HasForeignKey("InventoryItemId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("MedicationTracker.Api.Modules.Care.InventoryLedgerEntry", null)
-                        .WithMany()
-                        .HasForeignKey("LedgerEntryId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });

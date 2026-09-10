@@ -42,6 +42,12 @@ Medication Tracker is a public portfolio project for household medication invent
 
 ## Completed milestone
 
+The former public page was a static preview, not a completed web application.
+The authenticated web increment now implements account registration/login, people,
+medications, daily schedules, taken/skipped events, stock acquisitions and accepted
+counts. Deployment and full-roadmap completion must be tracked independently.
+See ADR 0006. Mobile authenticated sync and Sprint 2/3 acceptance remain open.
+
 The tested Sprint 1 vertical slice delivers:
 
 1. Create a person.

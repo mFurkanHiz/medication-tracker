@@ -2,7 +2,9 @@
 
 An offline-first household medication inventory and adherence platform for web and mobile.
 
-Public synthetic-data preview: [medication-tracker.mf-speed96.chatgpt.site](https://medication-tracker.mf-speed96.chatgpt.site)
+Production synthetic-data preview: [medicationtracker.rapidconfigs.com](https://medicationtracker.rapidconfigs.com)
+
+Fallback preview: [medication-tracker.mf-speed96.chatgpt.site](https://medication-tracker.mf-speed96.chatgpt.site)
 
 The project tracks the difference between a treatment plan, physical household stock, actual administrations, and official refill eligibility. Its core use cases include fractional tablet doses, effective-dated regimen changes, inventory counts, low-stock forecasting, and auditable lending or returning medication between people.
 
@@ -81,7 +83,7 @@ runtime access to health data. The custom hostname is
 `medicationtracker.rapidconfigs.com`; Cloudflare DNS validation is managed outside
 the repository. The PostgreSQL-backed API remains a separate deployment boundary.
 
-For VPS hosting behind Cloudflare, the static site can instead run as an isolated
+The production static site runs on the VPS behind Cloudflare as an isolated
 container bound to `127.0.0.1:3022`. See [web VPS deployment](docs/web-vps-deployment.md).
 
 ## Android physical-device development

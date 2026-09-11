@@ -9,8 +9,8 @@ export async function restoreSession(): Promise<MobileSession | null> {
   const session = JSON.parse(value) as MobileSession;
   return session.apiUrl === apiUrl && /^[a-f0-9-]{36}$/i.test(session.householdId) ? session : null;
 }
-export async function signIn(email: string, password: string, register: boolean) {
-  const response = await fetch(`${apiUrl}/api/auth/${register ? 'register' : 'login'}`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Medication-Client': '1' }, body: JSON.stringify({ email, password, mobile: true }) });
+export async function signIn(email: string, password: string, register: boolean, confirmPassword?: string) {
+  const response = await fetch(`${apiUrl}/api/auth/${register ? 'register' : 'login'}`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Medication-Client': '1' }, body: JSON.stringify({ email, password, mobile: true, ...(register ? { confirmPassword } : {}) }) });
   if (!response.ok) throw new Error('login_failed');
   const result = await response.json() as { accountId: string; accessToken: string };
   const profile = await fetch(`${apiUrl}/api/auth/session`, { headers: { Authorization: `Bearer ${result.accessToken}` } });

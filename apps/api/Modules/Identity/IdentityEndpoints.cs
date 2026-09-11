@@ -57,6 +57,7 @@ public static class IdentityEndpoints
         auth.MapPost("/register", async (Credentials request, HttpContext context, MedicationTrackerDbContext db, CancellationToken ct) =>
         {
             if (!Valid(request)) return Results.BadRequest(new { error = "invalid_credentials" });
+            if (request.Password != request.ConfirmPassword) return Results.BadRequest(new { error = "password_mismatch" });
             var email = request.Email.Trim().ToUpperInvariant();
             if (await db.Accounts.AnyAsync(x => x.NormalizedEmail == email, ct)) return Results.Conflict(new { error = "account_exists" });
             var now = DateTimeOffset.UtcNow;
@@ -71,7 +72,7 @@ public static class IdentityEndpoints
         });
         auth.MapPost("/login", async (Credentials request, HttpContext context, MedicationTrackerDbContext db, CancellationToken ct) =>
         {
-            if (!Valid(request)) return Results.Unauthorized();
+            if (!Valid(request, 1)) return Results.Unauthorized();
             var email = request.Email.Trim().ToUpperInvariant();
             var account = await db.Accounts.SingleOrDefaultAsync(x => x.NormalizedEmail == email, ct);
             if (account?.PasswordHash is null || new PasswordHasher<Account>().VerifyHashedPassword(account, account.PasswordHash, request.Password) == PasswordVerificationResult.Failed) return Results.Unauthorized();
@@ -94,9 +95,9 @@ public static class IdentityEndpoints
         });
     }
 
-    private static bool Valid(Credentials request) => request.Email is { Length: > 3 and <= 320 }
+    private static bool Valid(Credentials request, int minimumLength = 12) => request.Email is { Length: > 3 and <= 320 }
         && System.Net.Mail.MailAddress.TryCreate(request.Email.Trim(), out var parsed) && parsed.Address == request.Email.Trim()
-        && request.Password is { Length: >= 12 and <= 128 };
+        && request.Password is { Length: <= 128 } && request.Password.Length >= minimumLength;
 
     private static string? ReadToken(HttpContext context)
     {
@@ -115,4 +116,4 @@ public static class IdentityEndpoints
     }
 }
 
-public sealed record Credentials(string Email, string Password, bool Mobile = false);
+public sealed record Credentials(string Email, string Password, bool Mobile = false, string? ConfirmPassword = null);

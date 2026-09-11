@@ -17,6 +17,11 @@ Medication Tracker is a public portfolio project for household medication invent
 
 ## Current decisions
 
+- Registration requires matching password confirmation in the clients and API.
+- New registrations retain the 12-character password minimum. Login verifies
+  existing account password hashes without applying registration length policy,
+  allowing explicitly provisioned test accounts. No credentials belong in Git.
+
 - Public monorepo
 - .NET 10 ASP.NET Core API
 - PostgreSQL server database

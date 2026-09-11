@@ -16,6 +16,26 @@ namespace MedicationTracker.Api.Tests;
 public sealed class PostgreSqlIntegrationTests
 {
     [PostgreSqlFact]
+    public async Task Registration_requires_confirmation_but_login_accepts_existing_short_passwords()
+    {
+        await using var factory = new PostgreSqlApiFactory(Environment.GetEnvironmentVariable("MEDICATION_TRACKER_TEST_POSTGRES")!);
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<MedicationTrackerDbContext>();
+        await db.Database.MigrateAsync();
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost") });
+        client.DefaultRequestHeaders.Add("X-Medication-Client", "1");
+        var email = $"CONFIRM-{Guid.NewGuid():N}@EXAMPLE.INVALID";
+        Assert.Equal(HttpStatusCode.BadRequest, (await client.PostAsJsonAsync("/api/auth/register", new { email, password = "Synthetic-long-password" })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await client.PostAsJsonAsync("/api/auth/register", new { email, password = "Synthetic-long-password", confirmPassword = "Another-long-password" })).StatusCode);
+        Assert.False(await db.Accounts.AnyAsync(x => x.NormalizedEmail == email));
+        var account = new Account(Guid.NewGuid(), email, DateTimeOffset.UtcNow);
+        account.SetPasswordHash(new Microsoft.AspNetCore.Identity.PasswordHasher<Account>().HashPassword(account, "QaShort!"));
+        db.Accounts.Add(account); await db.SaveChangesAsync();
+        Assert.Equal(HttpStatusCode.OK, (await client.PostAsJsonAsync("/api/auth/login", new { email, password = "QaShort!" })).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await client.PostAsJsonAsync("/api/auth/login", new { email, password = "Wrong123" })).StatusCode);
+    }
+
+    [PostgreSqlFact]
     [Trait("Category", "PostgreSQL")]
     public async Task Migrations_health_check_and_transaction_rollback_work()
     {
@@ -54,7 +74,7 @@ public sealed class PostgreSqlIntegrationTests
         }
         using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost") });
         client.DefaultRequestHeaders.Add("X-Medication-Client", "1");
-        var householdId = await PostAndReadId(client, "/api/auth/register", new { email = $"OWNER-{Guid.NewGuid():N}@EXAMPLE.INVALID", password = "Synthetic-test-password-123" }, "householdId");
+        var householdId = await PostAndReadId(client, "/api/auth/register", new { email = $"OWNER-{Guid.NewGuid():N}@EXAMPLE.INVALID", password = "Synthetic-test-password-123", confirmPassword = "Synthetic-test-password-123" }, "householdId");
         var personId = Guid.NewGuid(); var medicationId = Guid.NewGuid(); var inventoryItemId = Guid.NewGuid(); var regimenId = Guid.NewGuid(); var versionId = Guid.NewGuid();
         var personCommand = new { idempotencyKey = $"person:{personId}", kind = "person.created", payload = new { id = personId, name = "Synthetic person" } };
         (await client.PostAsJsonAsync($"/api/households/{householdId}/sync/commands", personCommand)).EnsureSuccessStatusCode();
@@ -105,7 +125,7 @@ public sealed class PostgreSqlIntegrationTests
         Assert.Equal(HttpStatusCode.Unauthorized, (await anonymous.GetAsync($"/api/households/{householdId}/today")).StatusCode);
         using var outsider = factory.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost") });
         outsider.DefaultRequestHeaders.Add("X-Medication-Client", "1");
-        await PostAndReadId(outsider, "/api/auth/register", new { email = $"OUTSIDER-{Guid.NewGuid():N}@EXAMPLE.INVALID", password = "Synthetic-test-password-456" }, "accountId");
+        await PostAndReadId(outsider, "/api/auth/register", new { email = $"OUTSIDER-{Guid.NewGuid():N}@EXAMPLE.INVALID", password = "Synthetic-test-password-456", confirmPassword = "Synthetic-test-password-456" }, "accountId");
         Assert.Equal(HttpStatusCode.Forbidden, (await outsider.GetAsync($"/api/households/{householdId}/today?date={today:yyyy-MM-dd}")).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await outsider.GetAsync($"/api/households/{householdId}/workspace")).StatusCode);
         client.DefaultRequestHeaders.Remove("X-Medication-Client");

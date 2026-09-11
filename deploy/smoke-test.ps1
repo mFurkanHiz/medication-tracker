@@ -10,7 +10,7 @@ function Read-Data([string]$Path) {
 }
 $suffix = [Guid]::NewGuid().ToString('N')
 $password = [Convert]::ToHexString([Security.Cryptography.RandomNumberGenerator]::GetBytes(24))
-$account = Send-Command '/auth/register' @{ email = "qa-$suffix@example.invalid"; password = $password }
+$account = Send-Command '/auth/register' @{ email = "qa-$suffix@example.invalid"; password = $password; confirmPassword = $password }
 $household = $account.householdId
 if (-not $household) { throw 'Registration did not create a household.' }
 $person = Send-Command "/households/$household/people" @{ name = 'Synthetic QA person' }

@@ -1,5 +1,15 @@
 # Roadmap
 
+## Verified delivery status — 2026-09-11
+
+The authenticated core web release is live: accounts, people, tablet inventory,
+daily schedules, taken/skipped events, stock additions, accepted counts and ledger
+history. CI and a live synthetic API workflow passed. Browser registration and
+person creation passed; the browser tooling became unavailable before the remaining
+form interaction checks could finish. Mobile authenticated sync is implemented;
+physical-device testing is deferred by the user. Sprint 2 and Sprint 3 below are
+not complete. Do not label the entire product finished based on the core release.
+
 ## Sprint 0 — Foundation
 
 - Repository, CI quality gates, architecture decisions, and local developer workflow

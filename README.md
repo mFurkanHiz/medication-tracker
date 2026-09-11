@@ -2,7 +2,12 @@
 
 An offline-first household medication inventory and adherence platform for web and mobile.
 
-Production synthetic-data preview: [medicationtracker.rapidconfigs.com](https://medicationtracker.rapidconfigs.com)
+Live web application: [medicationtracker.rapidconfigs.com](https://medicationtracker.rapidconfigs.com)
+
+Create an account, add a person, then add a tablet medication and its opening stock.
+Add a daily schedule and record taken/skipped doses. The medication screen supports
+stock additions and counts; the history screen preserves ledger movements.
+This is the authenticated core release, not completion of all Sprint 2/3 features.
 
 Fallback preview: [medication-tracker.mf-speed96.chatgpt.site](https://medication-tracker.mf-speed96.chatgpt.site)
 
@@ -56,9 +61,9 @@ Without that variable, only the Docker-dependent test is reported as skipped.
 
 The mobile app always commits person, medication, regimen, administration, ledger,
 and outbox changes to SQLite first. To exercise upload against a local API, copy
-`apps/mobile/.env.example` to `apps/mobile/.env.local` and set the API URL plus the
-synthetic development account and household UUIDs. These UUID headers are only the
-current authentication seam; do not treat them as production authentication.
+`apps/mobile/.env.example` to `apps/mobile/.env.local` and set the API URL if needed.
+Sign in through the app. Session credentials are kept in Expo SecureStore, and each
+household has a separate SQLite cache. Client-supplied account UUIDs are rejected.
 
 Outbox rows are sent in creation order whenever the app becomes active or the user
 chooses **Şimdi eşitle**. A server acknowledgement is recorded locally only after a
@@ -77,13 +82,11 @@ See [PROJECT.md](PROJECT.md), [architecture](docs/architecture.md), [domain mode
 
 ## Web hosting
 
-The public web preview is a static Next.js export hosted separately from the API.
-It contains synthetic presentation data only and has no database credentials or
-runtime access to health data. The custom hostname is
-`medicationtracker.rapidconfigs.com`; Cloudflare DNS validation is managed outside
-the repository. The PostgreSQL-backed API remains a separate deployment boundary.
+The web client calls the authenticated API through same-origin `/api/` requests.
+The custom hostname is `medicationtracker.rapidconfigs.com`. PostgreSQL and the API
+run on the isolated project container network with no published host ports.
 
-The production static site runs on the VPS behind Cloudflare as an isolated
+The production web application runs on the VPS behind Cloudflare as an isolated
 container bound to `127.0.0.1:3022`. See [web VPS deployment](docs/web-vps-deployment.md).
 
 ## Android physical-device development

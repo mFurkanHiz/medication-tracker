@@ -35,8 +35,8 @@ Medication Tracker is a public portfolio project for household medication invent
 - DNS is managed in Cloudflare; do not create or change records until deployment is explicitly authorized
 - Sprint 1 commands use a durable mobile SQLite outbox and a household-scoped server idempotency key
 - Medication quantities are normalized rational values stored as integer numerator and denominator pairs
-- The first public web preview is a static Next.js export hosted separately from the PostgreSQL-backed API
-- The public preview contains synthetic presentation data only and holds no runtime secrets
+- The web application is a Next.js client export backed by the same-origin authenticated API
+- Browser sessions use secure HttpOnly cookies; mobile sessions use SecureStore
 - The production web container binds only to VPS loopback port `3022`; host Nginx
   terminates origin TLS and Cloudflare proxies the public hostname
 
@@ -46,7 +46,11 @@ The former public page was a static preview, not a completed web application.
 The authenticated web increment now implements account registration/login, people,
 medications, daily schedules, taken/skipped events, stock acquisitions and accepted
 counts. Deployment and full-roadmap completion must be tracked independently.
-See ADR 0006. Mobile authenticated sync and Sprint 2/3 acceptance remain open.
+See ADR 0006. The authenticated web/API deployment is live at the primary hostname
+using application images from `598394b`, verified by CI `34518807194` and a live
+synthetic API smoke test. Browser registration and person creation were also verified.
+Mobile authenticated sync is implemented; physical-device acceptance is deferred
+at the user's request. Full Sprint 2/3 acceptance remains open.
 
 The tested Sprint 1 vertical slice delivers:
 

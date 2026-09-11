@@ -8,10 +8,10 @@ Medication Tracker starts as a modular monolith with three clients/components:
 - Next.js web application for administration and reporting
 - Expo React Native mobile application backed by local SQLite
 
-The first public web preview is deployed as a static Next.js export. It is isolated
-from the PostgreSQL-backed API and contains synthetic presentation data only. A
-future authenticated web application may call the API over TLS, but deployment of
-one component must not grant database access to another component.
+The web application uses a Next.js client export and calls the ASP.NET API over
+same-origin `/api/` routes. Authentication uses revocable server sessions and
+Secure HttpOnly browser cookies. Only the API has PostgreSQL credentials. The
+database and API have no published host ports. See ADR 0006 for mobile sessions.
 
 Mobile commands are written to SQLite first. A durable outbox syncs them to the API when a connection is available. The API validates household authorization, applies commands idempotently, and returns changes after a client cursor.
 

@@ -24,7 +24,7 @@ public sealed class PostgreSqlIntegrationTests
         await db.Database.MigrateAsync();
         using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost") });
         client.DefaultRequestHeaders.Add("X-Medication-Client", "1");
-        var email = $"CONFIRM-{Guid.NewGuid():N}@EXAMPLE.INVALID";
+        var email = $"CONFIRM-{Guid.NewGuid():N}@EXAMPLE.INVALID".ToUpperInvariant();
         Assert.Equal(HttpStatusCode.BadRequest, (await client.PostAsJsonAsync("/api/auth/register", new { email, password = "Synthetic-long-password" })).StatusCode);
         Assert.Equal(HttpStatusCode.BadRequest, (await client.PostAsJsonAsync("/api/auth/register", new { email, password = "Synthetic-long-password", confirmPassword = "Another-long-password" })).StatusCode);
         Assert.False(await db.Accounts.AnyAsync(x => x.NormalizedEmail == email));

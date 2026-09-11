@@ -26,5 +26,10 @@ docker cp "$container:/app/migrations.sql" .deploy/migrations.sql
 docker rm "$container"
 "${compose[@]}" exec -T database psql -v ON_ERROR_STOP=1 -U medication_tracker -d medication_tracker < .deploy/migrations.sql
 "${compose[@]}" up -d api web
+for attempt in $(seq 1 30); do
+  if "${compose[@]}" exec -T web wget --quiet --spider http://api:8080/health/ready; then break; fi
+  sleep 2
+done
+"${compose[@]}" exec -T web wget --quiet --spider http://api:8080/health/ready
 "${compose[@]}" ps
 curl --fail --silent --show-error http://127.0.0.1:3022/ > /dev/null

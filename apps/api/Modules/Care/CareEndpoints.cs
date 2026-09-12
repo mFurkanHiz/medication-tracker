@@ -35,10 +35,11 @@ public static class CareEndpoints
         api.MapPost("/households/{householdId:guid}/medications", async (Guid householdId, CreateMedicationRequest request, [FromHeader(Name = "X-Account-Id")] Guid? accountId, MedicationTrackerDbContext db, CancellationToken ct) =>
         {
             if (!await IsMember(db, householdId, accountId, ct)) return Results.StatusCode(StatusCodes.Status403Forbidden);
-            if (string.IsNullOrWhiteSpace(request.Name) || request.Form != "tablet") return Results.ValidationProblem(Error("medication", "tablet_required"));
-            if (!TryPositive(request.StockNumerator, request.StockDenominator, out var stock)) return Results.ValidationProblem(Error("stock", "positive_exact_quantity_required"));
+            if (string.IsNullOrWhiteSpace(request.Name) || request.Name.Length > 200 || request.Form != "tablet" || request.Strength?.Length > 100 || request.ActiveIngredient?.Length > 200 || request.Notes?.Length > 2000) return Results.ValidationProblem(Error("medication", "invalid_medication"));
+            if (request.StockNumerator < 0 || request.StockNumerator > 1000000 || request.StockDenominator is < 1 or > 10000) return Results.ValidationProblem(Error("stock", "nonnegative_exact_quantity_required"));
+            var stock = new ExactQuantity(request.StockNumerator, request.StockDenominator);
             if (!await db.People.AnyAsync(x => x.Id == request.PersonId && x.HouseholdId == householdId, ct)) return Results.NotFound();
-            var now = DateTimeOffset.UtcNow; var medication = new Medication(Guid.NewGuid(), householdId, request.PersonId, request.Name.Trim(), request.Form, now); var item = new InventoryItem(Guid.NewGuid(), householdId, medication.Id, now);
+            var now = DateTimeOffset.UtcNow; var medication = new Medication(Guid.NewGuid(), householdId, request.PersonId, request.Name.Trim(), request.Form, now, request.Strength, request.ActiveIngredient, request.Notes); var item = new InventoryItem(Guid.NewGuid(), householdId, medication.Id, now);
             db.Medications.Add(medication); db.InventoryItems.Add(item); db.InventoryLedgerEntries.Add(new InventoryLedgerEntry(Guid.NewGuid(), householdId, item.Id, null, stock.Numerator, stock.Denominator, "acquisition", now, now));
             await db.SaveChangesAsync(ct); return Results.Created($"/api/households/{householdId}/medications/{medication.Id}", new { medication.Id, inventoryItemId = item.Id, stock.Numerator, stock.Denominator });
         });
@@ -180,7 +181,7 @@ public static class CareEndpoints
 public sealed record CreateAccountRequest(string Email);
 public sealed record CreateHouseholdRequest(string Name);
 public sealed record CreatePersonRequest(string Name);
-public sealed record CreateMedicationRequest(Guid PersonId, string Name, string Form, long StockNumerator, long StockDenominator);
+public sealed record CreateMedicationRequest(Guid PersonId, string Name, string Form, long StockNumerator, long StockDenominator, string? Strength = null, string? ActiveIngredient = null, string? Notes = null);
 public sealed record CreateRegimenRequest(Guid PersonId, Guid MedicationId, DateOnly ValidFrom, DateOnly? ValidTo, long DoseNumerator, long DoseDenominator, TimeOnly LocalTime, string TimeZoneId);
 public sealed record RecordAdministrationRequest(string IdempotencyKey, Guid RegimenVersionId, DateTimeOffset ScheduledFor, DateTimeOffset TakenAt, string Outcome = "taken", Guid? AdministrationId = null);
 public sealed record SyncOfflineCommandRequest(string IdempotencyKey, string Kind, JsonElement Payload);

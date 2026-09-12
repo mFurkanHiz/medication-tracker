@@ -4,7 +4,10 @@ An offline-first household medication inventory and adherence platform for web a
 
 Live web application: [medicationtracker.rapidconfigs.com](https://medicationtracker.rapidconfigs.com)
 
-Create an account, add a person, then add a tablet medication and its opening stock.
+Create an account and choose **İlaç ekle / Add medication**. If no person exists,
+the app guides you through person creation first, then opens medication entry.
+Enter the medication name, optional package strength/ingredient/note and opening
+tablet stock (0 is allowed). Saving opens the daily schedule form for that medication.
 Add a daily schedule and record taken/skipped doses. The medication screen supports
 stock additions and counts; the history screen preserves ledger movements.
 This is the authenticated core release, not completion of all Sprint 2/3 features.

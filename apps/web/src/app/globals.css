@@ -1,5 +1,14 @@
 @import "tailwindcss";
 
+textarea { font: inherit; padding: 10px; border: 1px solid #b4c2bb; border-radius: 9px; background: #fffdfa; color: #17322d; resize: vertical; }
+textarea:focus-visible { outline: 3px solid #d5643c; outline-offset: 3px; }
+.wide { grid-column: 1 / -1; }
+.onboarding { margin-bottom: 24px; }
+.onboarding p { margin-bottom: 16px; }
+.editor { scroll-margin-top: 20px; }
+.notes { white-space: pre-wrap; overflow-wrap: anywhere; }
+@media (max-width: 760px) { .heading { flex-wrap: wrap; } .heading .actions { width: 100%; } }
+
 a { color: inherit; text-decoration: none; }
 button, input, select { font: inherit; }
 button { cursor: pointer; border: 1px solid transparent; border-radius: 12px; padding: 12px 18px; background: #17322d; color: #fffaf0; font-weight: 600; }

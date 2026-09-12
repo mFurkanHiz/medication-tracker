@@ -14,13 +14,18 @@ public sealed class Person
 public sealed class Medication
 {
     private Medication() { }
-    public Medication(Guid id, Guid householdId, Guid personId, string name, string form, DateTimeOffset createdAt) =>
-        (Id, HouseholdId, PersonId, Name, Form, CreatedAt) = (id, householdId, personId, name, form, createdAt);
+    public Medication(Guid id, Guid householdId, Guid personId, string name, string form, DateTimeOffset createdAt,
+        string? strength = null, string? activeIngredient = null, string? notes = null) =>
+        (Id, HouseholdId, PersonId, Name, Form, CreatedAt, Strength, ActiveIngredient, Notes) =
+        (id, householdId, personId, name, form, createdAt, strength?.Trim(), activeIngredient?.Trim(), notes?.Trim());
     public Guid Id { get; private set; }
     public Guid HouseholdId { get; private set; }
     public Guid PersonId { get; private set; }
     public string Name { get; private set; } = string.Empty;
     public string Form { get; private set; } = string.Empty;
+    public string? Strength { get; private set; }
+    public string? ActiveIngredient { get; private set; }
+    public string? Notes { get; private set; }
     public DateTimeOffset CreatedAt { get; private set; }
 }
 

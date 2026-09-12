@@ -43,7 +43,7 @@ public static class WorkspaceEndpoints
             var ledger = await db.InventoryLedgerEntries.AsNoTracking().Where(x => x.HouseholdId == householdId).OrderByDescending(x => x.RecordedAt).ToListAsync(ct);
             var regimens = await (from r in db.Regimens.AsNoTracking() join v in db.RegimenVersions.AsNoTracking() on r.Id equals v.RegimenId where r.HouseholdId == householdId select new { r.Id, r.PersonId, r.MedicationId, versionId = v.Id, v.ValidFrom, v.ValidTo, v.LocalTime, v.TimeZoneId, v.DoseNumerator, v.DoseDenominator }).ToListAsync(ct);
             var administrations = await db.AdministrationEvents.AsNoTracking().Where(x => x.HouseholdId == householdId).ToListAsync(ct);
-            return Results.Ok(new { people, medications = medications.Select(m => { var item = items.Single(x => x.MedicationId == m.Id); var stock = ledger.Where(x => x.InventoryItemId == item.Id).Aggregate(new ExactQuantity(0), (sum, x) => sum + new ExactQuantity(x.QuantityNumerator, x.QuantityDenominator)); return new { m.Id, m.PersonId, m.Name, m.Form, inventoryItemId = item.Id, stockNumerator = stock.Numerator, stockDenominator = stock.Denominator }; }), regimens, ledger, administrations });
+            return Results.Ok(new { people, medications = medications.Select(m => { var item = items.Single(x => x.MedicationId == m.Id); var stock = ledger.Where(x => x.InventoryItemId == item.Id).Aggregate(new ExactQuantity(0), (sum, x) => sum + new ExactQuantity(x.QuantityNumerator, x.QuantityDenominator)); return new { m.Id, m.PersonId, m.Name, m.Form, m.Strength, m.ActiveIngredient, m.Notes, inventoryItemId = item.Id, stockNumerator = stock.Numerator, stockDenominator = stock.Denominator }; }), regimens, ledger, administrations });
         });
     }
 

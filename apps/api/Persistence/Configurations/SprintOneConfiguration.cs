@@ -23,6 +23,9 @@ public sealed class MedicationConfiguration : IEntityTypeConfiguration<Medicatio
     public void Configure(EntityTypeBuilder<Medication> b)
     {
         b.ToTable("medications", "care", t => t.HasCheckConstraint("ck_medications_tablet_form", "form = 'tablet'")); b.HasKey(x => x.Id);
+        b.Property(x => x.Strength).HasColumnName("strength").HasMaxLength(100);
+        b.Property(x => x.ActiveIngredient).HasColumnName("active_ingredient").HasMaxLength(200);
+        b.Property(x => x.Notes).HasColumnName("notes").HasMaxLength(2000);
         b.Property(x => x.Id).HasColumnName("id"); b.Property(x => x.HouseholdId).HasColumnName("household_id"); b.Property(x => x.PersonId).HasColumnName("person_id");
         b.Property(x => x.Name).HasColumnName("name").HasMaxLength(200).IsRequired(); b.Property(x => x.Form).HasColumnName("form").HasMaxLength(40).IsRequired(); b.Property(x => x.CreatedAt).HasColumnName("created_at");
         b.HasOne<Household>().WithMany().HasForeignKey(x => x.HouseholdId).OnDelete(DeleteBehavior.Restrict);

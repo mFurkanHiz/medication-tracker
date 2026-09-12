@@ -14,7 +14,7 @@ $account = Send-Command '/auth/register' @{ email = "qa-$suffix@example.invalid"
 $household = $account.householdId
 if (-not $household) { throw 'Registration did not create a household.' }
 $person = Send-Command "/households/$household/people" @{ name = 'Synthetic QA person' }
-$medication = Send-Command "/households/$household/medications" @{ personId = $person.id; name = 'Synthetic QA tablet'; form = 'tablet'; stockNumerator = 15; stockDenominator = 2 }
+$medication = Send-Command "/households/$household/medications" @{ personId = $person.id; name = 'Synthetic QA tablet'; form = 'tablet'; stockNumerator = 15; stockDenominator = 2; strength = '10 mg'; activeIngredient = 'Synthetic ingredient'; notes = 'Synthetic package note' }
 $day = Get-Date -Format 'yyyy-MM-dd'
 $plan = Send-Command "/households/$household/regimens" @{ personId = $person.id; medicationId = $medication.id; validFrom = $day; validTo = $null; doseNumerator = 1; doseDenominator = 2; localTime = '09:00:00'; timeZoneId = 'Europe/Istanbul' }
 $doses = @(Read-Data "/households/$household/today?date=$day")
@@ -27,6 +27,7 @@ $forecast = Read-Data "/households/$household/medications/$($medication.id)/fore
 if ($forecast.remainingNumerator -ne 7 -or $forecast.remainingDenominator -ne 1 -or $forecast.fullDaysRemaining -ne 14) { throw 'Fractional inventory projection failed.' }
 $count = Send-Command "/households/$household/inventory/$($medication.id)" @{ idempotencyKey = "count-$suffix"; kind = 'count'; numerator = 5; denominator = 2 }
 $workspace = Read-Data "/households/$household/workspace"
+if ($workspace.medications[0].strength -ne '10 mg' -or $workspace.medications[0].activeIngredient -ne 'Synthetic ingredient' -or $workspace.medications[0].notes -ne 'Synthetic package note') { throw 'Medication details did not persist.' }
 if ($workspace.medications[0].stockNumerator -ne 5 -or $workspace.medications[0].stockDenominator -ne 2) { throw 'Count reconciliation failed.' }
 Send-Command '/auth/logout' @{} | Out-Null
 Write-Output 'PASS: registration, household, medication, schedule, administration replay, exact forecast, count reconciliation, logout.'

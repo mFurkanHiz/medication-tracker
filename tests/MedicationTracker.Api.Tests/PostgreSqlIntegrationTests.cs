@@ -16,6 +16,38 @@ namespace MedicationTracker.Api.Tests;
 public sealed class PostgreSqlIntegrationTests
 {
     [PostgreSqlFact]
+    public async Task Medication_details_and_zero_stock_survive_reload_and_remain_household_scoped()
+    {
+        await using var factory = new PostgreSqlApiFactory(Environment.GetEnvironmentVariable("MEDICATION_TRACKER_TEST_POSTGRES")!);
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<MedicationTrackerDbContext>();
+        await db.Database.MigrateAsync();
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost") });
+        client.DefaultRequestHeaders.Add("X-Medication-Client", "1");
+        var household = await PostAndReadId(client, "/api/auth/register", new { email = $"details-{Guid.NewGuid():N}@example.invalid", password = "Synthetic-test-password", confirmPassword = "Synthetic-test-password" }, "householdId");
+        var path = $"/api/households/{household}";
+        var person = await PostAndReadId(client, $"{path}/people", new { name = "Synthetic details person" }, "id");
+        var request = new CreateMedicationRequest(person, "Synthetic tablet", "tablet", 0, 1, "10 mg", "Synthetic ingredient", "Synthetic package note");
+        var medication = await PostAndReadId(client, $"{path}/medications", request, "id");
+        var workspace = await client.GetFromJsonAsync<JsonElement>($"{path}/workspace");
+        var row = Assert.Single(workspace.GetProperty("medications").EnumerateArray());
+        Assert.Equal(medication, row.GetProperty("id").GetGuid());
+        Assert.Equal("10 mg", row.GetProperty("strength").GetString());
+        Assert.Equal("Synthetic ingredient", row.GetProperty("activeIngredient").GetString());
+        Assert.Equal("Synthetic package note", row.GetProperty("notes").GetString());
+        Assert.Equal(0, row.GetProperty("stockNumerator").GetInt64());
+        Assert.Single(workspace.GetProperty("ledger").EnumerateArray());
+        Assert.Equal(HttpStatusCode.BadRequest, (await client.PostAsJsonAsync($"{path}/medications", request with { StockNumerator = -1 })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await client.PostAsJsonAsync($"{path}/medications", request with { Strength = new string('x', 101) })).StatusCode);
+        using var outsider = factory.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost") });
+        outsider.DefaultRequestHeaders.Add("X-Medication-Client", "1");
+        var otherHousehold = await PostAndReadId(outsider, "/api/auth/register", new { email = $"details-outsider-{Guid.NewGuid():N}@example.invalid", password = "Synthetic-test-password", confirmPassword = "Synthetic-test-password" }, "householdId");
+        Assert.Equal(HttpStatusCode.Forbidden, (await outsider.GetAsync($"{path}/workspace")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await outsider.PostAsJsonAsync($"{path}/medications", request)).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await outsider.PostAsJsonAsync($"/api/households/{otherHousehold}/medications", request)).StatusCode);
+    }
+
+    [PostgreSqlFact]
     public async Task Registration_requires_confirmation_but_login_accepts_existing_short_passwords()
     {
         await using var factory = new PostgreSqlApiFactory(Environment.GetEnvironmentVariable("MEDICATION_TRACKER_TEST_POSTGRES")!);

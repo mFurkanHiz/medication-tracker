@@ -17,6 +17,12 @@ Medication Tracker is a public portfolio project for household medication invent
 
 ## Current decisions
 
+- Web onboarding exposes separate person and medication actions. Saving a person
+  opens medication entry; saving a medication opens its daily schedule form.
+- Medication package strength, active ingredient and notes are optional descriptive
+  fields, never inputs to dose advice or automatic unit conversion. Zero opening
+  stock is valid on web; inventory still records an opening ledger event.
+
 - Registration requires matching password confirmation in the clients and API.
 - New registrations retain the 12-character password minimum. Login verifies
   existing account password hashes without applying registration length policy,

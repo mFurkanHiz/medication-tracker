@@ -58,8 +58,9 @@ The authenticated web increment now implements account registration/login, peopl
 medications, daily schedules, taken/skipped events, stock acquisitions and accepted
 counts. Deployment and full-roadmap completion must be tracked independently.
 See ADR 0006. The authenticated web/API deployment is live at the primary hostname
-using application images from `598394b`, verified by CI `34518807194` and a live
-synthetic API smoke test. Browser registration and person creation were also verified.
+using application images from `6d271f0`, verified by CI `34705120707` and live
+synthetic API/UI tests. Guided person → medication → schedule entry, descriptive
+package fields, exact stock consumption and reload persistence were browser-verified.
 Mobile authenticated sync is implemented; physical-device acceptance is deferred
 at the user's request. Full Sprint 2/3 acceptance remains open.
 

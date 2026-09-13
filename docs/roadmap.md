@@ -1,15 +1,13 @@
 # Roadmap
 
-## Verified delivery status — 2026-09-13
+## Delivery status — 2026-09-13
 
-The authenticated core web release is live: accounts, people, tablet inventory,
-daily schedules, taken/skipped events, stock additions, accepted counts and ledger
-history. CI and a live synthetic API workflow passed. Browser registration and
-person creation passed; the browser tooling became unavailable before the remaining
-person → medication → daily schedule flow, medication package details, dose recording,
-exact stock decrement and reload persistence passed in the live browser. Mobile authenticated sync is implemented;
-physical-device testing is deferred by the user. Sprint 2 and Sprint 3 below are
-not complete. Do not label the entire product finished based on the core release.
+The authenticated core web release is live. V1 catalog/package/flexible-use changes
+are implemented locally and await full CI plus production acceptance: person-free
+medication entry, full/opened packages, package assignment, category/tag/status
+filters, and regular/as-needed plans with optional dates/times. Mobile authenticated
+sync is implemented; physical-device testing is deferred by the user. Remaining
+Sprint 2/3 work is listed explicitly below.
 
 ## Sprint 0 — Foundation
 
@@ -30,7 +28,8 @@ not complete. Do not label the entire product finished based on the core release
 
 ## Sprint 2 — Inventory operations
 
-- Package/opened-package support
+- Package/opened-package support — V1 implementation in verification
+- Package-to-person assignment audit — V1 implementation in verification
 - Inventory count sessions and bulk reconciliation
 - Count revision/correction workflow
 - Low-stock thresholds and forecast notifications
@@ -39,8 +38,8 @@ not complete. Do not label the entire product finished based on the core release
 
 ## Sprint 3 — Reliable schedules
 
-- Exact-time and named-period schedules
-- Meal relation and minimum interval
+- Exact-time and named-period schedule recording — V1 implementation in verification
+- Meal relation, as-needed use and minimum-interval recording — V1 implementation in verification
 - Time-zone, daylight-saving, reboot, and permission recovery tests
 - Turkish and English localization completion
 

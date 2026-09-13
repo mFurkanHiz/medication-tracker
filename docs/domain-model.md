@@ -12,7 +12,7 @@ Timing supports:
 - Meal relation: fasting, with food, after food, before food, or irrelevant
 - Optional acceptable time window and minimum interval between administrations
 
-Named day periods are household/user preferences mapped to local time windows. They are not stored as hard-coded universal hours.
+Named day periods are household/user preferences mapped to local time windows. They are not stored as hard-coded universal hours. Until preference windows and reminders are implemented, V1 stores the named period and uses local midnight only as an internal occurrence key; the UI never presents that key as the instruction time.
 
 ## Exact quantities
 
@@ -29,7 +29,14 @@ Current stock is a projection of immutable ledger entries:
 - count reconciliation
 - correction/reversal
 
-An inventory item may represent a sealed package, opened package, lot, or manually estimated container. Ownership/allocation is separate from physical location.
+A household `Medication` is independent of a person. An `InventoryItem` aggregates
+its stock, while each optional `InventoryPackage` records exact full capacity and
+an optional person assignment. Package balance is projected from package-linked
+ledger entries, so a sealed 20-of-20 box and opened 8-of-20 box remain distinct while
+the medication total is exactly 28. Loose stock remains valid when box details are
+unknown. Allocation from loose stock to a package creates balanced ledger entries;
+it does not rewrite history. Package assignment changes create actor-attributed
+events. Ownership/allocation is separate from physical location.
 
 ## Inventory count and bulk update
 
@@ -41,6 +48,6 @@ Accepting a count creates one reconciliation ledger entry per difference. Bulk c
 
 A `DoseOccurrence` is an expected dose. An `AdministrationEvent` records what actually happened: taken, skipped, late, partial, extra, unknown, or corrected. Forecasting derives expected consumption from active regimen versions and adjusts projected stock with actual administration and inventory ledger events.
 
-The Sprint 1 tablet slice persists exact quantities as normalized integer numerator and denominator pairs. Recording an administration appends both an `AdministrationEvent` and a linked negative `InventoryLedgerEntry`; neither record overwrites earlier history. A `ProcessedAdministrationCommand` stores the household-scoped idempotency receipt separately from the clinical and inventory events.
+The tablet slice persists exact quantities as normalized integer numerator and denominator pairs. Recording an administration appends an `AdministrationEvent` and one or more linked negative `InventoryLedgerEntry` rows; multiple rows allow an exact dose to span package boundaries without losing the single administration identity. Neither record overwrites earlier history. A `ProcessedAdministrationCommand` stores the household-scoped idempotency receipt separately from the clinical and inventory events.
 
 Refill eligibility belongs to prescription/insurance data and is not inferred from physical stock. The application compares projected depletion with eligibility to expose a potential coverage gap.

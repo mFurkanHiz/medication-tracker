@@ -7,6 +7,24 @@ textarea:focus-visible { outline: 3px solid #d5643c; outline-offset: 3px; }
 .onboarding p { margin-bottom: 16px; }
 .editor { scroll-margin-top: 20px; }
 .notes { white-space: pre-wrap; overflow-wrap: anywhere; }
+.formHint { color: #586b65; line-height: 1.55; }
+.subsection { margin: 8px 0 -4px; padding-top: 18px; border-top: 1px solid #ded8ca; }
+.checkbox { flex-direction: row; align-items: center; align-self: center; }
+.checkbox input { min-height: auto; width: 20px; height: 20px; }
+.filterBar { display: grid; grid-template-columns: repeat(4, minmax(150px, 1fr)); gap: 12px; padding: 16px 0; }
+.filterBar label { margin: 0; }
+.medicationCard.inactive { opacity: .72; }
+.metaRow, .tagRow { display: flex; flex-wrap: wrap; gap: 7px; align-items: center; }
+.tagRow { margin: 14px 0; color: #9d4c2f; font-size: 13px; font-weight: 700; }
+.statusPill { background: #d8e9db; color: #17322d; border-radius: 99px; padding: 6px 10px; font-size: 12px; font-weight: 800; }
+.statusPill.off { background: #e5e1d8; color: #65736e; }
+.compact { padding: 8px 12px; font-size: 13px; }
+.packageList { display: grid; gap: 8px; margin: 15px 0; }
+.packageRow { display: grid; grid-template-columns: 1fr minmax(130px, 190px); gap: 12px; align-items: center; border: 1px solid #ded8ca; border-radius: 12px; padding: 12px; background: #fffdfa; }
+.packageRow strong, .packageRow span { display: block; }
+.packageRow span { margin-top: 4px; color: #586b65; font-size: 13px; }
+.loose, .regimen { padding: 10px 12px; background: #f1eee5; border-radius: 10px; }
+.scheduleMarker { min-width: 100px; color: #a04f32; font-size: 18px; font-weight: 800; }
 @media (max-width: 760px) { .heading { flex-wrap: wrap; } .heading .actions { width: 100%; } }
 
 a { color: inherit; text-decoration: none; }
@@ -34,7 +52,7 @@ nav button.active { background: #17322d; color: white; }
 .empty { padding: 55px 25px; text-align: center; color: #586b65; border: 1px dashed #b4c2bb; border-radius: 20px; }
 .list { display: grid; gap: 12px; }.dose, .movement { display: flex; align-items: center; gap: 24px; }.dose time { font-size: 25px; color: #a04f32; font-weight: 700; }.grow { flex: 1; }.dose p { margin: 0; }.badge { background: #d8e9db; color: #17322d; border-radius: 20px; padding: 9px 15px; }
 .medicationGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 18px; }.stockNumber { font-size: 40px; margin-top: 26px; }.stockNumber small { font-size: 16px; }.editor { margin: 25px 0; }.formGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 18px; }.notice { background: #f8dfd7; padding: 16px; border-radius: 12px; }.notice.success { background: #d8e9db; }footer { margin-top: 50px; font-size: 13px; }
-@media(max-width: 760px) { .auth { grid-template-columns: 1fr; gap: 24px; padding: 30px 0; }.heading { align-items: flex-start; flex-direction: column; }.heading h1 { font-size: 36px; }.dose { flex-wrap: wrap; }.dose .actions { width: 100%; }header { gap: 15px; flex-wrap: wrap; }.brand { font-size: 15px; }.movement { gap: 10px; flex-wrap: wrap; } }
+@media(max-width: 760px) { .auth { grid-template-columns: 1fr; gap: 24px; padding: 30px 0; }.heading { align-items: flex-start; flex-direction: column; }.heading h1 { font-size: 36px; }.dose { flex-wrap: wrap; }.dose .actions { width: 100%; }header { gap: 15px; flex-wrap: wrap; }.brand { font-size: 15px; }.movement { gap: 10px; flex-wrap: wrap; }.filterBar { grid-template-columns: 1fr 1fr; }.packageRow { grid-template-columns: 1fr; }.scheduleMarker { width: 100%; } }
 
 :root {
   --background: #f1eee5;

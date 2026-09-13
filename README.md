@@ -4,13 +4,16 @@ An offline-first household medication inventory and adherence platform for web a
 
 Live web application: [medicationtracker.rapidconfigs.com](https://medicationtracker.rapidconfigs.com)
 
-Create an account and choose **İlaç ekle / Add medication**. If no person exists,
-the app guides you through person creation first, then opens medication entry.
-Enter the medication name, optional package strength/ingredient/note and opening
-tablet stock (0 is allowed). Saving opens the daily schedule form for that medication.
-Add a daily schedule and record taken/skipped doses. The medication screen supports
-stock additions and counts; the history screen preserves ledger movements.
-This is the authenticated core release, not completion of all Sprint 2/3 features.
+Create an account and choose **İlaç ekle / Add medication**. A medication can be
+saved without a person. Enter its descriptive package dose, ingredient, category,
+tags and notes, then optionally record full and opened boxes. For example, one
+20-of-20 box plus one 8-of-20 box is displayed as two boxes and 28 tablets total.
+Boxes can later be assigned to or removed from a person.
+
+Usage plans belong to a person and may be regular or as-needed. Dates and exact time
+are optional; regular plans can use a named period such as morning, evening or
+immediately before bed, plus a meal relation. The app records instructions and
+actual use; it never recommends a dose.
 
 Fallback preview: [medication-tracker.mf-speed96.chatgpt.site](https://medication-tracker.mf-speed96.chatgpt.site)
 
@@ -58,7 +61,7 @@ dotnet ef database update --project apps/api --startup-project apps/api
 Supply `ConnectionStrings__Database` to run the API. Supply
 `MEDICATION_TRACKER_TEST_POSTGRES` and run `dotnet test MedicationTracker.slnx` to
 include the PostgreSQL migration, readiness-health, and transaction rollback test.
-Without that variable, only the Docker-dependent test is reported as skipped.
+Without that variable, PostgreSQL-dependent tests are reported as skipped.
 
 ## Mobile offline sync
 

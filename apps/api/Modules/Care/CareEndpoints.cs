@@ -35,24 +35,40 @@ public static class CareEndpoints
         api.MapPost("/households/{householdId:guid}/medications", async (Guid householdId, CreateMedicationRequest request, [FromHeader(Name = "X-Account-Id")] Guid? accountId, MedicationTrackerDbContext db, CancellationToken ct) =>
         {
             if (!await IsMember(db, householdId, accountId, ct)) return Results.StatusCode(StatusCodes.Status403Forbidden);
-            if (string.IsNullOrWhiteSpace(request.Name) || request.Name.Length > 200 || request.Form != "tablet" || request.Strength?.Length > 100 || request.ActiveIngredient?.Length > 200 || request.Notes?.Length > 2000) return Results.ValidationProblem(Error("medication", "invalid_medication"));
+            var tags = NormalizeTags(request.Tags);
+            if (string.IsNullOrWhiteSpace(request.Name) || request.Name.Length > 200 || request.Form != "tablet" || request.Strength?.Length > 100 || request.ActiveIngredient?.Length > 200 || request.Notes?.Length > 2000 || request.Category?.Length > 100 || tags is null) return Results.ValidationProblem(Error("medication", "invalid_medication"));
             if (request.StockNumerator < 0 || request.StockNumerator > 1000000 || request.StockDenominator is < 1 or > 10000) return Results.ValidationProblem(Error("stock", "nonnegative_exact_quantity_required"));
             var stock = new ExactQuantity(request.StockNumerator, request.StockDenominator);
-            if (!await db.People.AnyAsync(x => x.Id == request.PersonId && x.HouseholdId == householdId, ct)) return Results.NotFound();
-            var now = DateTimeOffset.UtcNow; var medication = new Medication(Guid.NewGuid(), householdId, request.PersonId, request.Name.Trim(), request.Form, now, request.Strength, request.ActiveIngredient, request.Notes); var item = new InventoryItem(Guid.NewGuid(), householdId, medication.Id, now);
-            db.Medications.Add(medication); db.InventoryItems.Add(item); db.InventoryLedgerEntries.Add(new InventoryLedgerEntry(Guid.NewGuid(), householdId, item.Id, null, stock.Numerator, stock.Denominator, "acquisition", now, now));
-            await db.SaveChangesAsync(ct); return Results.Created($"/api/households/{householdId}/medications/{medication.Id}", new { medication.Id, inventoryItemId = item.Id, stock.Numerator, stock.Denominator });
+            if (request.PersonId is not null && !await db.People.AnyAsync(x => x.Id == request.PersonId && x.HouseholdId == householdId, ct)) return Results.NotFound();
+            if (!TryValidatePackages(request.Packages, householdId, out var packageError)) return Results.ValidationProblem(Error("packages", packageError));
+            var packagePersonIds = request.Packages?.Where(x => x.PersonId is not null).Select(x => x.PersonId!.Value).Distinct().ToArray() ?? [];
+            if (packagePersonIds.Length > 0 && await db.People.CountAsync(x => x.HouseholdId == householdId && packagePersonIds.Contains(x.Id), ct) != packagePersonIds.Length) return Results.NotFound();
+            var now = DateTimeOffset.UtcNow; var medication = new Medication(Guid.NewGuid(), householdId, request.PersonId, request.Name.Trim(), request.Form, now, request.Strength, request.ActiveIngredient, request.Notes, request.Category, tags, request.IsActive); var item = new InventoryItem(Guid.NewGuid(), householdId, medication.Id, now);
+            db.Medications.Add(medication); db.InventoryItems.Add(item);
+            db.InventoryLedgerEntries.Add(new InventoryLedgerEntry(Guid.NewGuid(), householdId, item.Id, null, stock.Numerator, stock.Denominator, "acquisition", now, now));
+            foreach (var input in request.Packages ?? [])
+            {
+                var capacity = new ExactQuantity(input.CapacityNumerator, input.CapacityDenominator);
+                var remaining = new ExactQuantity(input.RemainingNumerator, input.RemainingDenominator);
+                var package = new InventoryPackage(Guid.NewGuid(), householdId, item.Id, input.PersonId, capacity.Numerator, capacity.Denominator, now);
+                db.InventoryPackages.Add(package);
+                db.InventoryLedgerEntries.Add(new InventoryLedgerEntry(Guid.NewGuid(), householdId, item.Id, null, remaining.Numerator, remaining.Denominator, "package_acquisition", now, now, package.Id));
+                if (input.PersonId is not null) db.InventoryPackageAssignmentEvents.Add(new InventoryPackageAssignmentEvent(Guid.NewGuid(), householdId, package.Id, accountId!.Value, null, input.PersonId, now));
+            }
+            await db.SaveChangesAsync(ct); return Results.Created($"/api/households/{householdId}/medications/{medication.Id}", new { medication.Id, inventoryItemId = item.Id, stock.Numerator, stock.Denominator, packageCount = request.Packages?.Count ?? 0 });
         });
 
         api.MapPost("/households/{householdId:guid}/regimens", async (Guid householdId, CreateRegimenRequest request, [FromHeader(Name = "X-Account-Id")] Guid? accountId, MedicationTrackerDbContext db, CancellationToken ct) =>
         {
             if (!await IsMember(db, householdId, accountId, ct)) return Results.StatusCode(StatusCodes.Status403Forbidden);
             if (!TryPositive(request.DoseNumerator, request.DoseDenominator, out var dose)) return Results.ValidationProblem(Error("dose", "positive_exact_quantity_required"));
-            if (request.ValidTo < request.ValidFrom) return Results.ValidationProblem(Error("validTo", "invalid_period"));
+            if (request.ValidFrom is not null && request.ValidTo < request.ValidFrom) return Results.ValidationProblem(Error("validTo", "invalid_period"));
+            if (request.ScheduleType is not ("scheduled" or "as_needed") || (request.ScheduleType == "scheduled" && request.LocalTime is null && request.DayPeriod is null) || !ValidDayPeriod(request.DayPeriod) || !ValidMealRelation(request.MealRelation) || request.MinimumIntervalMinutes is < 1 or > 10080) return Results.ValidationProblem(Error("schedule", "invalid_schedule"));
             try { _ = TimeZoneInfo.FindSystemTimeZoneById(request.TimeZoneId); } catch (TimeZoneNotFoundException) { return Results.ValidationProblem(Error("timeZoneId", "unknown_time_zone")); }
-            var medication = await db.Medications.SingleOrDefaultAsync(x => x.Id == request.MedicationId && x.HouseholdId == householdId && x.PersonId == request.PersonId, ct);
-            if (medication is null) return Results.NotFound();
-            var now = DateTimeOffset.UtcNow; var regimen = new Regimen(Guid.NewGuid(), householdId, request.PersonId, request.MedicationId, now); var version = new RegimenVersion(Guid.NewGuid(), regimen.Id, request.ValidFrom, request.ValidTo, dose.Numerator, dose.Denominator, request.LocalTime, request.TimeZoneId, now);
+            var medicationExists = await db.Medications.AnyAsync(x => x.Id == request.MedicationId && x.HouseholdId == householdId && x.IsActive, ct);
+            var personExists = await db.People.AnyAsync(x => x.Id == request.PersonId && x.HouseholdId == householdId, ct);
+            if (!medicationExists || !personExists) return Results.NotFound();
+            var now = DateTimeOffset.UtcNow; var regimen = new Regimen(Guid.NewGuid(), householdId, request.PersonId, request.MedicationId, now); var version = new RegimenVersion(Guid.NewGuid(), regimen.Id, request.ValidFrom, request.ValidTo, dose.Numerator, dose.Denominator, request.LocalTime, request.TimeZoneId, now, request.ScheduleType, request.DayPeriod, request.MealRelation, request.MinimumIntervalMinutes);
             db.Regimens.Add(regimen); db.RegimenVersions.Add(version); await db.SaveChangesAsync(ct);
             return Results.Created($"/api/households/{householdId}/regimens/{regimen.Id}", new { regimen.Id, regimenVersionId = version.Id });
         });
@@ -65,11 +81,16 @@ public static class CareEndpoints
                               join regimen in db.Regimens on version.RegimenId equals regimen.Id
                               join person in db.People on regimen.PersonId equals person.Id
                               join medication in db.Medications on regimen.MedicationId equals medication.Id
-                              where regimen.HouseholdId == householdId && version.ValidFrom <= day && (version.ValidTo == null || version.ValidTo >= day)
+                              where regimen.HouseholdId == householdId && medication.IsActive && (version.ValidFrom == null || version.ValidFrom <= day) && (version.ValidTo == null || version.ValidTo >= day)
                               select new { version, regimen, person, medication }).ToListAsync(ct);
             var versionIds = rows.Select(x => x.version.Id).ToArray();
             var taken = await db.AdministrationEvents.Where(x => x.HouseholdId == householdId && versionIds.Contains(x.RegimenVersionId)).Select(x => new { x.RegimenVersionId, x.ScheduledFor, x.Outcome }).ToListAsync(ct);
-            return Results.Ok(rows.Select(x => { var scheduledFor = ScheduledInstant(day, x.version.LocalTime, x.version.TimeZoneId); return new { regimenVersionId = x.version.Id, personId = x.person.Id, personName = x.person.Name, medicationId = x.medication.Id, medicationName = x.medication.Name, doseNumerator = x.version.DoseNumerator, doseDenominator = x.version.DoseDenominator, scheduledFor, status = taken.FirstOrDefault(a => a.RegimenVersionId == x.version.Id && a.ScheduledFor == scheduledFor)?.Outcome ?? "due" }; }));
+            return Results.Ok(rows.Select(x =>
+            {
+                DateTimeOffset? scheduledFor = x.version.ScheduleType == "as_needed" ? null : ScheduledInstant(day, x.version.LocalTime, x.version.TimeZoneId);
+                var status = scheduledFor is null ? "available" : taken.FirstOrDefault(a => a.RegimenVersionId == x.version.Id && a.ScheduledFor == scheduledFor)?.Outcome ?? "due";
+                return new { regimenVersionId = x.version.Id, personId = x.person.Id, personName = x.person.Name, medicationId = x.medication.Id, medicationName = x.medication.Name, doseNumerator = x.version.DoseNumerator, doseDenominator = x.version.DoseDenominator, scheduledFor, status, x.version.ScheduleType, x.version.LocalTime, x.version.DayPeriod, x.version.MealRelation, x.version.MinimumIntervalMinutes };
+            }));
         });
 
         api.MapGet("/households/{householdId:guid}/medications/{medicationId:guid}/forecast", async (Guid householdId, Guid medicationId, DateOnly? date, [FromHeader(Name = "X-Account-Id")] Guid? accountId, MedicationTrackerDbContext db, CancellationToken ct) =>
@@ -82,7 +103,7 @@ public static class CareEndpoints
             var day = date ?? DateOnly.FromDateTime(DateTime.UtcNow);
             var doses = await (from version in db.RegimenVersions.AsNoTracking()
                                join regimen in db.Regimens.AsNoTracking() on version.RegimenId equals regimen.Id
-                               where regimen.HouseholdId == householdId && regimen.MedicationId == medicationId && version.ValidFrom <= day && (version.ValidTo == null || version.ValidTo >= day)
+                               where regimen.HouseholdId == householdId && regimen.MedicationId == medicationId && version.ScheduleType == "scheduled" && (version.ValidFrom == null || version.ValidFrom <= day) && (version.ValidTo == null || version.ValidTo >= day)
                                select new { version.DoseNumerator, version.DoseDenominator }).ToListAsync(ct);
             var daily = doses.Aggregate(new ExactQuantity(0), (sum, dose) => sum + new ExactQuantity(dose.DoseNumerator, dose.DoseDenominator));
             var depletionDate = StockProjection.DepletionDate(day, balance, daily);
@@ -119,7 +140,7 @@ public static class CareEndpoints
                     var regimenPayload = request.Payload.Deserialize<RegimenCreatedPayload>(JsonSerializerOptions.Web);
                     if (regimenPayload is null || regimenPayload.Id == Guid.Empty || regimenPayload.VersionId == Guid.Empty || !TryPositive(regimenPayload.DoseNumerator, regimenPayload.DoseDenominator, out var dose)) return Results.ValidationProblem(Error("payload", "invalid_regimen"));
                     try { _ = TimeZoneInfo.FindSystemTimeZoneById(regimenPayload.TimeZoneId); } catch (TimeZoneNotFoundException) { return Results.ValidationProblem(Error("payload", "unknown_time_zone")); }
-                    if (!await db.Medications.AnyAsync(x => x.Id == regimenPayload.MedicationId && x.PersonId == regimenPayload.PersonId && x.HouseholdId == householdId, ct)) return Results.NotFound();
+                    if (!await db.Medications.AnyAsync(x => x.Id == regimenPayload.MedicationId && x.HouseholdId == householdId, ct) || !await db.People.AnyAsync(x => x.Id == regimenPayload.PersonId && x.HouseholdId == householdId, ct)) return Results.NotFound();
                     var createdAt = DateTimeOffset.UtcNow;
                     db.Regimens.Add(new Regimen(regimenPayload.Id, householdId, regimenPayload.PersonId, regimenPayload.MedicationId, createdAt));
                     db.RegimenVersions.Add(new RegimenVersion(regimenPayload.VersionId, regimenPayload.Id, regimenPayload.ValidFrom, null, dose.Numerator, dose.Denominator, regimenPayload.LocalTime, regimenPayload.TimeZoneId, createdAt)); resultEntityId = regimenPayload.Id;
@@ -145,14 +166,15 @@ public static class CareEndpoints
             var item = await db.InventoryItems.SingleAsync(x => x.HouseholdId == householdId && x.MedicationId == row.regimen.MedicationId, ct);
             var administrationId = request.AdministrationId ?? Guid.NewGuid(); var now = DateTimeOffset.UtcNow;
             if (request.Outcome is not ("taken" or "skipped")) return Results.ValidationProblem(Error("outcome", "unsupported_outcome"));
-            var scheduledForUtc = request.ScheduledFor.ToUniversalTime();
             var occurredAtUtc = request.TakenAt.ToUniversalTime();
-            var scheduledDay = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(scheduledForUtc, TimeZoneInfo.FindSystemTimeZoneById(row.version.TimeZoneId)).DateTime);
-            if (scheduledDay < row.version.ValidFrom || (row.version.ValidTo is not null && scheduledDay > row.version.ValidTo) || ScheduledInstant(scheduledDay, row.version.LocalTime, row.version.TimeZoneId) != scheduledForUtc) return Results.BadRequest();
+            var scheduledForUtc = row.version.ScheduleType == "as_needed" ? occurredAtUtc : request.ScheduledFor?.ToUniversalTime();
+            if (scheduledForUtc is null) return Results.BadRequest();
+            var scheduledDay = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(scheduledForUtc.Value, TimeZoneInfo.FindSystemTimeZoneById(row.version.TimeZoneId)).DateTime);
+            if ((row.version.ValidFrom is not null && scheduledDay < row.version.ValidFrom) || (row.version.ValidTo is not null && scheduledDay > row.version.ValidTo) || (row.version.ScheduleType == "scheduled" && ScheduledInstant(scheduledDay, row.version.LocalTime, row.version.TimeZoneId) != scheduledForUtc)) return Results.BadRequest();
             var existing = await db.AdministrationEvents.AsNoTracking().SingleOrDefaultAsync(x => x.HouseholdId == householdId && x.RegimenVersionId == row.version.Id && x.ScheduledFor == scheduledForUtc, ct);
             if (existing is not null) return existing.Outcome == request.Outcome ? Results.Ok(new { administrationEventId = existing.Id, replayed = true }) : Results.Conflict();
-            db.AdministrationEvents.Add(new AdministrationEvent(administrationId, householdId, row.regimen.PersonId, row.regimen.MedicationId, row.version.Id, request.Outcome, scheduledForUtc, occurredAtUtc, now));
-            if (request.Outcome == "taken") db.InventoryLedgerEntries.Add(new InventoryLedgerEntry(Guid.NewGuid(), householdId, item.Id, administrationId, -row.version.DoseNumerator, row.version.DoseDenominator, "administration", occurredAtUtc, now));
+            db.AdministrationEvents.Add(new AdministrationEvent(administrationId, householdId, row.regimen.PersonId, row.regimen.MedicationId, row.version.Id, request.Outcome, scheduledForUtc.Value, occurredAtUtc, now));
+            if (request.Outcome == "taken") await AddPackageAwareConsumption(db, householdId, item.Id, row.regimen.PersonId, administrationId, new ExactQuantity(row.version.DoseNumerator, row.version.DoseDenominator), occurredAtUtc, now, ct);
             db.ProcessedAdministrationCommands.Add(new ProcessedAdministrationCommand(Guid.NewGuid(), householdId, accountId!.Value, request.IdempotencyKey, administrationId, now));
             await db.SaveChangesAsync(ct); await transaction.CommitAsync(ct);
             return Results.Ok(new { administrationEventId = administrationId, replayed = false });
@@ -169,10 +191,56 @@ public static class CareEndpoints
         if (numerator is <= 0 or > 1000000 || denominator is <= 0 or > 10000) return false;
         quantity = new ExactQuantity(numerator, denominator); return true;
     }
-    private static Dictionary<string, string[]> Error(string key, string value) => new() { [key] = [value] };
-    private static DateTimeOffset ScheduledInstant(DateOnly date, TimeOnly time, string timeZoneId)
+    private static string[]? NormalizeTags(string[]? tags)
     {
-        var local = date.ToDateTime(time, DateTimeKind.Unspecified); var zone = TimeZoneInfo.FindSystemTimeZoneById(timeZoneId);
+        var normalized = (tags ?? []).Select(x => x.Trim()).Where(x => x.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        return normalized.Length <= 12 && normalized.All(x => x.Length <= 40) ? normalized : null;
+    }
+    private static bool TryValidatePackages(List<InventoryPackageInput>? packages, Guid householdId, out string error)
+    {
+        _ = householdId;
+        error = "invalid_packages";
+        if (packages is null) return true;
+        if (packages.Count > 100) return false;
+        foreach (var input in packages)
+        {
+            if (!TryPositive(input.CapacityNumerator, input.CapacityDenominator, out var capacity) || input.RemainingNumerator < 0 || input.RemainingNumerator > 1000000 || input.RemainingDenominator is < 1 or > 10000) return false;
+            var remaining = new ExactQuantity(input.RemainingNumerator, input.RemainingDenominator);
+            if (Compare(remaining, capacity) > 0) return false;
+        }
+        return true;
+    }
+    private static bool ValidDayPeriod(string? value) => value is null or "morning" or "noon" or "evening" or "night" or "bedtime";
+    private static bool ValidMealRelation(string? value) => value is null or "fasting" or "with_food" or "after_food" or "before_food";
+    private static int Compare(ExactQuantity left, ExactQuantity right) => checked(left.Numerator * right.Denominator).CompareTo(checked(right.Numerator * left.Denominator));
+    private static async Task AddPackageAwareConsumption(MedicationTrackerDbContext db, Guid householdId, Guid inventoryItemId, Guid personId,
+        Guid administrationId, ExactQuantity dose, DateTimeOffset occurredAt, DateTimeOffset recordedAt, CancellationToken ct)
+    {
+        var packages = await db.InventoryPackages.Where(x => x.HouseholdId == householdId && x.InventoryItemId == inventoryItemId && (x.PersonId == null || x.PersonId == personId)).OrderBy(x => x.CreatedAt).ToListAsync(ct);
+        var packageIds = packages.Select(x => x.Id).ToArray();
+        var entries = await db.InventoryLedgerEntries.Where(x => x.HouseholdId == householdId && x.InventoryItemId == inventoryItemId && x.PackageId != null && packageIds.Contains(x.PackageId.Value)).ToListAsync(ct);
+        var balances = packages.Select(package => new
+        {
+            Package = package,
+            Balance = entries.Where(x => x.PackageId == package.Id).Aggregate(new ExactQuantity(0), (sum, entry) => sum + new ExactQuantity(entry.QuantityNumerator, entry.QuantityDenominator)),
+            Capacity = new ExactQuantity(package.CapacityNumerator, package.CapacityDenominator)
+        }).Where(x => x.Balance.Numerator > 0).OrderBy(x => Compare(x.Balance, x.Capacity) < 0 ? 0 : 1).ThenBy(x => (decimal)x.Balance.Numerator / x.Balance.Denominator).ToList();
+        var remaining = dose;
+        foreach (var row in balances)
+        {
+            if (remaining.Numerator <= 0) break;
+            var used = Compare(row.Balance, remaining) <= 0 ? row.Balance : remaining;
+            db.InventoryLedgerEntries.Add(new InventoryLedgerEntry(Guid.NewGuid(), householdId, inventoryItemId, administrationId, -used.Numerator, used.Denominator, "administration", occurredAt, recordedAt, row.Package.Id));
+            remaining -= used;
+        }
+        if (remaining.Numerator > 0) db.InventoryLedgerEntries.Add(new InventoryLedgerEntry(Guid.NewGuid(), householdId, inventoryItemId, administrationId, -remaining.Numerator, remaining.Denominator, "administration", occurredAt, recordedAt));
+    }
+    private static Dictionary<string, string[]> Error(string key, string value) => new() { [key] = [value] };
+    private static DateTimeOffset ScheduledInstant(DateOnly date, TimeOnly? time, string timeZoneId)
+    {
+        // Midnight is only a stable occurrence key for named periods. It is never
+        // presented as a reminder time or interpreted as medical guidance.
+        var local = date.ToDateTime(time ?? TimeOnly.MinValue, DateTimeKind.Unspecified); var zone = TimeZoneInfo.FindSystemTimeZoneById(timeZoneId);
         if (zone.IsInvalidTime(local)) local = local.AddHours(1);
         return new DateTimeOffset(local, zone.GetUtcOffset(local)).ToUniversalTime();
     }
@@ -181,9 +249,10 @@ public static class CareEndpoints
 public sealed record CreateAccountRequest(string Email);
 public sealed record CreateHouseholdRequest(string Name);
 public sealed record CreatePersonRequest(string Name);
-public sealed record CreateMedicationRequest(Guid PersonId, string Name, string Form, long StockNumerator, long StockDenominator, string? Strength = null, string? ActiveIngredient = null, string? Notes = null);
-public sealed record CreateRegimenRequest(Guid PersonId, Guid MedicationId, DateOnly ValidFrom, DateOnly? ValidTo, long DoseNumerator, long DoseDenominator, TimeOnly LocalTime, string TimeZoneId);
-public sealed record RecordAdministrationRequest(string IdempotencyKey, Guid RegimenVersionId, DateTimeOffset ScheduledFor, DateTimeOffset TakenAt, string Outcome = "taken", Guid? AdministrationId = null);
+public sealed record InventoryPackageInput(long CapacityNumerator, long CapacityDenominator, long RemainingNumerator, long RemainingDenominator, Guid? PersonId = null);
+public sealed record CreateMedicationRequest(Guid? PersonId, string Name, string Form, long StockNumerator, long StockDenominator, string? Strength = null, string? ActiveIngredient = null, string? Notes = null, string? Category = null, string[]? Tags = null, bool IsActive = true, List<InventoryPackageInput>? Packages = null);
+public sealed record CreateRegimenRequest(Guid PersonId, Guid MedicationId, DateOnly? ValidFrom, DateOnly? ValidTo, long DoseNumerator, long DoseDenominator, TimeOnly? LocalTime, string TimeZoneId, string ScheduleType = "scheduled", string? DayPeriod = null, string? MealRelation = null, int? MinimumIntervalMinutes = null);
+public sealed record RecordAdministrationRequest(string IdempotencyKey, Guid RegimenVersionId, DateTimeOffset? ScheduledFor, DateTimeOffset TakenAt, string Outcome = "taken", Guid? AdministrationId = null);
 public sealed record SyncOfflineCommandRequest(string IdempotencyKey, string Kind, JsonElement Payload);
 public sealed record PersonCreatedPayload(Guid Id, string Name);
 public sealed record MedicationCreatedPayload(Guid Id, Guid PersonId, Guid InventoryItemId, string Name, long StockNumerator, long StockDenominator);

@@ -2,6 +2,8 @@
 
 Status: Accepted — 2026-09-12
 
+Superseded in part by ADR 0008: medication entry no longer requires a person.
+
 ## Context
 
 The first web UI hid medication entry behind a person-dependent primary action.

@@ -14,14 +14,18 @@ Medication Tracker is a public portfolio project for household medication invent
 - Completed Sprint 0: `https://app.notion.com/p/3d4afec61a3f81afaf46da73db2ccf48`
 - Completed Sprint 1: `https://app.notion.com/p/3d5afec61a3f81dbaa3bdad4bc7c00ec`
 - Completed vertical-slice task: `https://app.notion.com/p/3d4afec61a3f8139a1b4e062ca00a497`
+- V1 completion task: `https://app.notion.com/p/3d9afec61a3f81ebabd2fad7483e3c7e`
 
 ## Current decisions
 
-- Web onboarding exposes separate person and medication actions. Saving a person
-  opens medication entry; saving a medication opens its daily schedule form.
-- Medication package strength, active ingredient and notes are optional descriptive
-  fields, never inputs to dose advice or automatic unit conversion. Zero opening
-  stock is valid on web; inventory still records an opening ledger event.
+- Medication is a household catalog record and does not require a person. Optional
+  person relationships live on physical packages and usage plans.
+- Package dose text, active ingredient and notes are optional descriptions, never
+  inputs to dose advice or automatic unit conversion.
+- Full and opened tablet packages retain exact capacity and remaining quantities.
+  Existing loose stock can be allocated into packages with balanced ledger entries.
+- Regular and as-needed instructions support optional date ranges, exact times,
+  named day periods, meal relation and minimum interval.
 
 - Registration requires matching password confirmation in the clients and API.
 - New registrations retain the 12-character password minimum. Login verifies
@@ -51,18 +55,16 @@ Medication Tracker is a public portfolio project for household medication invent
 - The production web container binds only to VPS loopback port `3022`; host Nginx
   terminates origin TLS and Cloudflare proxies the public hostname
 
-## Completed milestone
+## Current milestone
 
 The former public page was a static preview, not a completed web application.
-The authenticated web increment now implements account registration/login, people,
-medications, daily schedules, taken/skipped events, stock acquisitions and accepted
-counts. Deployment and full-roadmap completion must be tracked independently.
-See ADR 0006. The authenticated web/API deployment is live at the primary hostname
-using application images from `6d271f0`, verified by CI `34705120707` and live
-synthetic API/UI tests. Guided person → medication → schedule entry, descriptive
-package fields, exact stock consumption and reload persistence were browser-verified.
-Mobile authenticated sync is implemented; physical-device acceptance is deferred
-at the user's request. Full Sprint 2/3 acceptance remains open.
+The authenticated web/API core is live at the primary hostname. The next V1 release
+adds the independent medication catalog, package-level stock and assignment,
+category/tag/status filters, and regular/as-needed instructions described in ADR
+0008. Deployment and full-roadmap completion are tracked independently. Mobile
+authenticated sync is implemented; physical-device acceptance remains deferred at
+the user's request. Count revision, lending/return, low-stock alerts and reliable
+notification delivery remain later roadmap items.
 
 The tested Sprint 1 vertical slice delivers:
 

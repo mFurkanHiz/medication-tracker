@@ -1,11 +1,15 @@
 # Web VPS deployment
 
-Status: authenticated web/API release deployed on 2026-09-11.
+Status: V1 web/API release deployed and accepted on 2026-09-14.
 
-Current application image source: `598394bb26702655da1a57c15f2e2360e7629033`.
-CI `34518807194` passed all 11 API tests, web lint/build and mobile TypeScript.
-`deploy/smoke-test.ps1` passed against the public HTTPS URL, covering registration,
-medication, schedule, administration replay, exact forecast, count and logout.
+Current application image source: `11b9fd5c32511af8fea9df68189768e5e6dc86d0`.
+CI `34757450538` passed all 15 API tests against PostgreSQL, web lint/build,
+mobile TypeScript and both production Docker builds. The downloaded image archive
+was verified as SHA-256
+`c8c7fe8e44a844e49e3297ef3c6962e794bbfe42d56b70d0959ee1c7372d0d52`
+before deployment. `deploy/smoke-test.ps1` passed against the public HTTPS URL,
+covering independent medication entry, 20+8 package stock, package assignment,
+as-needed use, exact package consumption, named-period scheduling and logout.
 
 Use `compose.production.yml` and `deploy/deploy-production.sh` for the authenticated
 release. Place the successful CI image artifact in `.deploy/medication-tracker-web.tar.gz`.
@@ -13,11 +17,16 @@ The script uses private runtime credentials, starts the project database, backs 
 up, applies the image's explicit migrations and checks API readiness. Never print
 `.env.production` or commit it. The pre-migration backup is not an offsite backup
 or a substitute for the outstanding encrypted backup/restore production review.
+The 2026-09-14 deployment created
+`.deploy/backups/pre-migration-20260914T095719Z.dump` before applying the V1
+migration. The previous release archive remains recoverable at
+`.deploy/medication-tracker-web.pre-v1.tar.gz`.
 
 - Public URL: `https://medicationtracker.rapidconfigs.com`
 - VPS: `srv925801` (`31.97.53.159`)
 - Application directory: `/opt/medication-tracker`
-- Container: `medication-tracker-web-1`
+- Containers: `medication-tracker-web-1`, `medication-tracker-api-1`, and
+  `medication-tracker-database-1`
 - Host binding: `127.0.0.1:3022`
 - Initial deployed source: `053fefd8e99bde2a5f9bdb6bba7ac87d01775818`
 - Origin TLS: Let's Encrypt with automatic Certbot renewal

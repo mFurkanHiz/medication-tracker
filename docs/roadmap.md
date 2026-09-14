@@ -1,13 +1,13 @@
 # Roadmap
 
-## Delivery status — 2026-09-13
+## Delivery status — 2026-09-14
 
-The authenticated core web release is live. V1 catalog/package/flexible-use changes
-are implemented locally and await full CI plus production acceptance: person-free
-medication entry, full/opened packages, package assignment, category/tag/status
-filters, and regular/as-needed plans with optional dates/times. Mobile authenticated
-sync is implemented; physical-device testing is deferred by the user. Remaining
-Sprint 2/3 work is listed explicitly below.
+V1 is live and passed CI plus production acceptance. It includes person-free
+medication entry, exact full/opened packages, package assignment,
+category/tag/status filters, and regular/as-needed plans with optional dates,
+times, named periods and meal relation. Mobile authenticated sync is implemented;
+physical-device testing is deferred by the user. Remaining Sprint 2/3 work is
+listed explicitly below and is outside V1.
 
 ## Sprint 0 — Foundation
 
@@ -28,8 +28,8 @@ Sprint 2/3 work is listed explicitly below.
 
 ## Sprint 2 — Inventory operations
 
-- Package/opened-package support — V1 implementation in verification
-- Package-to-person assignment audit — V1 implementation in verification
+- Package/opened-package support — delivered in V1
+- Package-to-person assignment audit — delivered in V1
 - Inventory count sessions and bulk reconciliation
 - Count revision/correction workflow
 - Low-stock thresholds and forecast notifications
@@ -38,8 +38,8 @@ Sprint 2/3 work is listed explicitly below.
 
 ## Sprint 3 — Reliable schedules
 
-- Exact-time and named-period schedule recording — V1 implementation in verification
-- Meal relation, as-needed use and minimum-interval recording — V1 implementation in verification
+- Exact-time and named-period schedule recording — delivered in V1
+- Meal relation, as-needed use and minimum-interval recording — delivered in V1
 - Time-zone, daylight-saving, reboot, and permission recovery tests
 - Turkish and English localization completion
 

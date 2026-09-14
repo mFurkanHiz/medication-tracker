@@ -57,14 +57,13 @@ Medication Tracker is a public portfolio project for household medication invent
 
 ## Current milestone
 
-The former public page was a static preview, not a completed web application.
-The authenticated web/API core is live at the primary hostname. The next V1 release
-adds the independent medication catalog, package-level stock and assignment,
-category/tag/status filters, and regular/as-needed instructions described in ADR
-0008. Deployment and full-roadmap completion are tracked independently. Mobile
-authenticated sync is implemented; physical-device acceptance remains deferred at
-the user's request. Count revision, lending/return, low-stock alerts and reliable
-notification delivery remain later roadmap items.
+V1 is live at the primary hostname. It includes the authenticated web/API core,
+independent medication catalog, exact full/opened package stock, optional
+package-to-person assignment, category/tag/status filters, and regular/as-needed
+instructions described in ADR 0008. Mobile authenticated sync is implemented;
+physical-device acceptance remains deferred at the user's request. Count revision,
+lending/return, low-stock alerts and reliable notification delivery remain later
+roadmap items and are not part of this V1 release.
 
 The tested Sprint 1 vertical slice delivers:
 

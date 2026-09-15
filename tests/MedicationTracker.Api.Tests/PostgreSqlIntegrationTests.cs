@@ -32,7 +32,7 @@ public sealed class PostgreSqlIntegrationTests
         var regimenResponse = await client.PostAsJsonAsync($"{path}/regimens", new { personId = person, medicationId = medication, validFrom = (DateOnly?)null, validTo = (DateOnly?)null, doseNumerator = 1, doseDenominator = 1, localTime = (TimeOnly?)null, timeZoneId = "Europe/Istanbul", scheduleType = "as_needed", dayPeriod = (string?)null, mealRelation = "with_food", minimumIntervalMinutes = 60 });
         regimenResponse.EnsureSuccessStatusCode();
         var regimenJson = await regimenResponse.Content.ReadFromJsonAsync<JsonElement>();
-        var regimen = regimenJson.GetProperty("regimenId").GetGuid();
+        var regimen = regimenJson.GetProperty("id").GetGuid();
         var originalVersion = regimenJson.GetProperty("regimenVersionId").GetGuid();
 
         var originalAdministration = await client.PostAsJsonAsync($"{path}/sync/administrations", new { idempotencyKey = $"original-{Guid.NewGuid():N}", regimenVersionId = originalVersion, scheduledFor = (DateTimeOffset?)null, takenAt = DateTimeOffset.UtcNow, outcome = "taken" });

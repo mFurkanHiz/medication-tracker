@@ -26,7 +26,7 @@ public sealed class PostgreSqlIntegrationTests
         var household = await PostAndReadId(client, "/api/auth/register", new { email = $"crud-{Guid.NewGuid():N}@example.invalid", password = "Synthetic-test-password", confirmPassword = "Synthetic-test-password" }, "householdId");
         var path = $"/api/households/{household}";
         var person = await PostAndReadId(client, $"{path}/people", new { name = "Synthetic CRUD person" }, "id");
-        var medication = await PostAndReadId(client, $"{path}/medications", new { personId = (Guid?)null, name = "Synthetic old name", form = "tablet", stockNumerator = 1, stockDenominator = 1 }, "id");
+        var medication = await PostAndReadId(client, $"{path}/medications", new { personId = (Guid?)null, name = "Synthetic old name", form = "tablet", stockNumerator = 2, stockDenominator = 1 }, "id");
 
         (await client.PutAsJsonAsync($"{path}/medications/{medication}", new { personId = person, name = "Synthetic updated tablet", form = "tablet", strength = "5 mg", activeIngredient = "Synthetic ingredient", notes = "Synthetic note", category = "Synthetic category", tags = new[] { "audit", "crud" }, isActive = true })).EnsureSuccessStatusCode();
         var regimenResponse = await client.PostAsJsonAsync($"{path}/regimens", new { personId = person, medicationId = medication, validFrom = (DateOnly?)null, validTo = (DateOnly?)null, doseNumerator = 1, doseDenominator = 1, localTime = (TimeOnly?)null, timeZoneId = "Europe/Istanbul", scheduleType = "as_needed", dayPeriod = (string?)null, mealRelation = "with_food", minimumIntervalMinutes = 60 });
@@ -34,17 +34,28 @@ public sealed class PostgreSqlIntegrationTests
         var regimenJson = await regimenResponse.Content.ReadFromJsonAsync<JsonElement>();
         var regimen = regimenJson.GetProperty("regimenId").GetGuid();
         var originalVersion = regimenJson.GetProperty("regimenVersionId").GetGuid();
-        var updateResponse = await client.PutAsJsonAsync($"{path}/regimens/{regimen}", new { personId = person, medicationId = medication, validFrom = (DateOnly?)null, validTo = (DateOnly?)null, doseNumerator = 1, doseDenominator = 2, localTime = (TimeOnly?)null, timeZoneId = "Europe/Istanbul", scheduleType = "as_needed", dayPeriod = "night", mealRelation = "fasting", minimumIntervalMinutes = 120 });
+
+        var originalAdministration = await client.PostAsJsonAsync($"{path}/sync/administrations", new { idempotencyKey = $"original-{Guid.NewGuid():N}", regimenVersionId = originalVersion, scheduledFor = (DateTimeOffset?)null, takenAt = DateTimeOffset.UtcNow, outcome = "taken" });
+        originalAdministration.EnsureSuccessStatusCode();
+
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var futureStart = today.AddDays(1);
+        var updateResponse = await client.PutAsJsonAsync($"{path}/regimens/{regimen}", new { personId = person, medicationId = medication, validFrom = futureStart, validTo = (DateOnly?)null, doseNumerator = 1, doseDenominator = 2, localTime = (TimeOnly?)null, timeZoneId = "Europe/Istanbul", scheduleType = "as_needed", dayPeriod = "night", mealRelation = "fasting", minimumIntervalMinutes = 120 });
         updateResponse.EnsureSuccessStatusCode();
         var currentVersion = (await updateResponse.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("regimenVersionId").GetGuid();
         Assert.NotEqual(originalVersion, currentVersion);
 
+        var todayRows = await client.GetFromJsonAsync<JsonElement>($"{path}/today?date={today:yyyy-MM-dd}");
+        Assert.Equal(originalVersion, Assert.Single(todayRows.EnumerateArray()).GetProperty("regimenVersionId").GetGuid());
+        var futureRows = await client.GetFromJsonAsync<JsonElement>($"{path}/today?date={futureStart:yyyy-MM-dd}");
+        Assert.Equal(currentVersion, Assert.Single(futureRows.EnumerateArray()).GetProperty("regimenVersionId").GetGuid());
+
         foreach (var attempt in Enumerable.Range(0, 2))
         {
-            var taken = await client.PostAsJsonAsync($"{path}/sync/administrations", new { idempotencyKey = $"taken-{attempt}-{Guid.NewGuid():N}", regimenVersionId = currentVersion, scheduledFor = (DateTimeOffset?)null, takenAt = DateTimeOffset.UtcNow.AddSeconds(attempt), outcome = "taken" });
+            var taken = await client.PostAsJsonAsync($"{path}/sync/administrations", new { idempotencyKey = $"taken-{attempt}-{Guid.NewGuid():N}", regimenVersionId = currentVersion, scheduledFor = (DateTimeOffset?)null, takenAt = new DateTimeOffset(futureStart.ToDateTime(new TimeOnly(12, 0, attempt)), TimeSpan.FromHours(3)), outcome = "taken" });
             taken.EnsureSuccessStatusCode();
         }
-        var rejected = await client.PostAsJsonAsync($"{path}/sync/administrations", new { idempotencyKey = $"rejected-{Guid.NewGuid():N}", regimenVersionId = currentVersion, scheduledFor = (DateTimeOffset?)null, takenAt = DateTimeOffset.UtcNow.AddMinutes(1), outcome = "taken" });
+        var rejected = await client.PostAsJsonAsync($"{path}/sync/administrations", new { idempotencyKey = $"rejected-{Guid.NewGuid():N}", regimenVersionId = currentVersion, scheduledFor = (DateTimeOffset?)null, takenAt = new DateTimeOffset(futureStart.ToDateTime(new TimeOnly(12, 1)), TimeSpan.FromHours(3)), outcome = "taken" });
         Assert.Equal(HttpStatusCode.Conflict, rejected.StatusCode);
         Assert.Equal("insufficient_stock", (await rejected.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString());
 
@@ -58,7 +69,7 @@ public sealed class PostgreSqlIntegrationTests
         Assert.Equal(1, regimenRow.GetProperty("doseNumerator").GetInt64());
         Assert.Equal(2, regimenRow.GetProperty("doseDenominator").GetInt64());
         var kinds = workspace.GetProperty("activities").EnumerateArray().Select(x => x.GetProperty("kind").GetString()).ToArray();
-        Assert.Contains("medication_created", kinds); Assert.Contains("medication_updated", kinds); Assert.Contains("regimen_created", kinds); Assert.Contains("regimen_updated", kinds); Assert.Equal(2, kinds.Count(x => x == "administration_taken"));
+        Assert.Contains("medication_created", kinds); Assert.Contains("medication_updated", kinds); Assert.Contains("regimen_created", kinds); Assert.Contains("regimen_updated", kinds); Assert.Equal(3, kinds.Count(x => x == "administration_taken"));
 
         using var outsider = factory.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost") });
         outsider.DefaultRequestHeaders.Add("X-Medication-Client", "1");
@@ -77,7 +88,8 @@ public sealed class PostgreSqlIntegrationTests
         Assert.Contains("medication_deleted", kinds); Assert.True(kinds.Count(x => x == "regimen_deleted") >= 2);
 
         using var scope = factory.Services.CreateScope(); var db = scope.ServiceProvider.GetRequiredService<MedicationTrackerDbContext>();
-        Assert.Equal(2, await db.AdministrationEvents.CountAsync(x => x.HouseholdId == household));
+        Assert.Equal(3, await db.AdministrationEvents.CountAsync(x => x.HouseholdId == household));
+        Assert.Equal(1, await db.AdministrationEvents.CountAsync(x => x.HouseholdId == household && x.RegimenVersionId == originalVersion));
         var stock = (await db.InventoryLedgerEntries.Where(x => x.HouseholdId == household).ToListAsync()).Aggregate(new ExactQuantity(0), (sum, entry) => sum + new ExactQuantity(entry.QuantityNumerator, entry.QuantityDenominator));
         Assert.Equal(new ExactQuantity(0), stock);
         Assert.Equal(2, await db.RegimenVersions.CountAsync(x => x.RegimenId == regimen));

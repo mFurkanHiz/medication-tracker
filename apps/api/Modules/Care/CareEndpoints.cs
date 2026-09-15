@@ -85,7 +85,10 @@ public static class CareEndpoints
                               join person in db.People on regimen.PersonId equals person.Id
                               join medication in db.Medications on regimen.MedicationId equals medication.Id
                               where regimen.HouseholdId == householdId && regimen.DeletedAt == null && medication.DeletedAt == null && medication.IsActive
-                                  && !db.RegimenVersions.Any(candidate => candidate.RegimenId == regimen.Id && candidate.CreatedAt > version.CreatedAt)
+                                  && !db.RegimenVersions.Any(candidate => candidate.RegimenId == regimen.Id
+                                      && candidate.CreatedAt > version.CreatedAt
+                                      && (candidate.ValidFrom == null || candidate.ValidFrom <= day)
+                                      && (candidate.ValidTo == null || candidate.ValidTo >= day))
                                   && (version.ValidFrom == null || version.ValidFrom <= day) && (version.ValidTo == null || version.ValidTo >= day)
                               select new { version, regimen, person, medication }).ToListAsync(ct);
             var versionIds = rows.Select(x => x.version.Id).ToArray();
@@ -109,7 +112,10 @@ public static class CareEndpoints
             var doses = await (from version in db.RegimenVersions.AsNoTracking()
                                join regimen in db.Regimens.AsNoTracking() on version.RegimenId equals regimen.Id
                                where regimen.HouseholdId == householdId && regimen.MedicationId == medicationId && regimen.DeletedAt == null
-                                   && !db.RegimenVersions.Any(candidate => candidate.RegimenId == regimen.Id && candidate.CreatedAt > version.CreatedAt)
+                                   && !db.RegimenVersions.Any(candidate => candidate.RegimenId == regimen.Id
+                                       && candidate.CreatedAt > version.CreatedAt
+                                       && (candidate.ValidFrom == null || candidate.ValidFrom <= day)
+                                       && (candidate.ValidTo == null || candidate.ValidTo >= day))
                                    && version.ScheduleType == "scheduled" && (version.ValidFrom == null || version.ValidFrom <= day) && (version.ValidTo == null || version.ValidTo >= day)
                                select new { version.DoseNumerator, version.DoseDenominator }).ToListAsync(ct);
             var daily = doses.Aggregate(new ExactQuantity(0), (sum, dose) => sum + new ExactQuantity(dose.DoseNumerator, dose.DoseDenominator));

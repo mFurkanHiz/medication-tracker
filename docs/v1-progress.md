@@ -43,5 +43,7 @@ This is an execution order, not a scope reduction:
 
 - 2026-09-15: V1 scope was restored from the approved original product/MVP definition. The prior `v1.0.0` release remains a technical baseline, not owner-accepted V1.
 - 2026-09-15: P0 correction implementation is on PR #2. Local evidence: `.NET` 9 passed/7 Docker-dependent skipped, web lint passed, mobile typecheck passed, web production build passed. GitHub Actions run `34984202695` passed all 16 API tests against PostgreSQL plus web/mobile checks and both Docker builds.
-- Remaining before the P0 production defect is operationally closed: merge PR #2, deploy the Medication Tracker services with the reviewed migration, and pass production smoke.
-- Next action after production smoke: implement revision-preserving bulk inventory count/reconciliation, the first remaining `OPEN` V1 product criterion in execution order.
+- 2026-09-15: PR #2 and deterministic package-order follow-ups #3/#4 are merged. Main CI run `35019127489` passed 16 API tests against PostgreSQL plus web/mobile checks, Docker builds and artifact upload.
+- 2026-09-15: revision-preserving bulk inventory count/reconciliation is implemented on PR #5. CI run `35020426322` passed all 17 API tests against PostgreSQL plus web/mobile checks and Docker builds. The acceptance row is `DONE`.
+- P0 production deployment remains operationally blocked because the current Codex host has no SSH agent identity (`Permission denied (publickey,password)`). Artifact SHA-256 `C3BC75716E21C5C0B0EF11998B691D597A6B0CE71265B74D525B71C416192E38` is staged locally; no VPS change was made.
+- Next action: merge PR #5, then implement the `Lending / return` acceptance row with explicit ownership/allocation transitions and immutable audit/ledger evidence. Deploy the accumulated safe release and run production smoke as soon as project-scoped VPS SSH credentials are available.

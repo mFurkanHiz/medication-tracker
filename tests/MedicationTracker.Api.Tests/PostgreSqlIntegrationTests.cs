@@ -16,6 +16,80 @@ namespace MedicationTracker.Api.Tests;
 public sealed class PostgreSqlIntegrationTests
 {
     [PostgreSqlFact]
+    public async Task Bulk_inventory_counts_are_idempotent_and_corrections_create_immutable_revisions()
+    {
+        await using var factory = new PostgreSqlApiFactory(Environment.GetEnvironmentVariable("MEDICATION_TRACKER_TEST_POSTGRES")!);
+        using (var migrationScope = factory.Services.CreateScope())
+            await migrationScope.ServiceProvider.GetRequiredService<MedicationTrackerDbContext>().Database.MigrateAsync();
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost") });
+        client.DefaultRequestHeaders.Add("X-Medication-Client", "1");
+        var household = await PostAndReadId(client, "/api/auth/register", new { email = $"counts-{Guid.NewGuid():N}@example.invalid", password = "Synthetic-test-password", confirmPassword = "Synthetic-test-password" }, "householdId");
+        var path = $"/api/households/{household}";
+        var firstMedication = await PostAndReadId(client, $"{path}/medications", new { personId = (Guid?)null, name = "Synthetic count A", form = "tablet", stockNumerator = 10, stockDenominator = 1 }, "id");
+        var secondMedication = await PostAndReadId(client, $"{path}/medications", new { personId = (Guid?)null, name = "Synthetic count B", form = "tablet", stockNumerator = 5, stockDenominator = 1 }, "id");
+        var firstKey = $"bulk-count-{Guid.NewGuid():N}";
+        var firstRequest = new
+        {
+            idempotencyKey = firstKey,
+            items = new[]
+            {
+                new { medicationId = firstMedication, observedNumerator = 8, observedDenominator = 1 },
+                new { medicationId = secondMedication, observedNumerator = 7, observedDenominator = 1 }
+            }
+        };
+        var firstResponse = await client.PostAsJsonAsync($"{path}/inventory/count-sessions", firstRequest);
+        firstResponse.EnsureSuccessStatusCode();
+        var firstBatch = (await firstResponse.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
+        var replay = await client.PostAsJsonAsync($"{path}/inventory/count-sessions", firstRequest);
+        replay.EnsureSuccessStatusCode();
+        var replayJson = await replay.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.True(replayJson.GetProperty("replayed").GetBoolean());
+        Assert.Equal(firstBatch, replayJson.GetProperty("id").GetGuid());
+
+        var revisionKey = $"bulk-count-revision-{Guid.NewGuid():N}";
+        var revisionRequest = new
+        {
+            idempotencyKey = revisionKey,
+            items = new[]
+            {
+                new { medicationId = firstMedication, observedNumerator = 9, observedDenominator = 1 },
+                new { medicationId = secondMedication, observedNumerator = 6, observedDenominator = 1 }
+            }
+        };
+        var revisionResponse = await client.PostAsJsonAsync($"{path}/inventory/count-sessions/{firstBatch}/revisions", revisionRequest);
+        revisionResponse.EnsureSuccessStatusCode();
+        var revisionJson = await revisionResponse.Content.ReadFromJsonAsync<JsonElement>();
+        var revisionBatch = revisionJson.GetProperty("id").GetGuid();
+        Assert.Equal(2, revisionJson.GetProperty("revisionNumber").GetInt32());
+
+        var stale = await client.PostAsJsonAsync($"{path}/inventory/count-sessions/{firstBatch}/revisions", new
+        {
+            idempotencyKey = $"stale-{Guid.NewGuid():N}",
+            revisionRequest.items
+        });
+        Assert.Equal(HttpStatusCode.Conflict, stale.StatusCode);
+        Assert.Equal("stale_count_revision", (await stale.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString());
+
+        var workspace = await client.GetFromJsonAsync<JsonElement>($"{path}/workspace");
+        var sessions = workspace.GetProperty("countSessions").EnumerateArray().ToArray();
+        Assert.Equal(2, sessions.Length);
+        var latest = sessions.Single(x => x.GetProperty("id").GetGuid() == revisionBatch);
+        Assert.Equal(firstBatch, latest.GetProperty("previousSessionId").GetGuid());
+        Assert.Equal(new long[] { 6, 9 }, latest.GetProperty("items").EnumerateArray().Select(x => x.GetProperty("observedNumerator").GetInt64()).Order().ToArray());
+
+        using var outsider = factory.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost") });
+        outsider.DefaultRequestHeaders.Add("X-Medication-Client", "1");
+        await PostAndReadId(outsider, "/api/auth/register", new { email = $"counts-outsider-{Guid.NewGuid():N}@example.invalid", password = "Synthetic-test-password", confirmPassword = "Synthetic-test-password" }, "householdId");
+        Assert.Equal(HttpStatusCode.Forbidden, (await outsider.PostAsJsonAsync($"{path}/inventory/count-sessions", firstRequest)).StatusCode);
+
+        using var scope = factory.Services.CreateScope(); var db = scope.ServiceProvider.GetRequiredService<MedicationTrackerDbContext>();
+        Assert.Equal(2, await db.InventoryCountBatches.CountAsync(x => x.HouseholdId == household));
+        Assert.Equal(4, await db.InventoryCounts.CountAsync(x => x.HouseholdId == household));
+        Assert.Equal(2, await db.InventoryCounts.CountAsync(x => x.HouseholdId == household && x.BatchId == firstBatch));
+        Assert.Equal(2, await db.InventoryCounts.CountAsync(x => x.HouseholdId == household && x.BatchId == revisionBatch));
+    }
+
+    [PostgreSqlFact]
     public async Task V1_crud_is_audited_and_administration_never_creates_negative_stock()
     {
         await using var factory = new PostgreSqlApiFactory(Environment.GetEnvironmentVariable("MEDICATION_TRACKER_TEST_POSTGRES")!);

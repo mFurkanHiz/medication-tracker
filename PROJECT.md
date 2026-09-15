@@ -34,6 +34,9 @@ Medication Tracker is a public portfolio project for household medication invent
   insufficient, so new usage can never create a negative balance.
 - The user-facing activity view combines medication, plan, stock, package-assignment
   and administration events without introducing a second source of truth.
+- Bulk inventory counts reconcile multiple medication totals atomically. An accepted
+  count correction appends a linked revision and new ledger entries; it never edits
+  an earlier accepted count or reconciliation.
 
 - Registration requires matching password confirmation in the clients and API.
 - New registrations retain the 12-character password minimum. Login verifies

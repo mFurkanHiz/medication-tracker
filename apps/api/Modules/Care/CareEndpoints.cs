@@ -52,7 +52,9 @@ public static class CareEndpoints
                 var input = packageInputs[index];
                 var capacity = new ExactQuantity(input.CapacityNumerator, input.CapacityDenominator);
                 var remaining = new ExactQuantity(input.RemainingNumerator, input.RemainingDenominator);
-                var package = new InventoryPackage(Guid.NewGuid(), householdId, item.Id, input.PersonId, capacity.Numerator, capacity.Denominator, now.AddTicks(index));
+                // PostgreSQL timestamptz stores microseconds, so advance by one
+                // microsecond per input to preserve request order after reload.
+                var package = new InventoryPackage(Guid.NewGuid(), householdId, item.Id, input.PersonId, capacity.Numerator, capacity.Denominator, now.AddTicks(index * 10L));
                 db.InventoryPackages.Add(package);
                 db.InventoryLedgerEntries.Add(new InventoryLedgerEntry(Guid.NewGuid(), householdId, item.Id, null, remaining.Numerator, remaining.Denominator, "package_acquisition", now, now, package.Id));
                 if (input.PersonId is not null) db.InventoryPackageAssignmentEvents.Add(new InventoryPackageAssignmentEvent(Guid.NewGuid(), householdId, package.Id, accountId!.Value, null, input.PersonId, now));

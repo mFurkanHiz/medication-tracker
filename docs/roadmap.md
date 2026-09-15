@@ -2,7 +2,8 @@
 
 ## Delivery status — 2026-09-14
 
-V1 is live and passed CI plus production acceptance. It includes person-free
+V1 is live; a P0 production correction adds audited medication/usage-plan CRUD,
+prevents new negative stock, and provides one complete activity view. It includes person-free
 medication entry, exact full/opened packages, package assignment,
 category/tag/status filters, and regular/as-needed plans with optional dates,
 times, named periods and meal relation. Mobile authenticated sync is implemented;

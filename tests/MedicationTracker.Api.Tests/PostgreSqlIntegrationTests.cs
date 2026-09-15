@@ -16,6 +16,74 @@ namespace MedicationTracker.Api.Tests;
 public sealed class PostgreSqlIntegrationTests
 {
     [PostgreSqlFact]
+    public async Task V1_crud_is_audited_and_administration_never_creates_negative_stock()
+    {
+        await using var factory = new PostgreSqlApiFactory(Environment.GetEnvironmentVariable("MEDICATION_TRACKER_TEST_POSTGRES")!);
+        using (var migrationScope = factory.Services.CreateScope())
+            await migrationScope.ServiceProvider.GetRequiredService<MedicationTrackerDbContext>().Database.MigrateAsync();
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost") });
+        client.DefaultRequestHeaders.Add("X-Medication-Client", "1");
+        var household = await PostAndReadId(client, "/api/auth/register", new { email = $"crud-{Guid.NewGuid():N}@example.invalid", password = "Synthetic-test-password", confirmPassword = "Synthetic-test-password" }, "householdId");
+        var path = $"/api/households/{household}";
+        var person = await PostAndReadId(client, $"{path}/people", new { name = "Synthetic CRUD person" }, "id");
+        var medication = await PostAndReadId(client, $"{path}/medications", new { personId = (Guid?)null, name = "Synthetic old name", form = "tablet", stockNumerator = 1, stockDenominator = 1 }, "id");
+
+        (await client.PutAsJsonAsync($"{path}/medications/{medication}", new { personId = person, name = "Synthetic updated tablet", form = "tablet", strength = "5 mg", activeIngredient = "Synthetic ingredient", notes = "Synthetic note", category = "Synthetic category", tags = new[] { "audit", "crud" }, isActive = true })).EnsureSuccessStatusCode();
+        var regimenResponse = await client.PostAsJsonAsync($"{path}/regimens", new { personId = person, medicationId = medication, validFrom = (DateOnly?)null, validTo = (DateOnly?)null, doseNumerator = 1, doseDenominator = 1, localTime = (TimeOnly?)null, timeZoneId = "Europe/Istanbul", scheduleType = "as_needed", dayPeriod = (string?)null, mealRelation = "with_food", minimumIntervalMinutes = 60 });
+        regimenResponse.EnsureSuccessStatusCode();
+        var regimenJson = await regimenResponse.Content.ReadFromJsonAsync<JsonElement>();
+        var regimen = regimenJson.GetProperty("regimenId").GetGuid();
+        var originalVersion = regimenJson.GetProperty("regimenVersionId").GetGuid();
+        var updateResponse = await client.PutAsJsonAsync($"{path}/regimens/{regimen}", new { personId = person, medicationId = medication, validFrom = (DateOnly?)null, validTo = (DateOnly?)null, doseNumerator = 1, doseDenominator = 2, localTime = (TimeOnly?)null, timeZoneId = "Europe/Istanbul", scheduleType = "as_needed", dayPeriod = "night", mealRelation = "fasting", minimumIntervalMinutes = 120 });
+        updateResponse.EnsureSuccessStatusCode();
+        var currentVersion = (await updateResponse.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("regimenVersionId").GetGuid();
+        Assert.NotEqual(originalVersion, currentVersion);
+
+        foreach (var attempt in Enumerable.Range(0, 2))
+        {
+            var taken = await client.PostAsJsonAsync($"{path}/sync/administrations", new { idempotencyKey = $"taken-{attempt}-{Guid.NewGuid():N}", regimenVersionId = currentVersion, scheduledFor = (DateTimeOffset?)null, takenAt = DateTimeOffset.UtcNow.AddSeconds(attempt), outcome = "taken" });
+            taken.EnsureSuccessStatusCode();
+        }
+        var rejected = await client.PostAsJsonAsync($"{path}/sync/administrations", new { idempotencyKey = $"rejected-{Guid.NewGuid():N}", regimenVersionId = currentVersion, scheduledFor = (DateTimeOffset?)null, takenAt = DateTimeOffset.UtcNow.AddMinutes(1), outcome = "taken" });
+        Assert.Equal(HttpStatusCode.Conflict, rejected.StatusCode);
+        Assert.Equal("insufficient_stock", (await rejected.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString());
+
+        var workspace = await client.GetFromJsonAsync<JsonElement>($"{path}/workspace");
+        var medicationRow = Assert.Single(workspace.GetProperty("medications").EnumerateArray());
+        Assert.Equal("Synthetic updated tablet", medicationRow.GetProperty("name").GetString());
+        Assert.Equal(person, medicationRow.GetProperty("personId").GetGuid());
+        Assert.Equal(0, medicationRow.GetProperty("stockNumerator").GetInt64());
+        var regimenRow = Assert.Single(workspace.GetProperty("regimens").EnumerateArray());
+        Assert.Equal(currentVersion, regimenRow.GetProperty("versionId").GetGuid());
+        Assert.Equal(1, regimenRow.GetProperty("doseNumerator").GetInt64());
+        Assert.Equal(2, regimenRow.GetProperty("doseDenominator").GetInt64());
+        var kinds = workspace.GetProperty("activities").EnumerateArray().Select(x => x.GetProperty("kind").GetString()).ToArray();
+        Assert.Contains("medication_created", kinds); Assert.Contains("medication_updated", kinds); Assert.Contains("regimen_created", kinds); Assert.Contains("regimen_updated", kinds); Assert.Equal(2, kinds.Count(x => x == "administration_taken"));
+
+        using var outsider = factory.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost") });
+        outsider.DefaultRequestHeaders.Add("X-Medication-Client", "1");
+        await PostAndReadId(outsider, "/api/auth/register", new { email = $"crud-outsider-{Guid.NewGuid():N}@example.invalid", password = "Synthetic-test-password", confirmPassword = "Synthetic-test-password" }, "householdId");
+        Assert.Equal(HttpStatusCode.Forbidden, (await outsider.DeleteAsync($"{path}/regimens/{regimen}")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await outsider.PutAsJsonAsync($"{path}/medications/{medication}", new { personId = (Guid?)null, name = "Forbidden", form = "tablet", isActive = true })).StatusCode);
+
+        (await client.DeleteAsync($"{path}/regimens/{regimen}")).EnsureSuccessStatusCode();
+        var replacement = await client.PostAsJsonAsync($"{path}/regimens", new { personId = person, medicationId = medication, validFrom = (DateOnly?)null, validTo = (DateOnly?)null, doseNumerator = 1, doseDenominator = 2, localTime = (TimeOnly?)null, timeZoneId = "Europe/Istanbul", scheduleType = "as_needed", dayPeriod = (string?)null, mealRelation = (string?)null, minimumIntervalMinutes = (int?)null });
+        replacement.EnsureSuccessStatusCode();
+        (await client.DeleteAsync($"{path}/medications/{medication}")).EnsureSuccessStatusCode();
+        workspace = await client.GetFromJsonAsync<JsonElement>($"{path}/workspace");
+        Assert.Empty(workspace.GetProperty("medications").EnumerateArray());
+        Assert.Empty(workspace.GetProperty("regimens").EnumerateArray());
+        kinds = workspace.GetProperty("activities").EnumerateArray().Select(x => x.GetProperty("kind").GetString()).ToArray();
+        Assert.Contains("medication_deleted", kinds); Assert.True(kinds.Count(x => x == "regimen_deleted") >= 2);
+
+        using var scope = factory.Services.CreateScope(); var db = scope.ServiceProvider.GetRequiredService<MedicationTrackerDbContext>();
+        Assert.Equal(2, await db.AdministrationEvents.CountAsync(x => x.HouseholdId == household));
+        var stock = (await db.InventoryLedgerEntries.Where(x => x.HouseholdId == household).ToListAsync()).Aggregate(new ExactQuantity(0), (sum, entry) => sum + new ExactQuantity(entry.QuantityNumerator, entry.QuantityDenominator));
+        Assert.Equal(new ExactQuantity(0), stock);
+        Assert.Equal(2, await db.RegimenVersions.CountAsync(x => x.RegimenId == regimen));
+    }
+
+    [PostgreSqlFact]
     public async Task V1_catalog_packages_assignment_and_flexible_usage_are_household_scoped_and_exact()
     {
         await using var factory = new PostgreSqlApiFactory(Environment.GetEnvironmentVariable("MEDICATION_TRACKER_TEST_POSTGRES")!);
@@ -30,8 +98,15 @@ public sealed class PostgreSqlIntegrationTests
         var person = await PostAndReadId(client, $"{path}/people", new { name = "Synthetic package person" }, "id");
         var medication = await PostAndReadId(client, $"{path}/medications", new
         {
-            personId = (Guid?)null, name = "Synthetic catalog tablet", form = "tablet", stockNumerator = 0, stockDenominator = 1,
-            strength = "10 mg", category = "Synthetic category", tags = new[] { "qa", "occasional" }, isActive = true,
+            personId = (Guid?)null,
+            name = "Synthetic catalog tablet",
+            form = "tablet",
+            stockNumerator = 0,
+            stockDenominator = 1,
+            strength = "10 mg",
+            category = "Synthetic category",
+            tags = new[] { "qa", "occasional" },
+            isActive = true,
             packages = new[]
             {
                 new { capacityNumerator = 20, capacityDenominator = 1, remainingNumerator = 20, remainingDenominator = 1, personId = (Guid?)null },

@@ -64,7 +64,10 @@ public static class CareEndpoints
             if (!TryPositive(request.DoseNumerator, request.DoseDenominator, out var dose)) return Results.ValidationProblem(Error("dose", "positive_exact_quantity_required"));
             if (request.ValidFrom is not null && request.ValidTo < request.ValidFrom) return Results.ValidationProblem(Error("validTo", "invalid_period"));
             if (request.ScheduleType is not ("scheduled" or "as_needed") || (request.ScheduleType == "scheduled" && request.LocalTime is null && request.DayPeriod is null) || !ValidDayPeriod(request.DayPeriod) || !ValidMealRelation(request.MealRelation) || request.MinimumIntervalMinutes is < 1 or > 10080) return Results.ValidationProblem(Error("schedule", "invalid_schedule"));
-            try { _ = TimeZoneInfo.FindSystemTimeZoneById(request.TimeZoneId); } catch (TimeZoneNotFoundException) { return Results.ValidationProblem(Error("timeZoneId", "unknown_time_zone")); }
+            if (string.IsNullOrWhiteSpace(request.TimeZoneId)) return Results.ValidationProblem(Error("timeZoneId", "unknown_time_zone"));
+            try { _ = TimeZoneInfo.FindSystemTimeZoneById(request.TimeZoneId); }
+            catch (TimeZoneNotFoundException) { return Results.ValidationProblem(Error("timeZoneId", "unknown_time_zone")); }
+            catch (InvalidTimeZoneException) { return Results.ValidationProblem(Error("timeZoneId", "unknown_time_zone")); }
             var medicationExists = await db.Medications.AnyAsync(x => x.Id == request.MedicationId && x.HouseholdId == householdId && x.IsActive, ct);
             var personExists = await db.People.AnyAsync(x => x.Id == request.PersonId && x.HouseholdId == householdId, ct);
             if (!medicationExists || !personExists) return Results.NotFound();
@@ -81,7 +84,9 @@ public static class CareEndpoints
                               join regimen in db.Regimens on version.RegimenId equals regimen.Id
                               join person in db.People on regimen.PersonId equals person.Id
                               join medication in db.Medications on regimen.MedicationId equals medication.Id
-                              where regimen.HouseholdId == householdId && medication.IsActive && (version.ValidFrom == null || version.ValidFrom <= day) && (version.ValidTo == null || version.ValidTo >= day)
+                              where regimen.HouseholdId == householdId && regimen.DeletedAt == null && medication.DeletedAt == null && medication.IsActive
+                                  && !db.RegimenVersions.Any(candidate => candidate.RegimenId == regimen.Id && candidate.CreatedAt > version.CreatedAt)
+                                  && (version.ValidFrom == null || version.ValidFrom <= day) && (version.ValidTo == null || version.ValidTo >= day)
                               select new { version, regimen, person, medication }).ToListAsync(ct);
             var versionIds = rows.Select(x => x.version.Id).ToArray();
             var taken = await db.AdministrationEvents.Where(x => x.HouseholdId == householdId && versionIds.Contains(x.RegimenVersionId)).Select(x => new { x.RegimenVersionId, x.ScheduledFor, x.Outcome }).ToListAsync(ct);
@@ -103,7 +108,9 @@ public static class CareEndpoints
             var day = date ?? DateOnly.FromDateTime(DateTime.UtcNow);
             var doses = await (from version in db.RegimenVersions.AsNoTracking()
                                join regimen in db.Regimens.AsNoTracking() on version.RegimenId equals regimen.Id
-                               where regimen.HouseholdId == householdId && regimen.MedicationId == medicationId && version.ScheduleType == "scheduled" && (version.ValidFrom == null || version.ValidFrom <= day) && (version.ValidTo == null || version.ValidTo >= day)
+                               where regimen.HouseholdId == householdId && regimen.MedicationId == medicationId && regimen.DeletedAt == null
+                                   && !db.RegimenVersions.Any(candidate => candidate.RegimenId == regimen.Id && candidate.CreatedAt > version.CreatedAt)
+                                   && version.ScheduleType == "scheduled" && (version.ValidFrom == null || version.ValidFrom <= day) && (version.ValidTo == null || version.ValidTo >= day)
                                select new { version.DoseNumerator, version.DoseDenominator }).ToListAsync(ct);
             var daily = doses.Aggregate(new ExactQuantity(0), (sum, dose) => sum + new ExactQuantity(dose.DoseNumerator, dose.DoseDenominator));
             var depletionDate = StockProjection.DepletionDate(day, balance, daily);
@@ -161,7 +168,12 @@ public static class CareEndpoints
             await db.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock(hashtextextended({householdId.ToString()}, 0))", ct);
             var prior = await db.ProcessedAdministrationCommands.AsNoTracking().SingleOrDefaultAsync(x => x.HouseholdId == householdId && x.IdempotencyKey == request.IdempotencyKey, ct);
             if (prior is not null) return Results.Ok(new { administrationEventId = prior.AdministrationEventId, replayed = true });
-            var row = await (from version in db.RegimenVersions join regimen in db.Regimens on version.RegimenId equals regimen.Id where version.Id == request.RegimenVersionId && regimen.HouseholdId == householdId select new { version, regimen }).SingleOrDefaultAsync(ct);
+            var row = await (from version in db.RegimenVersions
+                             join regimen in db.Regimens on version.RegimenId equals regimen.Id
+                             join medication in db.Medications on regimen.MedicationId equals medication.Id
+                             where version.Id == request.RegimenVersionId && regimen.HouseholdId == householdId
+                                 && regimen.DeletedAt == null && medication.DeletedAt == null && medication.IsActive
+                             select new { version, regimen }).SingleOrDefaultAsync(ct);
             if (row is null) return Results.NotFound();
             var item = await db.InventoryItems.SingleAsync(x => x.HouseholdId == householdId && x.MedicationId == row.regimen.MedicationId, ct);
             var administrationId = request.AdministrationId ?? Guid.NewGuid(); var now = DateTimeOffset.UtcNow;
@@ -173,8 +185,9 @@ public static class CareEndpoints
             if ((row.version.ValidFrom is not null && scheduledDay < row.version.ValidFrom) || (row.version.ValidTo is not null && scheduledDay > row.version.ValidTo) || (row.version.ScheduleType == "scheduled" && ScheduledInstant(scheduledDay, row.version.LocalTime, row.version.TimeZoneId) != scheduledForUtc)) return Results.BadRequest();
             var existing = await db.AdministrationEvents.AsNoTracking().SingleOrDefaultAsync(x => x.HouseholdId == householdId && x.RegimenVersionId == row.version.Id && x.ScheduledFor == scheduledForUtc, ct);
             if (existing is not null) return existing.Outcome == request.Outcome ? Results.Ok(new { administrationEventId = existing.Id, replayed = true }) : Results.Conflict();
+            if (request.Outcome == "taken" && !await TryAddPackageAwareConsumption(db, householdId, item.Id, row.regimen.PersonId, administrationId, new ExactQuantity(row.version.DoseNumerator, row.version.DoseDenominator), occurredAtUtc, now, ct))
+                return Results.Conflict(new { code = "insufficient_stock" });
             db.AdministrationEvents.Add(new AdministrationEvent(administrationId, householdId, row.regimen.PersonId, row.regimen.MedicationId, row.version.Id, request.Outcome, scheduledForUtc.Value, occurredAtUtc, now));
-            if (request.Outcome == "taken") await AddPackageAwareConsumption(db, householdId, item.Id, row.regimen.PersonId, administrationId, new ExactQuantity(row.version.DoseNumerator, row.version.DoseDenominator), occurredAtUtc, now, ct);
             db.ProcessedAdministrationCommands.Add(new ProcessedAdministrationCommand(Guid.NewGuid(), householdId, accountId!.Value, request.IdempotencyKey, administrationId, now));
             await db.SaveChangesAsync(ct); await transaction.CommitAsync(ct);
             return Results.Ok(new { administrationEventId = administrationId, replayed = false });
@@ -213,7 +226,7 @@ public static class CareEndpoints
     private static bool ValidDayPeriod(string? value) => value is null or "morning" or "noon" or "evening" or "night" or "bedtime";
     private static bool ValidMealRelation(string? value) => value is null or "fasting" or "with_food" or "after_food" or "before_food";
     private static int Compare(ExactQuantity left, ExactQuantity right) => checked(left.Numerator * right.Denominator).CompareTo(checked(right.Numerator * left.Denominator));
-    private static async Task AddPackageAwareConsumption(MedicationTrackerDbContext db, Guid householdId, Guid inventoryItemId, Guid personId,
+    private static async Task<bool> TryAddPackageAwareConsumption(MedicationTrackerDbContext db, Guid householdId, Guid inventoryItemId, Guid personId,
         Guid administrationId, ExactQuantity dose, DateTimeOffset occurredAt, DateTimeOffset recordedAt, CancellationToken ct)
     {
         var packages = await db.InventoryPackages.Where(x => x.HouseholdId == householdId && x.InventoryItemId == inventoryItemId && (x.PersonId == null || x.PersonId == personId)).OrderBy(x => x.CreatedAt).ToListAsync(ct);
@@ -225,6 +238,10 @@ public static class CareEndpoints
             Balance = entries.Where(x => x.PackageId == package.Id).Aggregate(new ExactQuantity(0), (sum, entry) => sum + new ExactQuantity(entry.QuantityNumerator, entry.QuantityDenominator)),
             Capacity = new ExactQuantity(package.CapacityNumerator, package.CapacityDenominator)
         }).Where(x => x.Balance.Numerator > 0).OrderBy(x => Compare(x.Balance, x.Capacity) < 0 ? 0 : 1).ThenBy(x => (decimal)x.Balance.Numerator / x.Balance.Denominator).ToList();
+        var looseEntries = await db.InventoryLedgerEntries.Where(x => x.HouseholdId == householdId && x.InventoryItemId == inventoryItemId && x.PackageId == null).ToListAsync(ct);
+        var looseBalance = looseEntries.Aggregate(new ExactQuantity(0), (sum, entry) => sum + new ExactQuantity(entry.QuantityNumerator, entry.QuantityDenominator));
+        var available = balances.Aggregate(looseBalance, (sum, row) => sum + row.Balance);
+        if (Compare(available, dose) < 0) return false;
         var remaining = dose;
         foreach (var row in balances)
         {
@@ -234,6 +251,7 @@ public static class CareEndpoints
             remaining -= used;
         }
         if (remaining.Numerator > 0) db.InventoryLedgerEntries.Add(new InventoryLedgerEntry(Guid.NewGuid(), householdId, inventoryItemId, administrationId, -remaining.Numerator, remaining.Denominator, "administration", occurredAt, recordedAt));
+        return true;
     }
     private static Dictionary<string, string[]> Error(string key, string value) => new() { [key] = [value] };
     private static DateTimeOffset ScheduledInstant(DateOnly date, TimeOnly? time, string timeZoneId)

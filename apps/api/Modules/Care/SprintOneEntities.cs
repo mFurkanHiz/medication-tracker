@@ -34,9 +34,19 @@ public sealed class Medication
     public string[] Tags { get; private set; } = [];
     public bool IsActive { get; private set; }
     public DateTimeOffset CreatedAt { get; private set; }
+    public DateTimeOffset? DeletedAt { get; private set; }
 
     public void UpdateMetadata(string? category, string[] tags, bool isActive) =>
         (Category, Tags, IsActive) = (category?.Trim(), tags, isActive);
+
+    public void UpdateDetails(Guid? personId, string name, string form, string? strength,
+        string? activeIngredient, string? notes, string? category, string[] tags, bool isActive) =>
+        (PersonId, Name, Form, Strength, ActiveIngredient, Notes, Category, Tags, IsActive) =
+        (personId, name.Trim(), form, strength?.Trim(), activeIngredient?.Trim(), notes?.Trim(),
+            category?.Trim(), tags, isActive);
+
+    public void Delete(DateTimeOffset deletedAt) =>
+        (IsActive, DeletedAt) = (false, deletedAt);
 }
 
 public sealed class InventoryItem
@@ -130,6 +140,29 @@ public sealed class Regimen
     public Guid PersonId { get; private set; }
     public Guid MedicationId { get; private set; }
     public DateTimeOffset CreatedAt { get; private set; }
+    public DateTimeOffset? DeletedAt { get; private set; }
+
+    public void UpdateAssignment(Guid personId, Guid medicationId) =>
+        (PersonId, MedicationId) = (personId, medicationId);
+
+    public void Delete(DateTimeOffset deletedAt) => DeletedAt = deletedAt;
+}
+
+public sealed class RegimenChangeEvent
+{
+    private RegimenChangeEvent() { }
+    public RegimenChangeEvent(Guid id, Guid householdId, Guid regimenId, Guid accountId, string kind,
+        string? previousValue, string? newValue, DateTimeOffset recordedAt) =>
+        (Id, HouseholdId, RegimenId, AccountId, Kind, PreviousValue, NewValue, RecordedAt) =
+        (id, householdId, regimenId, accountId, kind, previousValue, newValue, recordedAt);
+    public Guid Id { get; private set; }
+    public Guid HouseholdId { get; private set; }
+    public Guid RegimenId { get; private set; }
+    public Guid AccountId { get; private set; }
+    public string Kind { get; private set; } = string.Empty;
+    public string? PreviousValue { get; private set; }
+    public string? NewValue { get; private set; }
+    public DateTimeOffset RecordedAt { get; private set; }
 }
 
 public sealed class RegimenVersion

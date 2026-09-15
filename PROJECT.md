@@ -26,6 +26,12 @@ Medication Tracker is a public portfolio project for household medication invent
   Existing loose stock can be allocated into packages with balanced ledger entries.
 - Regular and as-needed instructions support optional date ranges, exact times,
   named day periods, meal relation and minimum interval.
+- Medication edits cover all catalog details and deletions preserve the audit trail.
+  Usage-plan edits append a new effective version; deletion preserves past uses.
+- Taken administrations are rejected atomically when eligible exact stock is
+  insufficient, so new usage can never create a negative balance.
+- The user-facing activity view combines medication, plan, stock, package-assignment
+  and administration events without introducing a second source of truth.
 
 - Registration requires matching password confirmation in the clients and API.
 - New registrations retain the 12-character password minimum. Login verifies

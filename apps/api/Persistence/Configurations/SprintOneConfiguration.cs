@@ -29,6 +29,7 @@ public sealed class MedicationConfiguration : IEntityTypeConfiguration<Medicatio
         b.Property(x => x.Category).HasColumnName("category").HasMaxLength(100);
         b.Property(x => x.Tags).HasColumnName("tags").HasColumnType("text[]");
         b.Property(x => x.IsActive).HasColumnName("is_active").HasDefaultValue(true);
+        b.Property(x => x.DeletedAt).HasColumnName("deleted_at");
         b.Property(x => x.Id).HasColumnName("id"); b.Property(x => x.HouseholdId).HasColumnName("household_id"); b.Property(x => x.PersonId).HasColumnName("person_id");
         b.Property(x => x.Name).HasColumnName("name").HasMaxLength(200).IsRequired(); b.Property(x => x.Form).HasColumnName("form").HasMaxLength(40).IsRequired(); b.Property(x => x.CreatedAt).HasColumnName("created_at");
         b.HasOne<Household>().WithMany().HasForeignKey(x => x.HouseholdId).OnDelete(DeleteBehavior.Restrict);
@@ -92,7 +93,7 @@ public sealed class MedicationChangeEventConfiguration : IEntityTypeConfiguratio
     public void Configure(EntityTypeBuilder<MedicationChangeEvent> b)
     {
         b.ToTable("medication_change_events", "care"); b.HasKey(x => x.Id);
-        b.Property(x => x.Id).HasColumnName("id"); b.Property(x => x.HouseholdId).HasColumnName("household_id"); b.Property(x => x.MedicationId).HasColumnName("medication_id"); b.Property(x => x.AccountId).HasColumnName("account_id"); b.Property(x => x.Kind).HasColumnName("kind").HasMaxLength(40).IsRequired(); b.Property(x => x.PreviousValue).HasColumnName("previous_value").HasMaxLength(2000); b.Property(x => x.NewValue).HasColumnName("new_value").HasMaxLength(2000); b.Property(x => x.RecordedAt).HasColumnName("recorded_at");
+        b.Property(x => x.Id).HasColumnName("id"); b.Property(x => x.HouseholdId).HasColumnName("household_id"); b.Property(x => x.MedicationId).HasColumnName("medication_id"); b.Property(x => x.AccountId).HasColumnName("account_id"); b.Property(x => x.Kind).HasColumnName("kind").HasMaxLength(40).IsRequired(); b.Property(x => x.PreviousValue).HasColumnName("previous_value").HasMaxLength(4000); b.Property(x => x.NewValue).HasColumnName("new_value").HasMaxLength(4000); b.Property(x => x.RecordedAt).HasColumnName("recorded_at");
         b.HasOne<Household>().WithMany().HasForeignKey(x => x.HouseholdId).OnDelete(DeleteBehavior.Restrict); b.HasOne<Medication>().WithMany().HasForeignKey(x => x.MedicationId).OnDelete(DeleteBehavior.Restrict); b.HasOne<Account>().WithMany().HasForeignKey(x => x.AccountId).OnDelete(DeleteBehavior.Restrict);
         b.HasIndex(x => new { x.HouseholdId, x.MedicationId, x.RecordedAt });
     }
@@ -104,7 +105,19 @@ public sealed class RegimenConfiguration : IEntityTypeConfiguration<Regimen>
     {
         b.ToTable("regimens", "treatments"); b.HasKey(x => x.Id);
         b.Property(x => x.Id).HasColumnName("id"); b.Property(x => x.HouseholdId).HasColumnName("household_id"); b.Property(x => x.PersonId).HasColumnName("person_id"); b.Property(x => x.MedicationId).HasColumnName("medication_id"); b.Property(x => x.CreatedAt).HasColumnName("created_at");
+        b.Property(x => x.DeletedAt).HasColumnName("deleted_at");
         b.HasOne<Household>().WithMany().HasForeignKey(x => x.HouseholdId).OnDelete(DeleteBehavior.Restrict); b.HasOne<Person>().WithMany().HasForeignKey(x => x.PersonId).OnDelete(DeleteBehavior.Restrict); b.HasOne<Medication>().WithMany().HasForeignKey(x => x.MedicationId).OnDelete(DeleteBehavior.Restrict);
+    }
+}
+
+public sealed class RegimenChangeEventConfiguration : IEntityTypeConfiguration<RegimenChangeEvent>
+{
+    public void Configure(EntityTypeBuilder<RegimenChangeEvent> b)
+    {
+        b.ToTable("regimen_change_events", "treatments"); b.HasKey(x => x.Id);
+        b.Property(x => x.Id).HasColumnName("id"); b.Property(x => x.HouseholdId).HasColumnName("household_id"); b.Property(x => x.RegimenId).HasColumnName("regimen_id"); b.Property(x => x.AccountId).HasColumnName("account_id"); b.Property(x => x.Kind).HasColumnName("kind").HasMaxLength(40).IsRequired(); b.Property(x => x.PreviousValue).HasColumnName("previous_value").HasMaxLength(4000); b.Property(x => x.NewValue).HasColumnName("new_value").HasMaxLength(4000); b.Property(x => x.RecordedAt).HasColumnName("recorded_at");
+        b.HasOne<Household>().WithMany().HasForeignKey(x => x.HouseholdId).OnDelete(DeleteBehavior.Restrict); b.HasOne<Regimen>().WithMany().HasForeignKey(x => x.RegimenId).OnDelete(DeleteBehavior.Restrict); b.HasOne<Account>().WithMany().HasForeignKey(x => x.AccountId).OnDelete(DeleteBehavior.Restrict);
+        b.HasIndex(x => new { x.HouseholdId, x.RegimenId, x.RecordedAt });
     }
 }
 

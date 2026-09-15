@@ -46,11 +46,13 @@ public static class CareEndpoints
             var now = DateTimeOffset.UtcNow; var medication = new Medication(Guid.NewGuid(), householdId, request.PersonId, request.Name.Trim(), request.Form, now, request.Strength, request.ActiveIngredient, request.Notes, request.Category, tags, request.IsActive); var item = new InventoryItem(Guid.NewGuid(), householdId, medication.Id, now);
             db.Medications.Add(medication); db.InventoryItems.Add(item);
             db.InventoryLedgerEntries.Add(new InventoryLedgerEntry(Guid.NewGuid(), householdId, item.Id, null, stock.Numerator, stock.Denominator, "acquisition", now, now));
-            foreach (var input in request.Packages ?? [])
+            var packageInputs = request.Packages ?? [];
+            for (var index = 0; index < packageInputs.Count; index++)
             {
+                var input = packageInputs[index];
                 var capacity = new ExactQuantity(input.CapacityNumerator, input.CapacityDenominator);
                 var remaining = new ExactQuantity(input.RemainingNumerator, input.RemainingDenominator);
-                var package = new InventoryPackage(Guid.NewGuid(), householdId, item.Id, input.PersonId, capacity.Numerator, capacity.Denominator, now);
+                var package = new InventoryPackage(Guid.NewGuid(), householdId, item.Id, input.PersonId, capacity.Numerator, capacity.Denominator, now.AddTicks(index));
                 db.InventoryPackages.Add(package);
                 db.InventoryLedgerEntries.Add(new InventoryLedgerEntry(Guid.NewGuid(), householdId, item.Id, null, remaining.Numerator, remaining.Denominator, "package_acquisition", now, now, package.Id));
                 if (input.PersonId is not null) db.InventoryPackageAssignmentEvents.Add(new InventoryPackageAssignmentEvent(Guid.NewGuid(), householdId, package.Id, accountId!.Value, null, input.PersonId, now));

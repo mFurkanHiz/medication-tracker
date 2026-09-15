@@ -166,7 +166,7 @@ public static class WorkspaceEndpoints
             var allMedications = await db.Medications.AsNoTracking().Where(x => x.HouseholdId == householdId).OrderBy(x => x.CreatedAt).ToListAsync(ct);
             var medications = allMedications.Where(x => x.DeletedAt == null).ToList();
             var items = await db.InventoryItems.AsNoTracking().Where(x => x.HouseholdId == householdId).ToListAsync(ct);
-            var packages = await db.InventoryPackages.AsNoTracking().Where(x => x.HouseholdId == householdId).OrderBy(x => x.CreatedAt).ToListAsync(ct);
+            var packages = await db.InventoryPackages.AsNoTracking().Where(x => x.HouseholdId == householdId).OrderBy(x => x.CreatedAt).ThenBy(x => x.Id).ToListAsync(ct);
             var ledger = await db.InventoryLedgerEntries.AsNoTracking().Where(x => x.HouseholdId == householdId).OrderByDescending(x => x.RecordedAt).ToListAsync(ct);
             var regimenRoots = await db.Regimens.AsNoTracking().Where(x => x.HouseholdId == householdId).OrderBy(x => x.CreatedAt).ToListAsync(ct);
             var regimenIds = regimenRoots.Select(x => x.Id).ToArray();

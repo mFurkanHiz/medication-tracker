@@ -15,6 +15,8 @@ Medication Tracker is a public portfolio project for household medication invent
 - Completed Sprint 1: `https://app.notion.com/p/3d5afec61a3f81dbaa3bdad4bc7c00ec`
 - Completed vertical-slice task: `https://app.notion.com/p/3d4afec61a3f8139a1b4e062ca00a497`
 - V1 completion task: `https://app.notion.com/p/3d9afec61a3f81ebabd2fad7483e3c7e`
+- Owner V1 acceptance contract: `docs/v1-acceptance.md`
+- Resumable V1 checkpoint: `docs/v1-progress.md`
 
 ## Current decisions
 
@@ -57,13 +59,9 @@ Medication Tracker is a public portfolio project for household medication invent
 
 ## Current milestone
 
-V1 is live at the primary hostname. It includes the authenticated web/API core,
-independent medication catalog, exact full/opened package stock, optional
-package-to-person assignment, category/tag/status filters, and regular/as-needed
-instructions described in ADR 0008. Mobile authenticated sync is implemented;
-physical-device acceptance remains deferred at the user's request. Count revision,
-lending/return, low-stock alerts and reliable notification delivery remain later
-roadmap items and are not part of this V1 release.
+The `v1.0.0` release is live at the primary hostname and is a useful **technical production baseline**, but **owner-accepted V1 is not complete**. The authoritative completion criteria are in `docs/v1-acceptance.md`; resumable execution state is in `docs/v1-progress.md`.
+
+The current baseline includes the authenticated web/API core, independent medication catalog, exact full/opened package stock, optional package-to-person assignment, category/tag/status filters, and regular/as-needed instructions described in ADR 0008. Mobile authenticated sync is implemented, but physical-device final acceptance and several original V1 requirements remain. No sprint, tag, CI run or deployment may redefine those requirements as later work without explicit owner approval.
 
 The tested Sprint 1 vertical slice delivers:
 

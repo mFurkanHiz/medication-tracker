@@ -15,6 +15,11 @@ are optional; regular plans can use a named period such as morning, evening or
 immediately before bed, plus a meal relation. The app records instructions and
 actual use; it never recommends a dose.
 
+Medication details and complete usage plans can be updated or deleted without
+erasing history. The **İşlemler / Activity** screen combines catalog, plan, stock,
+package assignment and individual usage events. A use is rejected without writing
+any event when the eligible exact stock is insufficient.
+
 Fallback preview: [medication-tracker.mf-speed96.chatgpt.site](https://medication-tracker.mf-speed96.chatgpt.site)
 
 The project tracks the difference between a treatment plan, physical household stock, actual administrations, and official refill eligibility. Its core use cases include fractional tablet doses, effective-dated regimen changes, inventory counts, low-stock forecasting, and auditable lending or returning medication between people.

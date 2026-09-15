@@ -50,4 +50,11 @@ A `DoseOccurrence` is an expected dose. An `AdministrationEvent` records what ac
 
 The tablet slice persists exact quantities as normalized integer numerator and denominator pairs. Recording an administration appends an `AdministrationEvent` and one or more linked negative `InventoryLedgerEntry` rows; multiple rows allow an exact dose to span package boundaries without losing the single administration identity. Neither record overwrites earlier history. A `ProcessedAdministrationCommand` stores the household-scoped idempotency receipt separately from the clinical and inventory events.
 
+The inventory mutation lock also enforces a stock floor. A taken administration is
+accepted only when loose stock plus packages eligible for that person cover the
+entire exact dose. Rejection appends neither an administration nor a ledger entry.
+Medication and regimen deletion are soft deletes, while regimen edits append a new
+`RegimenVersion`. Actor-attributed change events and the immutable domain records
+form one chronological activity projection for the UI.
+
 Refill eligibility belongs to prescription/insurance data and is not inferred from physical stock. The application compares projected depletion with eligibility to expose a potential coverage gap.

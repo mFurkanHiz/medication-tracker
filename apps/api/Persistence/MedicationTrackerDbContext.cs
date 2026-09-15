@@ -27,6 +27,7 @@ public sealed class MedicationTrackerDbContext(DbContextOptions<MedicationTracke
     public DbSet<MedicationChangeEvent> MedicationChangeEvents => Set<MedicationChangeEvent>();
     public DbSet<Regimen> Regimens => Set<Regimen>();
     public DbSet<RegimenVersion> RegimenVersions => Set<RegimenVersion>();
+    public DbSet<RegimenChangeEvent> RegimenChangeEvents => Set<RegimenChangeEvent>();
     public DbSet<AdministrationEvent> AdministrationEvents => Set<AdministrationEvent>();
     public DbSet<ProcessedAdministrationCommand> ProcessedAdministrationCommands => Set<ProcessedAdministrationCommand>();
     public DbSet<SyncCommandReceipt> SyncCommandReceipts => Set<SyncCommandReceipt>();

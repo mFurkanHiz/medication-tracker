@@ -7,7 +7,7 @@ This file is intentionally short. It exists so a new Codex session can continue 
 - Owner-accepted V1: **NOT COMPLETE**.
 - Last production baseline: `v1.0.0` / `e82593144541c15f9c246014fe42ae45c7f35b02`.
 - The production baseline is not the final V1 acceptance point; see `docs/v1-acceptance.md`.
-- Current highest-priority correction package: medication CRUD/soft-delete, regimen CRUD with effective-dated versioning, atomic insufficient-stock rejection, and a complete unified activity/history surface.
+- The P0 correction package is implemented on PR #2: medication CRUD/soft-delete, regimen CRUD with effective-dated versioning, atomic insufficient-stock rejection, and the unified activity/history surface.
 - Final V1 still has additional acceptance gaps after that P0 package; do not stop after the P0 package.
 
 ## Resume protocol
@@ -42,4 +42,6 @@ This is an execution order, not a scope reduction:
 ## Last checkpoint
 
 - 2026-09-15: V1 scope was restored from the approved original product/MVP definition. The prior `v1.0.0` release remains a technical baseline, not owner-accepted V1.
-- Next action: continue the active P0 correction from the current local working tree; checkpoint it in Git as soon as a coherent part is green, then continue through the acceptance list.
+- 2026-09-15: P0 correction implementation is on PR #2. Local evidence: `.NET` 9 passed/7 Docker-dependent skipped, web lint passed, mobile typecheck passed, web production build passed. GitHub Actions run `34984202695` passed all 16 API tests against PostgreSQL plus web/mobile checks and both Docker builds.
+- Remaining before the P0 production defect is operationally closed: merge PR #2, deploy the Medication Tracker services with the reviewed migration, and pass production smoke.
+- Next action after production smoke: implement revision-preserving bulk inventory count/reconciliation, the first remaining `OPEN` V1 product criterion in execution order.

@@ -152,10 +152,56 @@ public static class WorkspaceEndpoints
             var observed = new ExactQuantity(request.Numerator, request.Denominator); var delta = request.Kind == "count" ? observed - before : observed;
             var now = DateTimeOffset.UtcNow; var actor = Actor(context); var ledgerId = Guid.NewGuid();
             db.InventoryLedgerEntries.Add(new InventoryLedgerEntry(ledgerId, householdId, item.Id, null, delta.Numerator, delta.Denominator, request.Kind == "count" ? "count_reconciliation" : "refill", now, now));
-            if (request.Kind == "count") db.Set<InventoryCount>().Add(new InventoryCount { Id = Guid.NewGuid(), HouseholdId = householdId, InventoryItemId = item.Id, AccountId = actor, BeforeNumerator = before.Numerator, BeforeDenominator = before.Denominator, ObservedNumerator = observed.Numerator, ObservedDenominator = observed.Denominator, LedgerEntryId = ledgerId, AcceptedAt = now });
+            if (request.Kind == "count")
+            {
+                var batch = new InventoryCountBatch { Id = Guid.NewGuid(), HouseholdId = householdId, AccountId = actor, RevisionNumber = 1, AcceptedAt = now };
+                db.InventoryCountBatches.Add(batch);
+                db.InventoryCounts.Add(new InventoryCount { Id = Guid.NewGuid(), HouseholdId = householdId, BatchId = batch.Id, InventoryItemId = item.Id, AccountId = actor, BeforeNumerator = before.Numerator, BeforeDenominator = before.Denominator, ObservedNumerator = observed.Numerator, ObservedDenominator = observed.Denominator, LedgerEntryId = ledgerId, AcceptedAt = now });
+            }
             db.SyncCommandReceipts.Add(new SyncCommandReceipt(Guid.NewGuid(), householdId, actor, request.IdempotencyKey, request.Kind, ledgerId, now));
             await db.SaveChangesAsync(ct); await transaction.CommitAsync(ct);
             return Results.Ok(new { id = ledgerId, replayed = false });
+        });
+
+        app.MapPost("/api/households/{householdId:guid}/inventory/count-sessions", async (Guid householdId, BulkInventoryCountRequest request, HttpContext context, MedicationTrackerDbContext db, CancellationToken ct) =>
+        {
+            if (!await IsMember(db, householdId, context, ct)) return Results.StatusCode(403);
+            if (!ValidCountRequest(request)) return Results.BadRequest();
+            await using var transaction = await db.Database.BeginTransactionAsync(ct);
+            await db.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock(hashtextextended({householdId.ToString()}, 0))", ct);
+            var prior = await db.SyncCommandReceipts.AsNoTracking().SingleOrDefaultAsync(x => x.HouseholdId == householdId && x.IdempotencyKey == request.IdempotencyKey, ct);
+            if (prior is not null) return Results.Ok(new { id = prior.ResultEntityId, replayed = true });
+            var actor = Actor(context); var now = DateTimeOffset.UtcNow;
+            var batch = new InventoryCountBatch { Id = Guid.NewGuid(), HouseholdId = householdId, AccountId = actor, RevisionNumber = 1, AcceptedAt = now };
+            if (!await AddCountLines(db, householdId, actor, batch.Id, request.Items, now, ct)) return Results.NotFound();
+            db.InventoryCountBatches.Add(batch);
+            db.SyncCommandReceipts.Add(new SyncCommandReceipt(Guid.NewGuid(), householdId, actor, request.IdempotencyKey, "inventory.counted", batch.Id, now));
+            await db.SaveChangesAsync(ct); await transaction.CommitAsync(ct);
+            return Results.Ok(new { id = batch.Id, revisionNumber = batch.RevisionNumber, replayed = false });
+        });
+
+        app.MapPost("/api/households/{householdId:guid}/inventory/count-sessions/{batchId:guid}/revisions", async (Guid householdId, Guid batchId, BulkInventoryCountRequest request, HttpContext context, MedicationTrackerDbContext db, CancellationToken ct) =>
+        {
+            if (!await IsMember(db, householdId, context, ct)) return Results.StatusCode(403);
+            if (!ValidCountRequest(request)) return Results.BadRequest();
+            await using var transaction = await db.Database.BeginTransactionAsync(ct);
+            await db.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock(hashtextextended({householdId.ToString()}, 0))", ct);
+            var prior = await db.SyncCommandReceipts.AsNoTracking().SingleOrDefaultAsync(x => x.HouseholdId == householdId && x.IdempotencyKey == request.IdempotencyKey, ct);
+            if (prior is not null) return Results.Ok(new { id = prior.ResultEntityId, replayed = true });
+            var source = await db.InventoryCountBatches.AsNoTracking().SingleOrDefaultAsync(x => x.HouseholdId == householdId && x.Id == batchId, ct);
+            if (source is null) return Results.NotFound();
+            if (await db.InventoryCountBatches.AnyAsync(x => x.PreviousBatchId == source.Id, ct)) return Results.Conflict(new { code = "stale_count_revision" });
+            var sourceItems = await db.InventoryCounts.AsNoTracking().Where(x => x.HouseholdId == householdId && x.BatchId == source.Id).Select(x => x.InventoryItemId).OrderBy(x => x).ToArrayAsync(ct);
+            var requestedMedicationIds = request.Items.Select(x => x.MedicationId).ToArray();
+            var requestedItems = await db.InventoryItems.AsNoTracking().Where(x => x.HouseholdId == householdId && requestedMedicationIds.Contains(x.MedicationId)).Select(x => x.Id).OrderBy(x => x).ToArrayAsync(ct);
+            if (!sourceItems.SequenceEqual(requestedItems)) return Results.BadRequest();
+            var actor = Actor(context); var now = DateTimeOffset.UtcNow;
+            var revision = new InventoryCountBatch { Id = Guid.NewGuid(), HouseholdId = householdId, AccountId = actor, PreviousBatchId = source.Id, RevisionNumber = source.RevisionNumber + 1, AcceptedAt = now };
+            if (!await AddCountLines(db, householdId, actor, revision.Id, request.Items, now, ct)) return Results.NotFound();
+            db.InventoryCountBatches.Add(revision);
+            db.SyncCommandReceipts.Add(new SyncCommandReceipt(Guid.NewGuid(), householdId, actor, request.IdempotencyKey, "inventory.count.revised", revision.Id, now));
+            await db.SaveChangesAsync(ct); await transaction.CommitAsync(ct);
+            return Results.Ok(new { id = revision.Id, revisionNumber = revision.RevisionNumber, replayed = false });
         });
 
         app.MapGet("/api/households/{householdId:guid}/workspace", async (Guid householdId, HttpContext context, MedicationTrackerDbContext db, CancellationToken ct) =>
@@ -175,6 +221,8 @@ public static class WorkspaceEndpoints
             var medicationChanges = await db.MedicationChangeEvents.AsNoTracking().Where(x => x.HouseholdId == householdId).ToListAsync(ct);
             var regimenChanges = await db.RegimenChangeEvents.AsNoTracking().Where(x => x.HouseholdId == householdId).ToListAsync(ct);
             var assignmentEvents = await db.InventoryPackageAssignmentEvents.AsNoTracking().Where(x => x.HouseholdId == householdId).ToListAsync(ct);
+            var countBatches = await db.InventoryCountBatches.AsNoTracking().Where(x => x.HouseholdId == householdId).OrderByDescending(x => x.AcceptedAt).ToListAsync(ct);
+            var counts = await db.InventoryCounts.AsNoTracking().Where(x => x.HouseholdId == householdId && x.BatchId != null).ToListAsync(ct);
 
             var currentRegimens = regimenRoots.Where(r => r.DeletedAt == null && allMedications.Any(m => m.Id == r.MedicationId && m.DeletedAt == null)).Select(r =>
             {
@@ -229,6 +277,18 @@ public static class WorkspaceEndpoints
                 regimens = currentRegimens,
                 ledger,
                 administrations,
+                countSessions = countBatches.Select(batch => new
+                {
+                    batch.Id,
+                    previousSessionId = batch.PreviousBatchId,
+                    batch.RevisionNumber,
+                    batch.AcceptedAt,
+                    items = counts.Where(x => x.BatchId == batch.Id).Select(count =>
+                    {
+                        var medicationId = itemMedicationIds[count.InventoryItemId];
+                        return new { medicationId, medicationName = Name(medicationNames, medicationId), count.BeforeNumerator, count.BeforeDenominator, count.ObservedNumerator, count.ObservedDenominator };
+                    })
+                }),
                 activities = activities.OrderByDescending(x => x.RecordedAt).ThenByDescending(x => x.Id)
             });
         });
@@ -263,6 +323,34 @@ public static class WorkspaceEndpoints
     }
 
     private static int Compare(ExactQuantity left, ExactQuantity right) => checked(left.Numerator * right.Denominator).CompareTo(checked(right.Numerator * left.Denominator));
+    private static bool ValidCountRequest(BulkInventoryCountRequest request) =>
+        !string.IsNullOrWhiteSpace(request.IdempotencyKey) && request.IdempotencyKey.Length <= 100
+        && request.Items is { Count: > 0 and <= 100 }
+        && request.Items.Select(x => x.MedicationId).Distinct().Count() == request.Items.Count
+        && request.Items.All(x => x.ObservedNumerator is >= 0 and <= 1000000 && x.ObservedDenominator is >= 1 and <= 10000);
+
+    private static async Task<bool> AddCountLines(MedicationTrackerDbContext db, Guid householdId, Guid actor, Guid batchId,
+        IReadOnlyList<InventoryCountLineRequest> lines, DateTimeOffset acceptedAt, CancellationToken ct)
+    {
+        var medicationIds = lines.Select(x => x.MedicationId).ToArray();
+        var items = await (from item in db.InventoryItems
+                           join medication in db.Medications on item.MedicationId equals medication.Id
+                           where item.HouseholdId == householdId && medication.DeletedAt == null && medicationIds.Contains(item.MedicationId)
+                           select item).ToListAsync(ct);
+        if (items.Count != medicationIds.Length) return false;
+        var itemIds = items.Select(x => x.Id).ToArray();
+        var entries = await db.InventoryLedgerEntries.Where(x => x.HouseholdId == householdId && itemIds.Contains(x.InventoryItemId)).ToListAsync(ct);
+        foreach (var line in lines)
+        {
+            var item = items.Single(x => x.MedicationId == line.MedicationId);
+            var before = entries.Where(x => x.InventoryItemId == item.Id).Aggregate(new ExactQuantity(0), (sum, entry) => sum + new ExactQuantity(entry.QuantityNumerator, entry.QuantityDenominator));
+            var observed = new ExactQuantity(line.ObservedNumerator, line.ObservedDenominator);
+            var delta = observed - before; var ledgerId = Guid.NewGuid();
+            db.InventoryLedgerEntries.Add(new InventoryLedgerEntry(ledgerId, householdId, item.Id, null, delta.Numerator, delta.Denominator, "count_reconciliation", acceptedAt, acceptedAt));
+            db.InventoryCounts.Add(new InventoryCount { Id = Guid.NewGuid(), HouseholdId = householdId, BatchId = batchId, InventoryItemId = item.Id, AccountId = actor, BeforeNumerator = before.Numerator, BeforeDenominator = before.Denominator, ObservedNumerator = observed.Numerator, ObservedDenominator = observed.Denominator, LedgerEntryId = ledgerId, AcceptedAt = acceptedAt });
+        }
+        return true;
+    }
     private static string[]? NormalizeTags(string[]? tags)
     {
         var normalized = (tags ?? []).Select(x => x.Trim()).Where(x => x.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
@@ -287,4 +375,6 @@ public sealed record AssignPackageRequest(string IdempotencyKey, Guid? PersonId)
 public sealed record MedicationSettingsRequest(string? Category, string[]? Tags, bool IsActive);
 public sealed record MedicationUpdateRequest(Guid? PersonId, string Name, string Form, string? Strength, string? ActiveIngredient, string? Notes, string? Category, string[]? Tags, bool IsActive);
 public sealed record RegimenUpdateRequest(Guid PersonId, Guid MedicationId, DateOnly? ValidFrom, DateOnly? ValidTo, long DoseNumerator, long DoseDenominator, TimeOnly? LocalTime, string TimeZoneId, string ScheduleType = "scheduled", string? DayPeriod = null, string? MealRelation = null, int? MinimumIntervalMinutes = null);
+public sealed record InventoryCountLineRequest(Guid MedicationId, long ObservedNumerator, long ObservedDenominator);
+public sealed record BulkInventoryCountRequest(string IdempotencyKey, List<InventoryCountLineRequest> Items);
 public sealed record ActivityRow(string Id, string Kind, Guid MedicationId, string? MedicationName, Guid? PersonId, string? PersonName, long? QuantityNumerator, long? QuantityDenominator, DateTimeOffset OccurredAt, DateTimeOffset RecordedAt);

@@ -1,9 +1,20 @@
 namespace MedicationTracker.Api.Modules.Care;
 
+public sealed class InventoryCountBatch
+{
+    public Guid Id { get; set; }
+    public Guid HouseholdId { get; set; }
+    public Guid AccountId { get; set; }
+    public Guid? PreviousBatchId { get; set; }
+    public int RevisionNumber { get; set; }
+    public DateTimeOffset AcceptedAt { get; set; }
+}
+
 public sealed class InventoryCount
 {
     public Guid Id { get; set; }
     public Guid HouseholdId { get; set; }
+    public Guid? BatchId { get; set; }
     public Guid InventoryItemId { get; set; }
     public Guid AccountId { get; set; }
     public long BeforeNumerator { get; set; }

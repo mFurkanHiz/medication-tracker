@@ -24,6 +24,8 @@ public sealed class MedicationTrackerDbContext(DbContextOptions<MedicationTracke
     public DbSet<InventoryLedgerEntry> InventoryLedgerEntries => Set<InventoryLedgerEntry>();
     public DbSet<InventoryPackage> InventoryPackages => Set<InventoryPackage>();
     public DbSet<InventoryPackageAssignmentEvent> InventoryPackageAssignmentEvents => Set<InventoryPackageAssignmentEvent>();
+    public DbSet<InventoryCountBatch> InventoryCountBatches => Set<InventoryCountBatch>();
+    public DbSet<InventoryCount> InventoryCounts => Set<InventoryCount>();
     public DbSet<MedicationChangeEvent> MedicationChangeEvents => Set<MedicationChangeEvent>();
     public DbSet<Regimen> Regimens => Set<Regimen>();
     public DbSet<RegimenVersion> RegimenVersions => Set<RegimenVersion>();
@@ -39,10 +41,30 @@ public sealed class MedicationTrackerDbContext(DbContextOptions<MedicationTracke
         {
             b.ToTable("count_sessions", "inventory");
             b.HasKey(x => x.Id);
+            b.HasOne<InventoryCountBatch>().WithMany().HasForeignKey(x => x.BatchId).OnDelete(DeleteBehavior.Restrict);
             b.HasOne<Household>().WithMany().HasForeignKey(x => x.HouseholdId).OnDelete(DeleteBehavior.Restrict);
             b.HasOne<Account>().WithMany().HasForeignKey(x => x.AccountId).OnDelete(DeleteBehavior.Restrict);
             b.HasOne<InventoryItem>().WithMany().HasForeignKey(x => x.InventoryItemId).OnDelete(DeleteBehavior.Restrict);
             b.HasOne<InventoryLedgerEntry>().WithMany().HasForeignKey(x => x.LedgerEntryId).OnDelete(DeleteBehavior.Restrict);
+            b.HasIndex(x => new { x.HouseholdId, x.BatchId });
+            b.HasIndex(x => x.LedgerEntryId).IsUnique();
+        });
+        modelBuilder.Entity<InventoryCountBatch>(b =>
+        {
+            b.ToTable("count_batches", "inventory", table =>
+                table.HasCheckConstraint("ck_count_batches_revision", "revision_number > 0"));
+            b.HasKey(x => x.Id);
+            b.Property(x => x.Id).HasColumnName("id");
+            b.Property(x => x.HouseholdId).HasColumnName("household_id");
+            b.Property(x => x.AccountId).HasColumnName("account_id");
+            b.Property(x => x.PreviousBatchId).HasColumnName("previous_batch_id");
+            b.Property(x => x.RevisionNumber).HasColumnName("revision_number");
+            b.Property(x => x.AcceptedAt).HasColumnName("accepted_at");
+            b.HasOne<Household>().WithMany().HasForeignKey(x => x.HouseholdId).OnDelete(DeleteBehavior.Restrict);
+            b.HasOne<Account>().WithMany().HasForeignKey(x => x.AccountId).OnDelete(DeleteBehavior.Restrict);
+            b.HasOne<InventoryCountBatch>().WithMany().HasForeignKey(x => x.PreviousBatchId).OnDelete(DeleteBehavior.Restrict);
+            b.HasIndex(x => new { x.HouseholdId, x.AcceptedAt });
+            b.HasIndex(x => x.PreviousBatchId).IsUnique();
         });
         modelBuilder.Entity<AccountSession>(b =>
         {

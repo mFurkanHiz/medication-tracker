@@ -40,9 +40,16 @@ events. Ownership/allocation is separate from physical location.
 
 ## Inventory count and bulk update
 
-An `InventoryCountSession` records scope, counter, start/completion time, notes, and lines. Each line stores the calculated quantity before counting, observed quantity, difference, and unit.
+An `InventoryCountBatch` records the household, accepting account, acceptance time,
+revision number, and optional previous batch. Its `InventoryCount` lines store each
+inventory item's exact calculated quantity before counting, observed quantity, and
+the linked reconciliation ledger entry.
 
-Accepting a count creates one reconciliation ledger entry per difference. Bulk counting is therefore auditable and does not erase history. Editing an accepted count creates a new revision that reverses the previous reconciliation and applies the replacement difference. Draft count lines can be edited freely before acceptance.
+Accepting a bulk count creates one reconciliation ledger entry per counted medication
+inside the same transaction. Correcting the latest accepted batch creates a new batch
+whose lines reconcile the current ledger projection to the corrected observations.
+Earlier batches, lines, and ledger entries remain immutable; stale revisions are
+rejected rather than branched or overwritten.
 
 ## Administrations and forecasting
 

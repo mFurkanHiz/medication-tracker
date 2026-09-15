@@ -7,6 +7,18 @@
 - Do not change VPS services, GitHub settings, Notion records, DNS, or secrets unless the current request explicitly includes that action.
 - Treat `PROJECT.md` and `docs/` as the durable project context. Record material decisions as ADRs.
 
+## V1 execution contract
+
+- For any V1 work, treat `docs/v1-acceptance.md` as the authoritative owner-defined V1 scope and `docs/v1-progress.md` as the resumable execution checkpoint.
+- A tag, deploy, green CI run, smoke test, sprint closure, or partial vertical slice does **not** by itself mean V1 is complete.
+- Do not move a required V1 criterion to a later release, narrow it, or mark it optional unless the owner explicitly approves that scope change.
+- When the owner says `continue` / `kaldığın yerden devam et`, resume from the current working tree plus `docs/v1-progress.md`; do not reconstruct or redesign the whole project from chat history.
+- Read only the code and documentation needed for the current V1 slice. Avoid broad repeated repository audits, repeated external research, and repeated architecture analysis unless new evidence makes them necessary.
+- Use targeted tests while editing. Run the full quality gate once a coherent slice is ready for checkpoint/merge/release instead of repeatedly after every tiny change.
+- Create safe coherent commits during long work. Before ending a long session or when usage is constrained, leave a clean checkpoint and update `docs/v1-progress.md` with evidence and the exact next action.
+- Completing one task does not complete the project. After each slice, continue through the remaining `OPEN`/`PARTIAL` rows in `docs/v1-acceptance.md` until all required rows are `DONE`.
+- Never declare owner-accepted V1 complete until the acceptance document is fully satisfied and the owner explicitly accepts the release.
+
 ## Product boundary
 
 - This is a medication organization and adherence product, not a diagnostic or prescribing system.

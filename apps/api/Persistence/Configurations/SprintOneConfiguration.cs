@@ -136,9 +136,17 @@ public sealed class RegimenVersionConfiguration : IEntityTypeConfiguration<Regim
 {
     public void Configure(EntityTypeBuilder<RegimenVersion> b)
     {
-        b.ToTable("regimen_versions", "treatments", t => { t.HasCheckConstraint("ck_regimen_versions_period", "valid_from IS NULL OR valid_to IS NULL OR valid_to >= valid_from"); t.HasCheckConstraint("ck_regimen_versions_denominator", "dose_denominator > 0"); t.HasCheckConstraint("ck_regimen_versions_schedule_type", "schedule_type IN ('scheduled', 'as_needed')"); t.HasCheckConstraint("ck_regimen_versions_schedule", "schedule_type = 'as_needed' OR local_time IS NOT NULL OR day_period IS NOT NULL"); }); b.HasKey(x => x.Id);
+        b.ToTable("regimen_versions", "treatments", t =>
+        {
+            t.HasCheckConstraint("ck_regimen_versions_period", "valid_from IS NULL OR valid_to IS NULL OR valid_to >= valid_from");
+            t.HasCheckConstraint("ck_regimen_versions_denominator", "dose_denominator > 0");
+            t.HasCheckConstraint("ck_regimen_versions_schedule_type", "schedule_type IN ('scheduled', 'as_needed')");
+            t.HasCheckConstraint("ck_regimen_versions_schedule", "schedule_type = 'as_needed' OR local_time IS NOT NULL OR day_period IS NOT NULL");
+            t.HasCheckConstraint("ck_regimen_versions_recurrence", "(recurrence_kind = 'daily' AND weekday_mask IS NULL AND interval_days IS NULL) OR (schedule_type = 'scheduled' AND recurrence_kind = 'weekdays' AND weekday_mask BETWEEN 1 AND 127 AND interval_days IS NULL) OR (schedule_type = 'scheduled' AND recurrence_kind = 'interval' AND valid_from IS NOT NULL AND interval_days BETWEEN 1 AND 3650 AND weekday_mask IS NULL)");
+        }); b.HasKey(x => x.Id);
         b.Property(x => x.Id).HasColumnName("id"); b.Property(x => x.RegimenId).HasColumnName("regimen_id"); b.Property(x => x.ValidFrom).HasColumnName("valid_from"); b.Property(x => x.ValidTo).HasColumnName("valid_to"); b.Property(x => x.DoseNumerator).HasColumnName("dose_numerator"); b.Property(x => x.DoseDenominator).HasColumnName("dose_denominator"); b.Property(x => x.LocalTime).HasColumnName("local_time"); b.Property(x => x.TimeZoneId).HasColumnName("time_zone_id").HasMaxLength(100).IsRequired(); b.Property(x => x.CreatedAt).HasColumnName("created_at");
         b.Property(x => x.ScheduleType).HasColumnName("schedule_type").HasMaxLength(20).HasDefaultValue("scheduled").IsRequired(); b.Property(x => x.DayPeriod).HasColumnName("day_period").HasMaxLength(20); b.Property(x => x.MealRelation).HasColumnName("meal_relation").HasMaxLength(20); b.Property(x => x.MinimumIntervalMinutes).HasColumnName("minimum_interval_minutes");
+        b.Property(x => x.RecurrenceKind).HasColumnName("recurrence_kind").HasMaxLength(20).HasDefaultValue("daily").IsRequired(); b.Property(x => x.WeekdayMask).HasColumnName("weekday_mask"); b.Property(x => x.IntervalDays).HasColumnName("interval_days");
         b.HasOne<Regimen>().WithMany().HasForeignKey(x => x.RegimenId).OnDelete(DeleteBehavior.Restrict); b.HasIndex(x => new { x.RegimenId, x.CreatedAt }).IsUnique();
     }
 }

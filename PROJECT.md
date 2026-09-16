@@ -29,7 +29,8 @@ Medication Tracker is a public portfolio project for household medication invent
 - Whole-package lending preserves the owner while temporarily allocating the package
   to another household person. Loan/return events are audited without changing stock.
 - Regular and as-needed instructions support optional date ranges, exact times,
-  named day periods, meal relation and minimum interval.
+  named day periods, meal relation and minimum interval. Scheduled instructions
+  also support daily, selected-weekday, and effective-date-anchored interval rules.
 - Medication edits cover all catalog details and deletions preserve the audit trail.
   Usage-plan edits append a new effective version; deletion preserves past uses.
 - Taken administrations are rejected atomically when eligible exact stock is

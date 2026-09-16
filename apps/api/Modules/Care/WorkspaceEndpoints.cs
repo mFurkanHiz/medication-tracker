@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using System.Text.Json;
 using MedicationTracker.Api.Domain.Quantities;
+using MedicationTracker.Api.Domain.Scheduling;
 using MedicationTracker.Api.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -174,8 +175,11 @@ public static class WorkspaceEndpoints
             if (regimen is null) return Results.NotFound();
             var current = await db.RegimenVersions.Where(x => x.RegimenId == regimen.Id).OrderByDescending(x => x.CreatedAt).FirstAsync(ct);
             var previous = RegimenSnapshot(regimen, current); var now = DateTimeOffset.UtcNow;
+            var localToday = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(now, TimeZoneInfo.FindSystemTimeZoneById(request.TimeZoneId)).DateTime);
+            var effectiveFrom = request.ValidFrom ?? localToday;
+            if (effectiveFrom < localToday || request.ValidTo is not null && request.ValidTo < effectiveFrom) return Results.BadRequest();
             regimen.UpdateAssignment(request.PersonId, request.MedicationId);
-            var version = new RegimenVersion(Guid.NewGuid(), regimen.Id, request.ValidFrom, request.ValidTo, dose.Numerator, dose.Denominator, request.LocalTime, request.TimeZoneId, now, request.ScheduleType, request.DayPeriod, request.MealRelation, request.MinimumIntervalMinutes);
+            var version = new RegimenVersion(Guid.NewGuid(), regimen.Id, effectiveFrom, request.ValidTo, dose.Numerator, dose.Denominator, request.LocalTime, request.TimeZoneId, now, request.ScheduleType, request.DayPeriod, request.MealRelation, request.MinimumIntervalMinutes, request.RecurrenceKind, request.WeekdayMask, request.IntervalDays);
             db.RegimenVersions.Add(version);
             db.RegimenChangeEvents.Add(new RegimenChangeEvent(Guid.NewGuid(), householdId, regimen.Id, Actor(context), "updated", previous, RegimenSnapshot(regimen, version), now));
             await db.SaveChangesAsync(ct);
@@ -285,7 +289,7 @@ public static class WorkspaceEndpoints
             var currentRegimens = regimenRoots.Where(r => r.DeletedAt == null && allMedications.Any(m => m.Id == r.MedicationId && m.DeletedAt == null)).Select(r =>
             {
                 var v = versions.Where(x => x.RegimenId == r.Id).OrderByDescending(x => x.CreatedAt).First();
-                return new { r.Id, r.PersonId, r.MedicationId, versionId = v.Id, v.ValidFrom, v.ValidTo, v.LocalTime, v.TimeZoneId, v.DoseNumerator, v.DoseDenominator, v.ScheduleType, v.DayPeriod, v.MealRelation, v.MinimumIntervalMinutes };
+                return new { r.Id, r.PersonId, r.MedicationId, versionId = v.Id, v.ValidFrom, v.ValidTo, v.LocalTime, v.TimeZoneId, v.DoseNumerator, v.DoseDenominator, v.ScheduleType, v.RecurrenceKind, v.WeekdayMask, v.IntervalDays, v.DayPeriod, v.MealRelation, v.MinimumIntervalMinutes };
             }).ToArray();
 
             var medicationNames = allMedications.ToDictionary(x => x.Id, x => x.Name);
@@ -373,7 +377,7 @@ public static class WorkspaceEndpoints
         dose = default;
         if (!TryPositive(request.DoseNumerator, request.DoseDenominator, out dose)) return false;
         if (request.ValidFrom is not null && request.ValidTo < request.ValidFrom) return false;
-        if (request.ScheduleType is not ("scheduled" or "as_needed") || (request.ScheduleType == "scheduled" && request.LocalTime is null && request.DayPeriod is null) || !ValidDayPeriod(request.DayPeriod) || !ValidMealRelation(request.MealRelation) || request.MinimumIntervalMinutes is < 1 or > 10080) return false;
+        if (!RecurrenceRule.IsValid(request.ScheduleType, request.RecurrenceKind, request.WeekdayMask, request.IntervalDays, request.ValidFrom) || (request.ScheduleType == "scheduled" && request.LocalTime is null && request.DayPeriod is null) || !ValidDayPeriod(request.DayPeriod) || !ValidMealRelation(request.MealRelation) || request.MinimumIntervalMinutes is < 1 or > 10080) return false;
         if (string.IsNullOrWhiteSpace(request.TimeZoneId)) return false;
         try { _ = TimeZoneInfo.FindSystemTimeZoneById(request.TimeZoneId); }
         catch (TimeZoneNotFoundException) { return false; }
@@ -427,7 +431,7 @@ public static class WorkspaceEndpoints
     private static Guid Actor(HttpContext context) => Guid.Parse(context.User.FindFirstValue(ClaimTypes.NameIdentifier)!);
     private static string? Name(IReadOnlyDictionary<Guid, string> names, Guid? id) => id is not null && names.TryGetValue(id.Value, out var name) ? name : null;
     private static string MedicationSnapshot(Medication medication) => JsonSerializer.Serialize(new { medication.PersonId, medication.Name, medication.Form, medication.Strength, medication.ActiveIngredient, medication.Notes, medication.Category, medication.Tags, medication.IsActive });
-    private static string RegimenSnapshot(Regimen regimen, RegimenVersion version) => JsonSerializer.Serialize(new { regimen.PersonId, regimen.MedicationId, version.ValidFrom, version.ValidTo, version.DoseNumerator, version.DoseDenominator, version.LocalTime, version.TimeZoneId, version.ScheduleType, version.DayPeriod, version.MealRelation, version.MinimumIntervalMinutes });
+    private static string RegimenSnapshot(Regimen regimen, RegimenVersion version) => JsonSerializer.Serialize(new { regimen.PersonId, regimen.MedicationId, version.ValidFrom, version.ValidTo, version.DoseNumerator, version.DoseDenominator, version.LocalTime, version.TimeZoneId, version.ScheduleType, version.RecurrenceKind, version.WeekdayMask, version.IntervalDays, version.DayPeriod, version.MealRelation, version.MinimumIntervalMinutes });
     private static Task<bool> IsMember(MedicationTrackerDbContext db, Guid householdId, HttpContext context, CancellationToken ct)
     {
         var id = Actor(context); var now = DateTimeOffset.UtcNow;
@@ -442,7 +446,7 @@ public sealed record CreatePackageLoanRequest(string IdempotencyKey, Guid Borrow
 public sealed record ReturnPackageLoanRequest(string IdempotencyKey);
 public sealed record MedicationSettingsRequest(string? Category, string[]? Tags, bool IsActive);
 public sealed record MedicationUpdateRequest(Guid? PersonId, string Name, string Form, string? Strength, string? ActiveIngredient, string? Notes, string? Category, string[]? Tags, bool IsActive);
-public sealed record RegimenUpdateRequest(Guid PersonId, Guid MedicationId, DateOnly? ValidFrom, DateOnly? ValidTo, long DoseNumerator, long DoseDenominator, TimeOnly? LocalTime, string TimeZoneId, string ScheduleType = "scheduled", string? DayPeriod = null, string? MealRelation = null, int? MinimumIntervalMinutes = null);
+public sealed record RegimenUpdateRequest(Guid PersonId, Guid MedicationId, DateOnly? ValidFrom, DateOnly? ValidTo, long DoseNumerator, long DoseDenominator, TimeOnly? LocalTime, string TimeZoneId, string ScheduleType = "scheduled", string? DayPeriod = null, string? MealRelation = null, int? MinimumIntervalMinutes = null, string RecurrenceKind = "daily", int? WeekdayMask = null, int? IntervalDays = null);
 public sealed record InventoryCountLineRequest(Guid MedicationId, long ObservedNumerator, long ObservedDenominator);
 public sealed record BulkInventoryCountRequest(string IdempotencyKey, List<InventoryCountLineRequest> Items);
 public sealed record ActivityRow(string Id, string Kind, Guid MedicationId, string? MedicationName, Guid? PersonId, string? PersonName, long? QuantityNumerator, long? QuantityDenominator, DateTimeOffset OccurredAt, DateTimeOffset RecordedAt);

@@ -26,6 +26,8 @@ Medication Tracker is a public portfolio project for household medication invent
   inputs to dose advice or automatic unit conversion.
 - Full and opened tablet packages retain exact capacity and remaining quantities.
   Existing loose stock can be allocated into packages with balanced ledger entries.
+- Whole-package lending preserves the owner while temporarily allocating the package
+  to another household person. Loan/return events are audited without changing stock.
 - Regular and as-needed instructions support optional date ranges, exact times,
   named day periods, meal relation and minimum interval.
 - Medication edits cover all catalog details and deletions preserve the audit trail.

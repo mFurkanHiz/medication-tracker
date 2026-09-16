@@ -18,7 +18,7 @@ Status legend:
 
 ## Required V1 product scope
 
-| Area | Acceptance criterion | Current status (2026-09-15) | Evidence / remaining gap |
+| Area | Acceptance criterion | Current status (2026-09-16) | Evidence / remaining gap |
 | --- | --- | --- | --- |
 | Accounts & households | Account, household membership and person/profile foundation works with household authorization. | DONE | Authenticated household-scoped web/API core is live. |
 | Medication catalog | Medication can exist independently of a person and supports core descriptive metadata. | DONE | Delivered in the current production baseline. |
@@ -28,7 +28,7 @@ Status legend:
 | Stock safety | A use event cannot create negative stock; insufficient stock is rejected atomically without partial administration/ledger writes. | DONE | PR #2 serializes household consumption, checks eligible exact stock before writes, and verifies zero partial administration/ledger writes in PostgreSQL CI run `34984202695`. |
 | Inventory ledger | Stock acquisition, consumption and corrections are represented as auditable ledger events rather than silent total overwrites. | PARTIAL | Core ledger exists; full V1 event coverage still needs final acceptance. |
 | Inventory counts | Bulk count/reconciliation exists and accepted count corrections are revisioned rather than rewriting history. | DONE | PR #5 adds atomic multi-medication count batches, immutable correction chains, stale-revision rejection, idempotency and household authorization; all 17 API tests pass against PostgreSQL in CI run `35020426322`. |
-| Lending / return | Medication can be lent/borrowed/returned between people while preserving ownership/allocation and audit history. | OPEN | Package assignment exists, but real lend/return workflow remains outside current baseline. |
+| Lending / return | Medication can be lent/borrowed/returned between people while preserving ownership/allocation and audit history. | DONE | PR #6 implements whole-package lend/return between household people with separate owner/current holder, immutable assignment/activity history, idempotent transitions, authorization and exact stock conservation (including use during a loan); PostgreSQL API and client/Docker CI run `35084942604` passed. |
 | Treatment schedules | Daily, selected-weekday and interval-based schedules are supported, including exact times and named periods where applicable. | PARTIAL | Regular/as-needed, exact time and named period exist; selected-weekday/arbitrary interval acceptance is not proven. |
 | Schedule versioning | Editing a treatment schedule creates an effective-dated version; historical administration remains linked to the historical version. Soft-delete preserves history. | DONE | PR #2 creates immutable dated versions, selects the latest version valid for the requested day, preserves historical administration links, and soft-deletes the regimen root; covered by PostgreSQL CI run `34984202695`. |
 | Dose context | Optional date ranges, meal relation and minimum interval are supported. | DONE | Delivered in current production baseline. |

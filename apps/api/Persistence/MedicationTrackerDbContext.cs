@@ -24,6 +24,7 @@ public sealed class MedicationTrackerDbContext(DbContextOptions<MedicationTracke
     public DbSet<InventoryLedgerEntry> InventoryLedgerEntries => Set<InventoryLedgerEntry>();
     public DbSet<InventoryPackage> InventoryPackages => Set<InventoryPackage>();
     public DbSet<InventoryPackageAssignmentEvent> InventoryPackageAssignmentEvents => Set<InventoryPackageAssignmentEvent>();
+    public DbSet<InventoryLoan> InventoryLoans => Set<InventoryLoan>();
     public DbSet<InventoryCountBatch> InventoryCountBatches => Set<InventoryCountBatch>();
     public DbSet<InventoryCount> InventoryCounts => Set<InventoryCount>();
     public DbSet<MedicationChangeEvent> MedicationChangeEvents => Set<MedicationChangeEvent>();

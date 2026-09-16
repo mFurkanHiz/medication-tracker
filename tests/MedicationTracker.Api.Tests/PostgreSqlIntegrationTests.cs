@@ -16,6 +16,76 @@ namespace MedicationTracker.Api.Tests;
 public sealed class PostgreSqlIntegrationTests
 {
     [PostgreSqlFact]
+    public async Task Package_lending_preserves_owner_stock_and_audited_return_with_household_authorization()
+    {
+        await using var factory = new PostgreSqlApiFactory(Environment.GetEnvironmentVariable("MEDICATION_TRACKER_TEST_POSTGRES")!);
+        using (var migrationScope = factory.Services.CreateScope())
+            await migrationScope.ServiceProvider.GetRequiredService<MedicationTrackerDbContext>().Database.MigrateAsync();
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost") });
+        client.DefaultRequestHeaders.Add("X-Medication-Client", "1");
+        var household = await PostAndReadId(client, "/api/auth/register", new { email = $"loan-{Guid.NewGuid():N}@example.invalid", password = "Synthetic-test-password", confirmPassword = "Synthetic-test-password" }, "householdId");
+        var path = $"/api/households/{household}";
+        var owner = await PostAndReadId(client, $"{path}/people", new { name = "Synthetic owner" }, "id");
+        var borrower = await PostAndReadId(client, $"{path}/people", new { name = "Synthetic borrower" }, "id");
+        var medication = await PostAndReadId(client, $"{path}/medications", new
+        {
+            personId = (Guid?)null, name = "Synthetic loan tablet", form = "tablet", stockNumerator = 0, stockDenominator = 1,
+            packages = new[] { new { capacityNumerator = 3, capacityDenominator = 2, remainingNumerator = 3, remainingDenominator = 2, personId = owner } }
+        }, "id");
+        var workspace = await client.GetFromJsonAsync<JsonElement>($"{path}/workspace");
+        var package = workspace.GetProperty("medications")[0].GetProperty("packages")[0];
+        var packageId = package.GetProperty("id").GetGuid();
+        Assert.Equal(owner, package.GetProperty("ownerPersonId").GetGuid());
+        Assert.Equal(owner, package.GetProperty("personId").GetGuid());
+
+        using var outsider = factory.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost") });
+        outsider.DefaultRequestHeaders.Add("X-Medication-Client", "1");
+        await PostAndReadId(outsider, "/api/auth/register", new { email = $"loan-outsider-{Guid.NewGuid():N}@example.invalid", password = "Synthetic-test-password", confirmPassword = "Synthetic-test-password" }, "householdId");
+        var loanRequest = new { idempotencyKey = $"loan-{Guid.NewGuid():N}", borrowerPersonId = borrower };
+        Assert.Equal(HttpStatusCode.Forbidden, (await outsider.PostAsJsonAsync($"{path}/inventory/packages/{packageId}/loans", loanRequest)).StatusCode);
+        var loanResponse = await client.PostAsJsonAsync($"{path}/inventory/packages/{packageId}/loans", loanRequest);
+        loanResponse.EnsureSuccessStatusCode();
+        var loanId = (await loanResponse.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
+        var replay = await client.PostAsJsonAsync($"{path}/inventory/packages/{packageId}/loans", loanRequest);
+        Assert.True((await replay.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("replayed").GetBoolean());
+        Assert.Equal(HttpStatusCode.Conflict, (await client.PostAsJsonAsync($"{path}/inventory/packages/{packageId}/assignment", new { idempotencyKey = Guid.NewGuid().ToString(), personId = owner })).StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, (await client.DeleteAsync($"{path}/medications/{medication}")).StatusCode);
+        workspace = await client.GetFromJsonAsync<JsonElement>($"{path}/workspace");
+        package = workspace.GetProperty("medications")[0].GetProperty("packages")[0];
+        Assert.Equal(owner, package.GetProperty("ownerPersonId").GetGuid());
+        Assert.Equal(borrower, package.GetProperty("personId").GetGuid());
+        Assert.Equal(loanId, package.GetProperty("activeLoanId").GetGuid());
+        Assert.Equal(3, package.GetProperty("remainingNumerator").GetInt64());
+        Assert.Equal(2, package.GetProperty("remainingDenominator").GetInt64());
+        Assert.Equal(HttpStatusCode.Forbidden, (await outsider.PostAsJsonAsync($"{path}/inventory/loans/{loanId}/return", new { idempotencyKey = Guid.NewGuid().ToString() })).StatusCode);
+
+        var regimenResponse = await client.PostAsJsonAsync($"{path}/regimens", new { personId = borrower, medicationId = medication, validFrom = (DateOnly?)null, validTo = (DateOnly?)null, doseNumerator = 1, doseDenominator = 2, localTime = (TimeOnly?)null, timeZoneId = "Europe/Istanbul", scheduleType = "as_needed" });
+        regimenResponse.EnsureSuccessStatusCode();
+        var regimenVersion = (await regimenResponse.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("regimenVersionId").GetGuid();
+        (await client.PostAsJsonAsync($"{path}/sync/administrations", new { idempotencyKey = Guid.NewGuid().ToString(), regimenVersionId = regimenVersion, scheduledFor = (DateTimeOffset?)null, takenAt = DateTimeOffset.UtcNow, outcome = "taken" })).EnsureSuccessStatusCode();
+
+        var returnRequest = new { idempotencyKey = $"return-{Guid.NewGuid():N}" };
+        (await client.PostAsJsonAsync($"{path}/inventory/loans/{loanId}/return", returnRequest)).EnsureSuccessStatusCode();
+        var returnReplay = await client.PostAsJsonAsync($"{path}/inventory/loans/{loanId}/return", returnRequest);
+        Assert.True((await returnReplay.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("replayed").GetBoolean());
+        workspace = await client.GetFromJsonAsync<JsonElement>($"{path}/workspace");
+        package = workspace.GetProperty("medications")[0].GetProperty("packages")[0];
+        Assert.Equal(owner, package.GetProperty("ownerPersonId").GetGuid());
+        Assert.Equal(owner, package.GetProperty("personId").GetGuid());
+        Assert.Equal(JsonValueKind.Null, package.GetProperty("activeLoanId").ValueKind);
+        Assert.Equal(1, package.GetProperty("remainingNumerator").GetInt64());
+        Assert.Equal(1, package.GetProperty("remainingDenominator").GetInt64());
+        Assert.Equal(1, workspace.GetProperty("medications")[0].GetProperty("stockNumerator").GetInt64());
+        Assert.Equal(1, workspace.GetProperty("medications")[0].GetProperty("stockDenominator").GetInt64());
+        var kinds = workspace.GetProperty("activities").EnumerateArray().Select(x => x.GetProperty("kind").GetString()).ToArray();
+        Assert.Contains("package_lent", kinds); Assert.Contains("package_returned", kinds);
+        using var scope = factory.Services.CreateScope(); var db = scope.ServiceProvider.GetRequiredService<MedicationTrackerDbContext>();
+        Assert.Equal(1, await db.InventoryLoans.CountAsync(x => x.Id == loanId && x.ReturnedAt != null));
+        Assert.Equal(3, await db.InventoryPackageAssignmentEvents.CountAsync(x => x.PackageId == packageId));
+        Assert.Equal(2, await db.InventoryLedgerEntries.CountAsync(x => x.PackageId == packageId));
+    }
+
+    [PostgreSqlFact]
     public async Task Bulk_inventory_counts_are_idempotent_and_corrections_create_immutable_revisions()
     {
         await using var factory = new PostgreSqlApiFactory(Environment.GetEnvironmentVariable("MEDICATION_TRACKER_TEST_POSTGRES")!);

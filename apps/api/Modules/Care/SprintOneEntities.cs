@@ -85,16 +85,18 @@ public sealed class InventoryPackage
     private InventoryPackage() { }
     public InventoryPackage(Guid id, Guid householdId, Guid inventoryItemId, Guid? personId,
         long capacityNumerator, long capacityDenominator, DateTimeOffset createdAt) =>
-        (Id, HouseholdId, InventoryItemId, PersonId, CapacityNumerator, CapacityDenominator, CreatedAt) =
-        (id, householdId, inventoryItemId, personId, capacityNumerator, capacityDenominator, createdAt);
+        (Id, HouseholdId, InventoryItemId, OwnerPersonId, PersonId, CapacityNumerator, CapacityDenominator, CreatedAt) =
+        (id, householdId, inventoryItemId, personId, personId, capacityNumerator, capacityDenominator, createdAt);
     public Guid Id { get; private set; }
     public Guid HouseholdId { get; private set; }
     public Guid InventoryItemId { get; private set; }
+    public Guid? OwnerPersonId { get; private set; }
     public Guid? PersonId { get; private set; }
     public long CapacityNumerator { get; private set; }
     public long CapacityDenominator { get; private set; }
     public DateTimeOffset CreatedAt { get; private set; }
     public void AssignTo(Guid? personId) => PersonId = personId;
+    public void AssignOwner(Guid? personId) => (OwnerPersonId, PersonId) = (personId, personId);
 }
 
 public sealed class InventoryPackageAssignmentEvent
@@ -111,6 +113,26 @@ public sealed class InventoryPackageAssignmentEvent
     public Guid? FromPersonId { get; private set; }
     public Guid? ToPersonId { get; private set; }
     public DateTimeOffset RecordedAt { get; private set; }
+}
+
+public sealed class InventoryLoan
+{
+    private InventoryLoan() { }
+    public InventoryLoan(Guid id, Guid householdId, Guid packageId, Guid ownerPersonId, Guid borrowerPersonId,
+        Guid lentByAccountId, DateTimeOffset lentAt) =>
+        (Id, HouseholdId, PackageId, OwnerPersonId, BorrowerPersonId, LentByAccountId, LentAt) =
+        (id, householdId, packageId, ownerPersonId, borrowerPersonId, lentByAccountId, lentAt);
+    public Guid Id { get; private set; }
+    public Guid HouseholdId { get; private set; }
+    public Guid PackageId { get; private set; }
+    public Guid OwnerPersonId { get; private set; }
+    public Guid BorrowerPersonId { get; private set; }
+    public Guid LentByAccountId { get; private set; }
+    public DateTimeOffset LentAt { get; private set; }
+    public Guid? ReturnedByAccountId { get; private set; }
+    public DateTimeOffset? ReturnedAt { get; private set; }
+    public void Return(Guid accountId, DateTimeOffset returnedAt) =>
+        (ReturnedByAccountId, ReturnedAt) = (accountId, returnedAt);
 }
 
 public sealed class MedicationChangeEvent

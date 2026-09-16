@@ -38,6 +38,13 @@ unknown. Allocation from loose stock to a package creates balanced ledger entrie
 it does not rewrite history. Package assignment changes create actor-attributed
 events. Ownership/allocation is separate from physical location.
 
+Whole-package lending keeps `OwnerPersonId` unchanged and temporarily moves the
+current `PersonId` allocation to a household borrower. An `InventoryLoan` records
+the actor and time of lending and return, while assignment events record both
+transitions. An active loan blocks owner reassignment and medication deletion.
+Lending and return do not change the exact stock ledger because no tablets are
+created or removed; use by the borrower still creates normal consumption entries.
+
 ## Inventory count and bulk update
 
 An `InventoryCountBatch` records the household, accepting account, acceptance time,

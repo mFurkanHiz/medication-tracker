@@ -69,10 +69,21 @@ public sealed class InventoryPackageConfiguration : IEntityTypeConfiguration<Inv
     public void Configure(EntityTypeBuilder<InventoryPackage> b)
     {
         b.ToTable("packages", "inventory", t => t.HasCheckConstraint("ck_packages_capacity", "capacity_numerator > 0 AND capacity_denominator > 0")); b.HasKey(x => x.Id);
-        b.Property(x => x.Id).HasColumnName("id"); b.Property(x => x.HouseholdId).HasColumnName("household_id"); b.Property(x => x.InventoryItemId).HasColumnName("inventory_item_id"); b.Property(x => x.PersonId).HasColumnName("person_id");
+        b.Property(x => x.Id).HasColumnName("id"); b.Property(x => x.HouseholdId).HasColumnName("household_id"); b.Property(x => x.InventoryItemId).HasColumnName("inventory_item_id"); b.Property(x => x.OwnerPersonId).HasColumnName("owner_person_id"); b.Property(x => x.PersonId).HasColumnName("person_id");
         b.Property(x => x.CapacityNumerator).HasColumnName("capacity_numerator"); b.Property(x => x.CapacityDenominator).HasColumnName("capacity_denominator"); b.Property(x => x.CreatedAt).HasColumnName("created_at");
-        b.HasOne<Household>().WithMany().HasForeignKey(x => x.HouseholdId).OnDelete(DeleteBehavior.Restrict); b.HasOne<InventoryItem>().WithMany().HasForeignKey(x => x.InventoryItemId).OnDelete(DeleteBehavior.Restrict); b.HasOne<Person>().WithMany().HasForeignKey(x => x.PersonId).OnDelete(DeleteBehavior.Restrict);
+        b.HasOne<Household>().WithMany().HasForeignKey(x => x.HouseholdId).OnDelete(DeleteBehavior.Restrict); b.HasOne<InventoryItem>().WithMany().HasForeignKey(x => x.InventoryItemId).OnDelete(DeleteBehavior.Restrict); b.HasOne<Person>().WithMany().HasForeignKey(x => x.OwnerPersonId).OnDelete(DeleteBehavior.Restrict); b.HasOne<Person>().WithMany().HasForeignKey(x => x.PersonId).OnDelete(DeleteBehavior.Restrict);
         b.HasIndex(x => new { x.HouseholdId, x.InventoryItemId });
+    }
+}
+
+public sealed class InventoryLoanConfiguration : IEntityTypeConfiguration<InventoryLoan>
+{
+    public void Configure(EntityTypeBuilder<InventoryLoan> b)
+    {
+        b.ToTable("package_loans", "inventory", t => t.HasCheckConstraint("ck_package_loans_people", "owner_person_id <> borrower_person_id")); b.HasKey(x => x.Id);
+        b.Property(x => x.Id).HasColumnName("id"); b.Property(x => x.HouseholdId).HasColumnName("household_id"); b.Property(x => x.PackageId).HasColumnName("package_id"); b.Property(x => x.OwnerPersonId).HasColumnName("owner_person_id"); b.Property(x => x.BorrowerPersonId).HasColumnName("borrower_person_id"); b.Property(x => x.LentByAccountId).HasColumnName("lent_by_account_id"); b.Property(x => x.LentAt).HasColumnName("lent_at"); b.Property(x => x.ReturnedByAccountId).HasColumnName("returned_by_account_id"); b.Property(x => x.ReturnedAt).HasColumnName("returned_at");
+        b.HasOne<Household>().WithMany().HasForeignKey(x => x.HouseholdId).OnDelete(DeleteBehavior.Restrict); b.HasOne<InventoryPackage>().WithMany().HasForeignKey(x => x.PackageId).OnDelete(DeleteBehavior.Restrict); b.HasOne<Person>().WithMany().HasForeignKey(x => x.OwnerPersonId).OnDelete(DeleteBehavior.Restrict); b.HasOne<Person>().WithMany().HasForeignKey(x => x.BorrowerPersonId).OnDelete(DeleteBehavior.Restrict); b.HasOne<Account>().WithMany().HasForeignKey(x => x.LentByAccountId).OnDelete(DeleteBehavior.Restrict); b.HasOne<Account>().WithMany().HasForeignKey(x => x.ReturnedByAccountId).OnDelete(DeleteBehavior.Restrict);
+        b.HasIndex(x => new { x.HouseholdId, x.PackageId }).HasFilter("returned_at IS NULL").IsUnique();
     }
 }
 

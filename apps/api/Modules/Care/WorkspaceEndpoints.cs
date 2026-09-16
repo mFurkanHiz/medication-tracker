@@ -54,11 +54,62 @@ public static class WorkspaceEndpoints
             if (prior is not null) return Results.Ok(new { id = prior.ResultEntityId, replayed = true });
             var package = await db.InventoryPackages.SingleOrDefaultAsync(x => x.HouseholdId == householdId && x.Id == packageId, ct);
             if (package is null) return Results.NotFound();
+            if (await db.InventoryLoans.AnyAsync(x => x.HouseholdId == householdId && x.PackageId == packageId && x.ReturnedAt == null, ct)) return Results.Conflict(new { code = "package_on_loan" });
             var actor = Actor(context); var now = DateTimeOffset.UtcNow; var previous = package.PersonId;
-            package.AssignTo(request.PersonId); db.InventoryPackageAssignmentEvents.Add(new InventoryPackageAssignmentEvent(Guid.NewGuid(), householdId, package.Id, actor, previous, request.PersonId, now));
+            package.AssignOwner(request.PersonId); db.InventoryPackageAssignmentEvents.Add(new InventoryPackageAssignmentEvent(Guid.NewGuid(), householdId, package.Id, actor, previous, request.PersonId, now));
             db.SyncCommandReceipts.Add(new SyncCommandReceipt(Guid.NewGuid(), householdId, actor, request.IdempotencyKey, "package.assigned", package.Id, now));
             await db.SaveChangesAsync(ct); await transaction.CommitAsync(ct);
             return Results.Ok(new { id = package.Id, replayed = false });
+        });
+
+        app.MapPost("/api/households/{householdId:guid}/inventory/packages/{packageId:guid}/loans", async (Guid householdId, Guid packageId, CreatePackageLoanRequest request, HttpContext context, MedicationTrackerDbContext db, CancellationToken ct) =>
+        {
+            if (!await IsMember(db, householdId, context, ct)) return Results.StatusCode(403);
+            if (string.IsNullOrWhiteSpace(request.IdempotencyKey) || request.IdempotencyKey.Length > 100) return Results.BadRequest();
+            await using var transaction = await db.Database.BeginTransactionAsync(ct);
+            await db.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock(hashtextextended({householdId.ToString()}, 0))", ct);
+            var prior = await db.SyncCommandReceipts.AsNoTracking().SingleOrDefaultAsync(x => x.HouseholdId == householdId && x.IdempotencyKey == request.IdempotencyKey, ct);
+            if (prior is not null) return Results.Ok(new { id = prior.ResultEntityId, replayed = true });
+            var package = await db.InventoryPackages.SingleOrDefaultAsync(x => x.HouseholdId == householdId && x.Id == packageId, ct);
+            if (package is null || package.OwnerPersonId is null) return Results.NotFound();
+            var medicationAvailable = await (from item in db.InventoryItems
+                                             join medication in db.Medications on item.MedicationId equals medication.Id
+                                             where item.Id == package.InventoryItemId && item.HouseholdId == householdId && medication.DeletedAt == null
+                                             select medication.Id).AnyAsync(ct);
+            if (!medicationAvailable) return Results.NotFound();
+            if (package.PersonId != package.OwnerPersonId || request.BorrowerPersonId == package.OwnerPersonId || await db.InventoryLoans.AnyAsync(x => x.HouseholdId == householdId && x.PackageId == packageId && x.ReturnedAt == null, ct)) return Results.Conflict(new { code = "package_not_lendable" });
+            if (!await db.People.AnyAsync(x => x.HouseholdId == householdId && x.Id == request.BorrowerPersonId, ct)) return Results.NotFound();
+            var packageEntries = await db.InventoryLedgerEntries.AsNoTracking().Where(x => x.HouseholdId == householdId && x.PackageId == packageId).ToListAsync(ct);
+            var balance = packageEntries.Aggregate(new ExactQuantity(0), (sum, entry) => sum + new ExactQuantity(entry.QuantityNumerator, entry.QuantityDenominator));
+            if (balance.Numerator <= 0) return Results.Conflict(new { code = "empty_package" });
+            var actor = Actor(context); var now = DateTimeOffset.UtcNow;
+            var loan = new InventoryLoan(Guid.NewGuid(), householdId, package.Id, package.OwnerPersonId.Value, request.BorrowerPersonId, actor, now);
+            package.AssignTo(request.BorrowerPersonId);
+            db.InventoryLoans.Add(loan);
+            db.InventoryPackageAssignmentEvents.Add(new InventoryPackageAssignmentEvent(Guid.NewGuid(), householdId, package.Id, actor, loan.OwnerPersonId, loan.BorrowerPersonId, now));
+            db.SyncCommandReceipts.Add(new SyncCommandReceipt(Guid.NewGuid(), householdId, actor, request.IdempotencyKey, "package.lent", loan.Id, now));
+            await db.SaveChangesAsync(ct); await transaction.CommitAsync(ct);
+            return Results.Ok(new { id = loan.Id, replayed = false });
+        });
+
+        app.MapPost("/api/households/{householdId:guid}/inventory/loans/{loanId:guid}/return", async (Guid householdId, Guid loanId, ReturnPackageLoanRequest request, HttpContext context, MedicationTrackerDbContext db, CancellationToken ct) =>
+        {
+            if (!await IsMember(db, householdId, context, ct)) return Results.StatusCode(403);
+            if (string.IsNullOrWhiteSpace(request.IdempotencyKey) || request.IdempotencyKey.Length > 100) return Results.BadRequest();
+            await using var transaction = await db.Database.BeginTransactionAsync(ct);
+            await db.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock(hashtextextended({householdId.ToString()}, 0))", ct);
+            var prior = await db.SyncCommandReceipts.AsNoTracking().SingleOrDefaultAsync(x => x.HouseholdId == householdId && x.IdempotencyKey == request.IdempotencyKey, ct);
+            if (prior is not null) return Results.Ok(new { id = prior.ResultEntityId, replayed = true });
+            var loan = await db.InventoryLoans.SingleOrDefaultAsync(x => x.HouseholdId == householdId && x.Id == loanId && x.ReturnedAt == null, ct);
+            if (loan is null) return Results.NotFound();
+            var package = await db.InventoryPackages.SingleAsync(x => x.HouseholdId == householdId && x.Id == loan.PackageId, ct);
+            if (package.PersonId != loan.BorrowerPersonId || package.OwnerPersonId != loan.OwnerPersonId) return Results.Conflict(new { code = "loan_allocation_changed" });
+            var actor = Actor(context); var now = DateTimeOffset.UtcNow;
+            package.AssignTo(loan.OwnerPersonId); loan.Return(actor, now);
+            db.InventoryPackageAssignmentEvents.Add(new InventoryPackageAssignmentEvent(Guid.NewGuid(), householdId, package.Id, actor, loan.BorrowerPersonId, loan.OwnerPersonId, now));
+            db.SyncCommandReceipts.Add(new SyncCommandReceipt(Guid.NewGuid(), householdId, actor, request.IdempotencyKey, "package.returned", loan.Id, now));
+            await db.SaveChangesAsync(ct); await transaction.CommitAsync(ct);
+            return Results.Ok(new { id = loan.Id, replayed = false });
         });
 
         // Backwards-compatible metadata endpoint for older clients.
@@ -93,6 +144,12 @@ public static class WorkspaceEndpoints
             if (!await IsMember(db, householdId, context, ct)) return Results.StatusCode(403);
             var medication = await db.Medications.SingleOrDefaultAsync(x => x.HouseholdId == householdId && x.Id == medicationId && x.DeletedAt == null, ct);
             if (medication is null) return Results.NotFound();
+            var activeLoan = await (from loan in db.InventoryLoans
+                                    join package in db.InventoryPackages on loan.PackageId equals package.Id
+                                    join item in db.InventoryItems on package.InventoryItemId equals item.Id
+                                    where loan.HouseholdId == householdId && loan.ReturnedAt == null && item.MedicationId == medicationId
+                                    select loan.Id).AnyAsync(ct);
+            if (activeLoan) return Results.Conflict(new { code = "active_package_loan" });
             var actor = Actor(context); var now = DateTimeOffset.UtcNow; var previous = MedicationSnapshot(medication);
             medication.Delete(now);
             db.MedicationChangeEvents.Add(new MedicationChangeEvent(Guid.NewGuid(), householdId, medication.Id, actor, "deleted", previous, null, now));
@@ -221,6 +278,7 @@ public static class WorkspaceEndpoints
             var medicationChanges = await db.MedicationChangeEvents.AsNoTracking().Where(x => x.HouseholdId == householdId).ToListAsync(ct);
             var regimenChanges = await db.RegimenChangeEvents.AsNoTracking().Where(x => x.HouseholdId == householdId).ToListAsync(ct);
             var assignmentEvents = await db.InventoryPackageAssignmentEvents.AsNoTracking().Where(x => x.HouseholdId == householdId).ToListAsync(ct);
+            var loans = await db.InventoryLoans.AsNoTracking().Where(x => x.HouseholdId == householdId).ToListAsync(ct);
             var countBatches = await db.InventoryCountBatches.AsNoTracking().Where(x => x.HouseholdId == householdId).OrderByDescending(x => x.AcceptedAt).ToListAsync(ct);
             var counts = await db.InventoryCounts.AsNoTracking().Where(x => x.HouseholdId == householdId && x.BatchId != null).ToListAsync(ct);
 
@@ -259,6 +317,13 @@ public static class WorkspaceEndpoints
                 var medicationId = itemMedicationIds[packageItems[e.PackageId]];
                 return new ActivityRow($"assignment:{e.Id}", e.ToPersonId is null ? "package_unassigned" : "package_assigned", medicationId, Name(medicationNames, medicationId), e.ToPersonId, Name(personNames, e.ToPersonId), null, null, e.RecordedAt, e.RecordedAt);
             }));
+            activities.AddRange(loans.SelectMany(loan =>
+            {
+                var medicationId = itemMedicationIds[packageItems[loan.PackageId]];
+                var rows = new List<ActivityRow> { new($"loan:{loan.Id}", "package_lent", medicationId, Name(medicationNames, medicationId), loan.BorrowerPersonId, Name(personNames, loan.BorrowerPersonId), null, null, loan.LentAt, loan.LentAt) };
+                if (loan.ReturnedAt is not null) rows.Add(new ActivityRow($"loan-return:{loan.Id}", "package_returned", medicationId, Name(medicationNames, medicationId), loan.OwnerPersonId, Name(personNames, loan.OwnerPersonId), null, null, loan.ReturnedAt.Value, loan.ReturnedAt.Value));
+                return rows;
+            }));
 
             return Results.Ok(new
             {
@@ -270,7 +335,8 @@ public static class WorkspaceEndpoints
                     var packageRows = packages.Where(x => x.InventoryItemId == item.Id).Select((package, index) =>
                     {
                         var balance = ledger.Where(x => x.PackageId == package.Id).Aggregate(new ExactQuantity(0), (sum, x) => sum + new ExactQuantity(x.QuantityNumerator, x.QuantityDenominator));
-                        return new { package.Id, number = index + 1, package.PersonId, package.CapacityNumerator, package.CapacityDenominator, remainingNumerator = balance.Numerator, remainingDenominator = balance.Denominator };
+                        var activeLoan = loans.SingleOrDefault(x => x.PackageId == package.Id && x.ReturnedAt == null);
+                        return new { package.Id, number = index + 1, package.OwnerPersonId, package.PersonId, activeLoanId = activeLoan?.Id, package.CapacityNumerator, package.CapacityDenominator, remainingNumerator = balance.Numerator, remainingDenominator = balance.Denominator };
                     });
                     return new { m.Id, m.PersonId, m.Name, m.Form, m.Strength, m.ActiveIngredient, m.Notes, m.Category, m.Tags, m.IsActive, inventoryItemId = item.Id, stockNumerator = stock.Numerator, stockDenominator = stock.Denominator, packages = packageRows };
                 }),
@@ -372,6 +438,8 @@ public static class WorkspaceEndpoints
 public sealed record InventoryRequest(string IdempotencyKey, string Kind, long Numerator, long Denominator);
 public sealed record AddPackageRequest(string IdempotencyKey, long CapacityNumerator, long CapacityDenominator, long RemainingNumerator, long RemainingDenominator, Guid? PersonId = null, bool FromExistingStock = false);
 public sealed record AssignPackageRequest(string IdempotencyKey, Guid? PersonId);
+public sealed record CreatePackageLoanRequest(string IdempotencyKey, Guid BorrowerPersonId);
+public sealed record ReturnPackageLoanRequest(string IdempotencyKey);
 public sealed record MedicationSettingsRequest(string? Category, string[]? Tags, bool IsActive);
 public sealed record MedicationUpdateRequest(Guid? PersonId, string Name, string Form, string? Strength, string? ActiveIngredient, string? Notes, string? Category, string[]? Tags, bool IsActive);
 public sealed record RegimenUpdateRequest(Guid PersonId, Guid MedicationId, DateOnly? ValidFrom, DateOnly? ValidTo, long DoseNumerator, long DoseDenominator, TimeOnly? LocalTime, string TimeZoneId, string ScheduleType = "scheduled", string? DayPeriod = null, string? MealRelation = null, int? MinimumIntervalMinutes = null);

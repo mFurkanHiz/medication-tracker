@@ -14,9 +14,11 @@
 - Do not move a required V1 criterion to a later release, narrow it, or mark it optional unless the owner explicitly approves that scope change.
 - When the owner says `continue` / `kaldığın yerden devam et`, resume from the current working tree plus `docs/v1-progress.md`; do not reconstruct or redesign the whole project from chat history.
 - Read only the code and documentation needed for the current V1 slice. Avoid broad repeated repository audits, repeated external research, and repeated architecture analysis unless new evidence makes them necessary.
+- **Bound each Codex turn:** select the next coherent, verifiable V1 implementation slice from the checkpoint; implement and test that slice; create a safe commit/PR as appropriate; update `docs/v1-progress.md` with evidence and the exact next action; then STOP the turn and report. Do not autonomously chain all remaining V1 requirements into one unbounded turn, even when the user's overall goal is to finish V1. A bounded turn is an execution boundary, NOT a scope reduction or a declaration that V1 is done.
+- If the slice is unexpectedly large, preserve a safe intermediate checkpoint and stop rather than indefinitely expanding the tool loop. Never claim to know remaining Codex quota unless a tool actually reports it. If the tool cannot see quota, acknowledge that limitation; a prompt cannot guarantee a token budget.
 - Use targeted tests while editing. Run the full quality gate once a coherent slice is ready for checkpoint/merge/release instead of repeatedly after every tiny change.
-- Create safe coherent commits during long work. Before ending a long session or when usage is constrained, leave a clean checkpoint and update `docs/v1-progress.md` with evidence and the exact next action.
-- Completing one task does not complete the project. After each slice, continue through the remaining `OPEN`/`PARTIAL` rows in `docs/v1-acceptance.md` until all required rows are `DONE`.
+- Create safe coherent commits during long work. Before ending a turn or when usage is constrained, leave a clean checkpoint and update `docs/v1-progress.md` with evidence and the exact next action. Protect any pre-existing uncommitted work before syncing or switching branches; do not discard it.
+- On the next separately authorized turn, resume from that checkpoint and select the next `OPEN`/`PARTIAL` acceptance row. Continue the *overall project* across bounded turns until all required rows are `DONE`; never reduce the owner's V1 scope to make a turn appear successful.
 - Never declare owner-accepted V1 complete until the acceptance document is fully satisfied and the owner explicitly accepts the release.
 
 ## Product boundary

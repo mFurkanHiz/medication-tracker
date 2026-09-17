@@ -19,7 +19,7 @@ namespace MedicationTracker.Api.Persistence.Migrations
                 nullable: true);
 
             // Existing assignments represented ownership before lending existed.
-            migrationBuilder.Sql("UPDATE inventory.packages SET owner_person_id = person_id WHERE person_id IS NOT NULL");
+            migrationBuilder.Sql("UPDATE inventory.packages SET owner_person_id = person_id WHERE person_id IS NOT NULL;");
 
             migrationBuilder.CreateTable(
                 name: "package_loans",

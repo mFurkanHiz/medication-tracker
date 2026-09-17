@@ -78,6 +78,7 @@ jobs:
         run: |
           set -euo pipefail
           dotnet tool restore
+          dotnet restore apps/api
           dotnet ef migrations script 0 20260912215957_V1MedicationCatalogPackagesFlexibleRegimens --project apps/api --output migration-baseline.sql
           container=$(docker create medication-tracker-api:ci)
           docker cp "$container:/app/migrations.sql" image-migrations.sql

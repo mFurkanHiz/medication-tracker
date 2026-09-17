@@ -9,6 +9,8 @@ This file is intentionally short. It exists so a new Codex session can continue 
 - The production baseline is not the final V1 acceptance point; see `docs/v1-acceptance.md`.
 - P0 medication CRUD/soft-delete, regimen versioning, atomic insufficient-stock rejection and unified activity/history were merged in PR #2.
 - Revisioned bulk inventory counts were merged in PR #5; whole-package lending/returns were merged in PR #6 (`dc878cb`). **Do not attempt to merge PR #6 again.**
+- Schedule work remains on open PR #9, outside the main-branch deployment candidate. Production still runs `e825931`; no newer main commit has been deployed.
+- PR #10 fixes the malformed package-loan migration SQL and gates the built API image's actual migration script against isolated PostgreSQL. Production migration and deployment remain pending separate owner approval.
 - Final V1 still has additional acceptance gaps; do not stop or declare V1 complete because a subset is merged.
 
 ## Resume protocol
@@ -26,9 +28,8 @@ When the owner says **"continue" / "kaldığın yerden devam et"**:
 
 ## Next exact action
 
-- Review the current working tree before changes. The next undeveloped acceptance slice is `Treatment schedules`: selected-weekday and arbitrary interval rules, date-aware dose generation, TR/EN web management, and relevant time-zone/DST tests. Work from the current code, not a new project.
-- Finish and verify one coherent schedule slice, commit/PR, update this checkpoint, and stop the current turn. Subsequent turns continue through the other `OPEN`/`PARTIAL` acceptance rows; this does **not** shrink owner-defined V1.
-- Deployment is separately blocked by unavailable project-scoped VPS SSH authentication in the Codex host (`Permission denied (publickey,password)`). Do **not** repeatedly attempt the same SSH connection or change server-wide settings. Preserve the evidence and request a scoped access fix from the owner when deployment is the next needed step. No recent production deployment has been verified here.
+- Verify the merged main CI artifact checksum, image commit labels, and packaged migration SQL against the successful isolated-PostgreSQL CI gate. Request the owner's separate approval before any production migration or deployment. Keep PR #9 out of that release.
+- After the separately authorized deployment turn, resume the remaining `OPEN`/`PARTIAL` V1 rows from this file and `docs/v1-acceptance.md`; this does **not** shrink owner-defined V1.
 
 ## Evidence checkpoint
 
@@ -37,3 +38,5 @@ When the owner says **"continue" / "kaldığın yerden devam et"**:
 - 2026-09-15: PR #5 revisioned bulk inventory counts merged; PostgreSQL CI `35020426322` passed 17 API tests and web/mobile/Docker checks.
 - 2026-09-16: PR #6 whole-package lending/returns merged (`dc878cb`); PostgreSQL API and web/mobile/Docker CI `35084942604` passed on the PR. Consult its exact CI evidence for new merge commit if necessary.
 - 2026-09-16: Corrected an outdated instruction to merge PR #6 and added an explicit bounded-turn handoff. The original V1 scope and required acceptance criteria are unchanged.
+- 2026-09-17: Production preflight for main `33056dd` verified CI artifact ZIP SHA-256 `5da9591c...` separately from image tar.gz SHA-256 `d2e850af...`. The packaged `migrations.sql` was malformed at the package-ownership backfill; deployment stopped before loading images or applying migrations. A fresh backup `.deploy/backups/pre-deploy-33056dd-20260916T221017Z.dump` passed `pg_restore -l`. Production checkout/images and seven applied migrations remained unchanged; other projects' container states were unchanged apart from elapsed time on an already-restarting container.
+- 2026-09-17: PR #10 corrects the migration source SQL terminator and adds CI coverage that executes the exact SQL extracted from the built API image twice on blank PostgreSQL 18 and twice over a synthetic seven-migration baseline, checking package ownership, count sessions, and ledger preservation. PR CI run `35210867794` passed API, web/mobile, Docker, and packaged-SQL PostgreSQL checks. No production migration or deployment was attempted.

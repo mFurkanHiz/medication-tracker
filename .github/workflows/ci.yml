@@ -39,8 +39,25 @@ jobs:
   clients:
     name: Web and mobile checks
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18.4-alpine
+        env:
+          POSTGRES_DB: medication_tracker_migration_blank
+          POSTGRES_USER: medication_tracker
+          POSTGRES_PASSWORD: medication_tracker_ci_only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U medication_tracker -d medication_tracker_migration_blank"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
       - uses: pnpm/action-setup@v6
         with:
           run_install: false
@@ -53,8 +70,34 @@ jobs:
       - run: pnpm typecheck:mobile
       - run: pnpm build:web
       - run: docker compose -f compose.web.yml config
-      - run: docker build --file apps/web/Dockerfile --tag medication-tracker-web:ci .
-      - run: docker build --file apps/api/Dockerfile --tag medication-tracker-api:ci .
+      - run: docker build --file apps/web/Dockerfile --tag medication-tracker-web:ci --label "org.opencontainers.image.revision=${GITHUB_SHA}" .
+      - run: docker build --file apps/api/Dockerfile --tag medication-tracker-api:ci --label "org.opencontainers.image.revision=${GITHUB_SHA}" .
+      - name: Test packaged migration SQL on isolated PostgreSQL
+        env:
+          ConnectionStrings__Database: Host=localhost;Database=design_only;Username=design_only
+        run: |
+          set -euo pipefail
+          dotnet tool restore
+          dotnet restore apps/api
+          dotnet ef migrations script 0 20260912215957_V1MedicationCatalogPackagesFlexibleRegimens --project apps/api --output migration-baseline.sql
+          container=$(docker create medication-tracker-api:ci)
+          docker cp "$container:/app/migrations.sql" image-migrations.sql
+          docker rm "$container"
+          sha256sum image-migrations.sql
+          test "$(docker image inspect medication-tracker-api:ci --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}')" = "$GITHUB_SHA"
+          test "$(docker image inspect medication-tracker-web:ci --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}')" = "$GITHUB_SHA"
+          pg() {
+            docker run --rm --network host -e PGPASSWORD=medication_tracker_ci_only -i postgres:18.4-alpine \
+              psql -h 127.0.0.1 -U medication_tracker -v ON_ERROR_STOP=1 -d "$1"
+          }
+          pg medication_tracker_migration_blank < image-migrations.sql
+          pg medication_tracker_migration_blank < image-migrations.sql
+          printf '%s\n' 'CREATE DATABASE medication_tracker_migration_upgrade;' | pg postgres
+          pg medication_tracker_migration_upgrade < migration-baseline.sql
+          pg medication_tracker_migration_upgrade < tests/migrations/baseline-seed.sql
+          pg medication_tracker_migration_upgrade < image-migrations.sql
+          pg medication_tracker_migration_upgrade < image-migrations.sql
+          pg medication_tracker_migration_upgrade < tests/migrations/verify-upgrade.sql
       - name: Package VPS web image
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: docker save medication-tracker-web:ci medication-tracker-api:ci | gzip -9 > medication-tracker-web.tar.gz

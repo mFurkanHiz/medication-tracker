@@ -16,6 +16,44 @@ namespace MedicationTracker.Api.Tests;
 public sealed class PostgreSqlIntegrationTests
 {
     [PostgreSqlFact]
+    public async Task Weekday_and_interval_schedules_only_generate_and_accept_due_dates()
+    {
+        await using var factory = new PostgreSqlApiFactory(Environment.GetEnvironmentVariable("MEDICATION_TRACKER_TEST_POSTGRES")!);
+        using (var scope = factory.Services.CreateScope()) await scope.ServiceProvider.GetRequiredService<MedicationTrackerDbContext>().Database.MigrateAsync();
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost") });
+        client.DefaultRequestHeaders.Add("X-Medication-Client", "1");
+        var household = await PostAndReadId(client, "/api/auth/register", new { email = $"schedule-{Guid.NewGuid():N}@example.invalid", password = "Synthetic-test-password", confirmPassword = "Synthetic-test-password" }, "householdId");
+        var path = $"/api/households/{household}";
+        var person = await PostAndReadId(client, $"{path}/people", new { name = "Synthetic schedule person" }, "id");
+        var medication = await PostAndReadId(client, $"{path}/medications", new { personId = (Guid?)null, name = "Synthetic schedule tablet", form = "tablet", stockNumerator = 6, stockDenominator = 1 }, "id");
+
+        var weekday = await client.PostAsJsonAsync($"{path}/regimens", new { personId = person, medicationId = medication, validFrom = (DateOnly?)null, validTo = (DateOnly?)null, doseNumerator = 1, doseDenominator = 1, localTime = new TimeOnly(2, 30), timeZoneId = "Europe/Berlin", scheduleType = "scheduled", recurrenceKind = "weekdays", weekdayMask = 1 << 6 });
+        weekday.EnsureSuccessStatusCode();
+        var weekdayVersion = (await weekday.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("regimenVersionId").GetGuid();
+        Assert.Empty((await client.GetFromJsonAsync<JsonElement>($"{path}/today?date=2026-03-28")).EnumerateArray());
+        var due = Assert.Single((await client.GetFromJsonAsync<JsonElement>($"{path}/today?date=2026-03-29")).EnumerateArray());
+        Assert.Equal(weekdayVersion, due.GetProperty("regimenVersionId").GetGuid());
+        Assert.Equal(new DateTimeOffset(2026, 3, 29, 1, 30, 0, TimeSpan.Zero), due.GetProperty("scheduledFor").GetDateTimeOffset());
+        var wrongDay = await client.PostAsJsonAsync($"{path}/sync/administrations", new { idempotencyKey = Guid.NewGuid().ToString(), regimenVersionId = weekdayVersion, scheduledFor = new DateTimeOffset(2026, 3, 28, 1, 30, 0, TimeSpan.Zero), takenAt = DateTimeOffset.UtcNow, outcome = "taken" });
+        Assert.Equal(HttpStatusCode.BadRequest, wrongDay.StatusCode);
+        (await client.PostAsJsonAsync($"{path}/sync/administrations", new { idempotencyKey = Guid.NewGuid().ToString(), regimenVersionId = weekdayVersion, scheduledFor = due.GetProperty("scheduledFor").GetDateTimeOffset(), takenAt = DateTimeOffset.UtcNow, outcome = "taken" })).EnsureSuccessStatusCode();
+
+        var invalidInterval = await client.PostAsJsonAsync($"{path}/regimens", new { personId = person, medicationId = medication, doseNumerator = 1, doseDenominator = 1, localTime = new TimeOnly(8, 0), timeZoneId = "Europe/Berlin", scheduleType = "scheduled", recurrenceKind = "interval", intervalDays = 3 });
+        Assert.Equal(HttpStatusCode.BadRequest, invalidInterval.StatusCode);
+        var interval = await client.PostAsJsonAsync($"{path}/regimens", new { personId = person, medicationId = medication, validFrom = new DateOnly(2026, 3, 28), validTo = (DateOnly?)null, doseNumerator = 1, doseDenominator = 1, localTime = new TimeOnly(8, 0), timeZoneId = "Europe/Berlin", scheduleType = "scheduled", recurrenceKind = "interval", intervalDays = 3 });
+        interval.EnsureSuccessStatusCode();
+        var intervalVersion = (await interval.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("regimenVersionId").GetGuid();
+        Assert.Equal(intervalVersion, Assert.Single((await client.GetFromJsonAsync<JsonElement>($"{path}/today?date=2026-03-31")).EnumerateArray()).GetProperty("regimenVersionId").GetGuid());
+        Assert.Empty((await client.GetFromJsonAsync<JsonElement>($"{path}/today?date=2026-04-01")).EnumerateArray());
+
+        var forecastMedication = await PostAndReadId(client, $"{path}/medications", new { personId = (Guid?)null, name = "Synthetic interval forecast", form = "tablet", stockNumerator = 2, stockDenominator = 1 }, "id");
+        (await client.PostAsJsonAsync($"{path}/regimens", new { personId = person, medicationId = forecastMedication, validFrom = new DateOnly(2026, 3, 28), validTo = (DateOnly?)null, doseNumerator = 1, doseDenominator = 1, localTime = new TimeOnly(8, 0), timeZoneId = "Europe/Berlin", scheduleType = "scheduled", recurrenceKind = "interval", intervalDays = 3 })).EnsureSuccessStatusCode();
+        var forecast = await client.GetFromJsonAsync<JsonElement>($"{path}/medications/{forecastMedication}/forecast?date=2026-03-28");
+        Assert.Equal(new DateOnly(2026, 4, 3), DateOnly.Parse(forecast.GetProperty("depletionDate").GetString()!));
+        Assert.Equal(6, forecast.GetProperty("fullDaysRemaining").GetInt32());
+    }
+
+    [PostgreSqlFact]
     public async Task Package_lending_preserves_owner_stock_and_audited_return_with_household_authorization()
     {
         await using var factory = new PostgreSqlApiFactory(Environment.GetEnvironmentVariable("MEDICATION_TRACKER_TEST_POSTGRES")!);

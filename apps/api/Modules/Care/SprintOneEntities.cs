@@ -193,11 +193,11 @@ public sealed class RegimenVersion
     public RegimenVersion(Guid id, Guid regimenId, DateOnly? validFrom, DateOnly? validTo, long doseNumerator,
         long doseDenominator, TimeOnly? localTime, string timeZoneId, DateTimeOffset createdAt,
         string scheduleType = "scheduled", string? dayPeriod = null, string? mealRelation = null,
-        int? minimumIntervalMinutes = null) =>
+        int? minimumIntervalMinutes = null, string recurrenceKind = "daily", int? weekdayMask = null, int? intervalDays = null) =>
         (Id, RegimenId, ValidFrom, ValidTo, DoseNumerator, DoseDenominator, LocalTime, TimeZoneId, CreatedAt,
-            ScheduleType, DayPeriod, MealRelation, MinimumIntervalMinutes) =
+            ScheduleType, DayPeriod, MealRelation, MinimumIntervalMinutes, RecurrenceKind, WeekdayMask, IntervalDays) =
         (id, regimenId, validFrom, validTo, doseNumerator, doseDenominator, localTime, timeZoneId, createdAt,
-            scheduleType, dayPeriod, mealRelation, minimumIntervalMinutes);
+            scheduleType, dayPeriod, mealRelation, minimumIntervalMinutes, recurrenceKind, weekdayMask, intervalDays);
     public Guid Id { get; private set; }
     public Guid RegimenId { get; private set; }
     public DateOnly? ValidFrom { get; private set; }
@@ -210,6 +210,9 @@ public sealed class RegimenVersion
     public string? DayPeriod { get; private set; }
     public string? MealRelation { get; private set; }
     public int? MinimumIntervalMinutes { get; private set; }
+    public string RecurrenceKind { get; private set; } = "daily";
+    public int? WeekdayMask { get; private set; }
+    public int? IntervalDays { get; private set; }
     public DateTimeOffset CreatedAt { get; private set; }
 }
 

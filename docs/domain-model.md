@@ -12,6 +12,12 @@ Timing supports:
 - Meal relation: fasting, with food, after food, before food, or irrelevant
 - Optional acceptable time window and minimum interval between administrations
 
+The implemented scheduled recurrence rules are daily, a Monday-first selected
+weekday mask, and an N-day interval anchored to the effective start date. The
+same local-date rule is used for today's plan, administration validation, and
+depletion projection; DST is resolved only when the local occurrence is mapped
+to an instant. As-needed use remains outside recurring generation.
+
 Named day periods are household/user preferences mapped to local time windows. They are not stored as hard-coded universal hours. Until preference windows and reminders are implemented, V1 stores the named period and uses local midnight only as an internal occurrence key; the UI never presents that key as the instruction time.
 
 ## Exact quantities

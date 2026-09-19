@@ -1,8 +1,14 @@
 -- Raise an error if a repeatable upgrade lost synthetic baseline data.
 DO $verify$
 BEGIN
-    IF (SELECT count(*) FROM infrastructure.__ef_migrations_history) <> 10 THEN
+    IF (SELECT count(*) FROM infrastructure.__ef_migrations_history) <> 11 THEN
         RAISE EXCEPTION 'Unexpected migration history count';
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM infrastructure.__ef_migrations_history
+        WHERE "MigrationId" = '20260916103329_ScheduledWeekdaysAndIntervals'
+    ) THEN
+        RAISE EXCEPTION 'Schedule recurrence migration was not applied';
     END IF;
     IF (SELECT count(*) FROM inventory.packages) <> 2 THEN
         RAISE EXCEPTION 'Package rows were not preserved';

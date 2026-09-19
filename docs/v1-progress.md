@@ -9,7 +9,7 @@ This file is intentionally short. It exists so a new Codex session can continue 
 - The production baseline is not the final V1 acceptance point; see `docs/v1-acceptance.md`.
 - P0 medication CRUD/soft-delete, regimen versioning, atomic insufficient-stock rejection and unified activity/history were merged in PR #2.
 - Revisioned bulk inventory counts were merged in PR #5; whole-package lending/returns were merged in PR #6 (`dc878cb`). **Do not attempt to merge PR #6 again.**
-- Selected-weekday and N-day interval treatment schedules are committed on `codex/v1-schedule-patterns` and proposed in PR #9. The PR is open, not merged or deployed; the `Treatment schedules` acceptance row remains `PARTIAL` until the branch is reviewed and integrated.
+- Selected-weekday and N-day interval treatment schedules are complete on `codex/v1-schedule-patterns` and proposed in PR #9. The branch now includes main `0b463d3a`, and the `Treatment schedules` row is `DONE` when this PR is integrated.
 - PR #10 fixed the malformed package-loan migration SQL and added a PostgreSQL gate for the migration script packaged in the API image; the corrected release is live.
 - Final V1 still has additional acceptance gaps; do not stop or declare V1 complete because a subset is merged.
 
@@ -28,8 +28,7 @@ When the owner says **"continue" / "kaldığın yerden devam et"**:
 
 ## Next exact action
 
-- Review PR #9 (`codex/v1-schedule-patterns`) and its synthetic weekday/interval/DST flow in the web UI. If review finds a schedule defect, fix it on that PR and rerun CI; otherwise merge the passing PR, then record the merge evidence and update the `Treatment schedules` acceptance row. Do not treat an open PR as a deployed or owner-accepted release.
-- Stop this turn at the schedule checkpoint. A subsequent separately authorized turn resumes from the current tree and acceptance contract; no other V1 feature starts during this turn.
+- Resume with the `Inventory ledger` acceptance row: enumerate every stock-mutating V1 workflow against ledger events, add the missing event coverage and PostgreSQL conservation/audit regression test, then update its acceptance evidence. Do not start alerts or refill eligibility in the same bounded turn.
 
 ## Evidence checkpoint
 
@@ -43,3 +42,4 @@ When the owner says **"continue" / "kaldığın yerden devam et"**:
 - 2026-09-17: PR #10 corrects the migration source SQL terminator and adds CI coverage that executes the exact SQL extracted from the built API image twice on blank PostgreSQL 18 and twice over a synthetic seven-migration baseline, checking package ownership, count sessions, and ledger preservation. PR CI run `35210867794` passed API, web/mobile, Docker, and packaged-SQL PostgreSQL checks. No production migration or deployment was attempted.
 - 2026-09-17: Schedule checkpoint `afb7d02` adds daily/weekday/interval recurrence, effective-date and administration validation, recurrence-aware forecast, TR/EN web management, EF migration, and synthetic tests. Main's newer instructions/checkpoint were integrated without discarding local work in merge `f9862fc`. Local gate: `.NET` 16 passed, 10 PostgreSQL-dependent skipped; web ESLint, mobile TypeScript, and web webpack production build passed. PR #9 CI run `35151804861` passed PostgreSQL API tests, standard web/mobile checks and both Docker builds. PR remains open and V1 remains incomplete.
 - 2026-09-19: Main `0b463d3a3b4afb15ee5fc0873b89fb0d5f4d50a1` was deployed from verified CI artifact `35211378823`. Backup `.deploy/backups/pre-deploy-0b463d3a-20260917T105200Z.dump` passed `pg_restore -l`; the existing database container and `.env.production` were preserved. All 10 migrations are applied, web returns HTTP 200, API readiness passes, and both running image revision labels match `0b463d3a`. The owner/user explicitly verified live medication create, edit, and delete successfully. All 23 non-Medication-Tracker containers were running at the final health check.
+- 2026-09-19: PR #9 was reviewed after merging main `0b463d3a` into its branch without discarding schedule work. Local gate after integration: 16 .NET tests passed and 10 PostgreSQL tests were correctly skipped without a local DB; web lint, mobile TypeScript, and web production build passed. The schedule acceptance row records the branch's weekday/interval/DST and PostgreSQL evidence; V1 remains incomplete.

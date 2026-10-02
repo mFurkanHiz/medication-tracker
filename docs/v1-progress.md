@@ -47,28 +47,26 @@ narrowed or moved out of V1:
 1. **Physical-device acceptance.** Offline mobile and local reminders are implemented
    and type-checked, but reboot, permission revocation, time-zone change, DST and Doze
    behaviour can only be proven on a real Android phone. Nothing here has run on one.
-2. **Inventory counting has no client surface.** The API and its revisioning are proven;
-   nothing in either client calls them.
-3. **Accessibility** has no formal audit and no screen-reader pass on a device.
-4. **Synthetic demo seed** for safe public demonstration.
-5. Package-level count reconciliation is modelled (`count_sessions.package_id`) but has
-   no client surface.
-6. **Mobile has no reports, export or counting surface.** This slice added all of
-   reports and export to the web client only. Rows 31 and 32 are satisfied — a user can
-   reach both behaviours — but the mobile client does not yet show them.
+2. **Accessibility** has no formal audit and no screen-reader pass on a device.
+3. **Synthetic demo seed** for safe public demonstration.
+4. **Mobile has no reports, export or counting surface.** These slices added all three
+   to the web client only. Rows 18, 31 and 32 are satisfied — a user can reach every
+   behaviour — but the mobile client does not yet show them.
+5. **The branch is not deployed.** Production still runs `371447da`, which has no
+   reports, no export and no counting screen.
 
 ## Next exact action
 
-The inventory counting client surface.
+Deploy the branch, then the synthetic demo seed.
 
-- The API is complete and proven, including revisioning and stale-revision rejection
-  (`POST /inventory/count-sessions` and its `/revisions`). It needs a client surface:
-  medication-level for the default user, package-level under advanced, on the web
-  client first. `api.countStock` already exists and is unused.
-- Counting is the last missing piece of acceptance row 30, and the client half of
-  row 18. Both say so explicitly.
-- After that, the remaining non-device work is the synthetic demo seed (row 35) and
-  mirroring reports/export/counting onto mobile.
+- **Deploy** is the immediate one and it needs the owner: see `docs/preflight.md` for
+  the prepared report and the exact steps. The agent session that wrote this could not
+  perform it — the environment's network policy denies both the VPS's SSH port and the
+  public hostname, and the session holds no deployment credentials.
+- **Synthetic demo seed** (row 35) is the last non-device, non-mobile item. It should
+  reuse the shape the browser checks already seed: a household, two people, a scheduled
+  and an as-needed medication, three packages, three weeks of mixed outcomes.
+- After that, mirroring reports, export and counting onto mobile.
 
 Physical-device acceptance for rows 28 and 29 needs the owner's Android phone and
 cannot be produced here.
@@ -232,6 +230,29 @@ When the owner says **"continue" / "kaldığın yerden devam et"**:
   misses, the refill-gap badge, and a real 39 KB file downloaded from the export button.
   Checked at 1280px and at 375px, in Turkish and English, with no untranslated string
   left behind and no console error beyond the expected pre-sign-in 401.
+- 2026-10-02: **Inventory counting surfaced (row 18, and the last gap in row 30).** The
+  write path already existed and was proven; nothing could read a count back, so the
+  client had no way to know which batch was still correctable. A
+  `GET /inventory/count-sessions` was added, reporting each accepted count with what the
+  ledger expected, what was found, the signed difference, the box ordinal where one was
+  counted, and `isRevisable` — the same linear-chain rule the write path enforces, so
+  the client never offers a correction the server is about to refuse. Five tests cover
+  it, cross-household refusal included.
+- 2026-10-02: The counting screen counts a whole medication by default and reconciles
+  individual boxes under an advanced disclosure. Browser-driven against a live API: an
+  unreadable amount is refused before anything is written, 38 → 35 was recorded,
+  corrected to 36 as revision 2 with the original left showing its own −3 and marked
+  superseded, then Box 1 reconciled 18 → 19 and Box 2 20 → 18, with the household total
+  following to 37. Two usability defects were found by looking at the rendered page
+  rather than the code: the advanced disclosure's summary and the button inside it
+  carried the same words while doing different things, and three box inputs all
+  announced as "Saydığınız" with nothing to tell them apart. Both fixed; each box field
+  is now addressable by its own ordinal.
+- 2026-10-02: **This session could not deploy.** The environment's network policy denies
+  the VPS SSH port and `medicationtracker.rapidconfigs.com` itself, and the session has
+  no `.env.production`, no image artifact and no SSH key. The preflight is prepared in
+  `docs/preflight.md` for the owner to execute; nothing was deployed and nothing on the
+  VPS was touched.
 - 2026-10-02: The first deployment attempt halted at backup verification and changed
   nothing — `pg_restore -l /dev/stdin` cannot read a custom-format archive from a pipe.
   The backup it had already written was confirmed sound (188 entries) and the outgoing

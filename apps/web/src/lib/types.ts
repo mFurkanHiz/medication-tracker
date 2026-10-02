@@ -239,6 +239,35 @@ export type InventoryReport = {
   refillGapCount: number;
 };
 
+/**
+ * One counted target inside an accepted count.
+ *
+ * `before` is what the ledger projected at the moment the count was accepted, so a
+ * revision measures against the balance the count it corrects left behind — not
+ * against the original.
+ */
+export type CountSessionLine = {
+  id: string;
+  medicationDefinitionId: string;
+  packageId: string | null;
+  /** The friendly ordinal, so the interface can say "Box 3". */
+  packageLabel: number | null;
+  before: Quantity;
+  observed: Quantity;
+  adjustment: Quantity;
+};
+
+export type CountSession = {
+  id: string;
+  revisionNumber: number;
+  previousBatchId: string | null;
+  acceptedAt: string;
+  accountId: string;
+  /** False once a later revision superseded it; the chain stays linear. */
+  isRevisable: boolean;
+  lines: CountSessionLine[];
+};
+
 export type Activity = {
   inventory: {
     id: string;

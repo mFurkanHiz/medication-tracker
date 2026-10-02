@@ -2,6 +2,7 @@ import type {
   Activity,
   AdherenceReport,
   AllocationDetail,
+  CountSession,
   DoseSource,
   Forecast,
   InventoryReport,
@@ -10,6 +11,17 @@ import type {
   Today,
   Workspace,
 } from './types';
+
+/**
+ * One counted target. `packageId` is absent for the everyday medication-level count and
+ * set only when an advanced user reconciles one physical box.
+ */
+export type CountLineInput = {
+  medicationDefinitionId: string;
+  observedNumerator: number;
+  observedDenominator?: number;
+  packageId?: string | null;
+};
 
 /**
  * The API rejects a mutation that does not carry this header. A cross-site form post
@@ -317,14 +329,35 @@ export const api = {
     };
   },
 
+  countSessions: (household: string) =>
+    request<{ sessions: CountSession[] }>(`/households/${household}/inventory/count-sessions`),
+
   countStock: (
     household: string,
     idempotencyKey: string,
-    lines: { medicationDefinitionId: string; observedNumerator: number; observedDenominator?: number; packageId?: string | null }[],
+    lines: CountLineInput[],
     note?: string,
   ) =>
     post<{ batchId: string; revisionNumber: number }>(
       `/households/${household}/inventory/count-sessions`,
+      { idempotencyKey, lines, note },
+    ),
+
+  /**
+   * Corrects an accepted count by appending a revision to it.
+   *
+   * Never an edit: the original stays exactly as it was accepted, and only the newest
+   * link in the chain may be revised, which the server refuses with `stale_revision`.
+   */
+  reviseCount: (
+    household: string,
+    batchId: string,
+    idempotencyKey: string,
+    lines: CountLineInput[],
+    note?: string,
+  ) =>
+    post<{ batchId: string; revisionNumber: number }>(
+      `/households/${household}/inventory/count-sessions/${batchId}/revisions`,
       { idempotencyKey, lines, note },
     ),
 };

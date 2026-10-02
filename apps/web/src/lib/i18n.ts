@@ -299,6 +299,43 @@ export const tr = {
   exportPreparing: 'Hazırlanıyor…',
   exportDone: 'Dosya indirildi.',
 
+  // Counting
+  counting: 'Sayım',
+  countingTitle: 'Elinizdekini sayın',
+  countingDescription:
+    'Saydığınız miktarı yazın. Yalnızca doldurduğunuz satırlar kaydedilir; boş bıraktıklarınıza dokunulmaz.',
+  countingExpected: 'Kayıttaki',
+  countingObserved: 'Saydığınız',
+  countingObservedHint: 'Örnek: 12, 7½, 3/2',
+  countingSubmit: 'Sayımı kaydet',
+  countingSubmitting: 'Kaydediliyor…',
+  countingNote: 'Not',
+  countingNoteOptional: 'isteğe bağlı',
+  countingNothingEntered: 'Kaydetmek için en az bir miktar girin.',
+  countingInvalidAmount: 'Bu miktar okunamadı.',
+  countingAccepted: 'Sayım kaydedildi.',
+  countingAdvanced: 'Gelişmiş: kutu bazlı sayım',
+  countingByPackage: 'Kutu kutu say',
+  countingByPackageHint:
+    'Kutuların tek tek sayısını girin. İlacın tamamı yerine yalnızca seçtiğiniz kutular düzeltilir.',
+  countingWholeMedication: 'İlacın tamamını say',
+  countingEmpty: 'Sayılacak ilaç yok.',
+  countingEmptyHint: 'Önce bir ilaç tanımlayın.',
+
+  // Count history and revisions
+  countingHistory: 'Geçmiş sayımlar',
+  countingHistoryEmpty: 'Henüz sayım yapılmadı.',
+  countingRevision: 'Düzeltme',
+  countingRevisionNumber: 'revizyon',
+  countingCorrect: 'Düzelt',
+  countingCorrecting: 'Bu sayımın düzeltmesini giriyorsunuz',
+  countingCorrectingHint:
+    'Kaydedilmiş sayım değiştirilmez; düzeltmeniz ona bağlı yeni bir revizyon olarak eklenir.',
+  countingCancelCorrection: 'Düzeltmeden vazgeç',
+  countingSuperseded: 'Daha yeni bir revizyon var',
+  countingMatched: 'Sayım tuttu',
+  countingDelta: 'Fark',
+
   // Safety
   safetyNotice:
     'Bu uygulama ilaç düzenlemesi ve takibi içindir. Teşhis koymaz, doz önermez ve ilaç etkileşimi değerlendirmez.',
@@ -581,6 +618,41 @@ export const en: Record<MessageKey, string> = {
   exportExcludesNotice: 'The file contains no account details, passwords, or session data.',
   exportPreparing: 'Preparing…',
   exportDone: 'File downloaded.',
+
+  counting: 'Count',
+  countingTitle: 'Count what you have',
+  countingDescription:
+    'Enter the amount you counted. Only the rows you fill in are recorded; anything left blank is untouched.',
+  countingExpected: 'On record',
+  countingObserved: 'You counted',
+  countingObservedHint: 'For example: 12, 7½, 3/2',
+  countingSubmit: 'Record the count',
+  countingSubmitting: 'Recording…',
+  countingNote: 'Note',
+  countingNoteOptional: 'optional',
+  countingNothingEntered: 'Enter at least one amount to record a count.',
+  countingInvalidAmount: 'That amount could not be read.',
+  countingAccepted: 'Count recorded.',
+  countingAdvanced: 'Advanced: count by box',
+  countingByPackage: 'Count box by box',
+  countingByPackageHint:
+    'Enter each box separately. Only the boxes you enter are reconciled, not the medication as a whole.',
+  countingWholeMedication: 'Count the whole medication',
+  countingEmpty: 'There is nothing to count.',
+  countingEmptyHint: 'Define a medication first.',
+
+  countingHistory: 'Past counts',
+  countingHistoryEmpty: 'No count has been recorded yet.',
+  countingRevision: 'Correction',
+  countingRevisionNumber: 'revision',
+  countingCorrect: 'Correct',
+  countingCorrecting: 'You are correcting this count',
+  countingCorrectingHint:
+    'The recorded count is never changed; your correction is appended to it as a new revision.',
+  countingCancelCorrection: 'Cancel the correction',
+  countingSuperseded: 'A newer revision exists',
+  countingMatched: 'Count matched',
+  countingDelta: 'Difference',
 
   safetyNotice:
     'This application organises and tracks medication. It does not diagnose, recommend a dose, or assess drug interactions.',

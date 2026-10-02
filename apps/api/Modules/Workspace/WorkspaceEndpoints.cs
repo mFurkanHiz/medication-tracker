@@ -19,6 +19,11 @@ public static class WorkspaceEndpoints
 {
     public const int ActivityPageSize = 200;
 
+    /// <summary>Accepted counts returned when the caller names no limit.</summary>
+    public const int DefaultCountSessionPageSize = 20;
+
+    public const int MaximumCountSessionPageSize = 100;
+
     public static IEndpointRouteBuilder MapWorkspaceEndpoints(this IEndpointRouteBuilder endpoints)
     {
         var api = endpoints.MapGroup("/api/households/{householdId:guid}");
@@ -259,6 +264,94 @@ public static class WorkspaceEndpoints
 
     private static void MapCountEndpoints(RouteGroupBuilder api)
     {
+        // Accepted counts, newest first. A count is an assertion about the physical world
+        // that the household may later discover was wrong, so the client has to be able
+        // to read one back before it can offer to revise it.
+        api.MapGet("/inventory/count-sessions", async (
+            Guid householdId,
+            int? limit,
+            HttpContext context,
+            MedicationTrackerDbContext db,
+            CancellationToken ct) =>
+        {
+            if (!await HouseholdAccess.IsMemberAsync(db, householdId, context, ct))
+            {
+                return ApiResults.Forbidden();
+            }
+
+            var take = Math.Clamp(limit ?? DefaultCountSessionPageSize, 1, MaximumCountSessionPageSize);
+
+            var batches = await db.InventoryCountBatches.AsNoTracking()
+                .Where(batch => batch.HouseholdId == householdId)
+                .OrderByDescending(batch => batch.AcceptedAt)
+                .ThenByDescending(batch => batch.Id)
+                .Take(take)
+                .ToListAsync(ct);
+
+            if (batches.Count == 0)
+            {
+                return Results.Ok(new { sessions = Array.Empty<object>() });
+            }
+
+            var ids = batches.Select(batch => batch.Id).ToList();
+
+            // A count row points at the legacy inventory item, so the medication is
+            // joined in rather than left for the client to resolve.
+            var lines = await (from count in db.InventoryCounts.AsNoTracking()
+                               join item in db.LegacyInventoryItems.AsNoTracking()
+                                   on count.LegacyInventoryItemId equals item.Id
+                               where count.HouseholdId == householdId
+                                     && count.BatchId != null
+                                     && ids.Contains(count.BatchId.Value)
+                               select new { count, item.MedicationDefinitionId }).ToListAsync(ct);
+
+            // Only the newest link in a chain may be revised, which is exactly the rule
+            // the write path enforces. Reporting it here keeps the client from offering
+            // a correction the server is going to refuse.
+            var superseded = (await db.InventoryCountBatches.AsNoTracking()
+                    .Where(batch => batch.HouseholdId == householdId
+                                    && batch.PreviousBatchId != null
+                                    && ids.Contains(batch.PreviousBatchId.Value))
+                    .Select(batch => batch.PreviousBatchId!.Value)
+                    .ToListAsync(ct))
+                .ToHashSet();
+
+            var ordinals = await db.Packages.AsNoTracking()
+                .Where(package => package.HouseholdId == householdId)
+                .Select(package => new { package.Id, package.Ordinal })
+                .ToDictionaryAsync(package => package.Id, package => package.Ordinal, ct);
+
+            return Results.Ok(new
+            {
+                sessions = batches.Select(batch => new
+                {
+                    id = batch.Id,
+                    revisionNumber = batch.RevisionNumber,
+                    previousBatchId = batch.PreviousBatchId,
+                    acceptedAt = batch.AcceptedAt,
+                    accountId = batch.AccountId,
+                    isRevisable = !superseded.Contains(batch.Id),
+                    lines = lines
+                        .Where(row => row.count.BatchId == batch.Id)
+                        .Select(row => new
+                        {
+                            row.count.Id,
+                            row.MedicationDefinitionId,
+                            row.count.PackageId,
+
+                            // The interface shows a box by its ordinal, never its identifier.
+                            packageLabel = row.count.PackageId is { } packageId
+                                           && ordinals.TryGetValue(packageId, out var ordinal)
+                                ? ordinal
+                                : (int?)null,
+                            before = InventoryEndpoints.Quantity(row.count.Before),
+                            observed = InventoryEndpoints.Quantity(row.count.Observed),
+                            adjustment = InventoryEndpoints.Quantity(row.count.Adjustment),
+                        }),
+                }),
+            });
+        });
+
         api.MapPost("/inventory/count-sessions", async (
             Guid householdId,
             BulkInventoryCountRequest request,

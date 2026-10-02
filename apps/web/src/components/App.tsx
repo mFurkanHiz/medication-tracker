@@ -5,6 +5,7 @@ import { ApiError, api } from '@/lib/api';
 import { LOCALES, LocaleProvider, dictionaries, errorKey, type MessageKey } from '@/lib/i18n';
 import { useStoredLocale } from '@/lib/locale-store';
 import type { Session, Workspace } from '@/lib/types';
+import { Counting } from './Counting';
 import { History } from './History';
 import { Inventory } from './Inventory';
 import { People } from './People';
@@ -17,6 +18,7 @@ import { Button, Notice, Spinner } from './ui';
 const TABS: { id: string; label: MessageKey }[] = [
   { id: 'today', label: 'today' },
   { id: 'inventory', label: 'inventory' },
+  { id: 'counting', label: 'counting' },
   { id: 'plans', label: 'plans' },
   { id: 'people', label: 'people' },
   { id: 'history', label: 'history' },
@@ -172,6 +174,8 @@ export function App() {
                 <Today household={household} workspace={workspace} onChanged={() => loadWorkspace()} />
               ) : tab === 'inventory' ? (
                 <Inventory household={household} workspace={workspace} onChanged={() => loadWorkspace()} />
+              ) : tab === 'counting' ? (
+                <Counting household={household} workspace={workspace} onChanged={() => loadWorkspace()} />
               ) : tab === 'plans' ? (
                 <Plans household={household} workspace={workspace} onChanged={() => loadWorkspace()} />
               ) : tab === 'people' ? (

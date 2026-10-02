@@ -1,135 +1,133 @@
-# Notion handoff — V1 domain rebuild
+# Notion devir notları — V1 paket-öncelikli yeniden yapım
 
-The Notion connector is **not authorised in this session**, so nothing was written to
-Notion. This file records exactly what to change there, so the project board can be
-brought up to date without re-deriving any of it.
+Notion bağlayıcısı **bu oturumda yetkilendirilmemiş**, bu yüzden Notion'a hiçbir şey
+yazılmadı. Bu dosya, panonun hiçbir şeyi yeniden türetmeden güncellenebilmesi için
+orada yapılacak değişiklikleri birebir kaydeder.
 
-To give an agent Notion access later: authorise the Notion connector in claude.ai
-connector settings, or run `claude mcp` / `/mcp` from an interactive session. Until
-then this file is the handoff.
+Bir ajana Notion erişimi vermek için: claude.ai bağlayıcı ayarlarından Notion'u
+yetkilendirin ya da etkileşimli bir oturumda `claude mcp` / `/mcp` çalıştırın. O zamana
+kadar devir belgesi bu dosyadır.
 
-Nothing in Notion should be deleted. The existing project, research page, Sprint 0,
-Sprint 1 and the earlier Codex task records are historical evidence and stay as they
-are.
+Notion'daki hiçbir kayıt silinmemeli. Mevcut proje, araştırma sayfası, Sprint 0,
+Sprint 1 ve eski Codex görevleri tarihsel kanıttır; oldukları gibi kalır.
 
-## 1. Existing records to read first (do not duplicate)
+## 1. Önce okunacak mevcut kayıtlar (kopyasını oluşturmayın)
 
-- Project: `https://app.notion.com/p/3d4afec61a3f81fba16cd94cf9c5fdee`
-- Research: `https://app.notion.com/p/3d4afec61a3f81928cace707a08da80e`
-- Completed Sprint 0: `https://app.notion.com/p/3d4afec61a3f81afaf46da73db2ccf48`
-- Completed Sprint 1: `https://app.notion.com/p/3d5afec61a3f81dbaa3bdad4bc7c00ec`
-- V1 completion task: `https://app.notion.com/p/3d9afec61a3f81ebabd2fad7483e3c7e`
+- Proje: `https://app.notion.com/p/3d4afec61a3f81fba16cd94cf9c5fdee`
+- Araştırma: `https://app.notion.com/p/3d4afec61a3f81928cace707a08da80e`
+- Tamamlanan Sprint 0: `https://app.notion.com/p/3d4afec61a3f81afaf46da73db2ccf48`
+- Tamamlanan Sprint 1: `https://app.notion.com/p/3d5afec61a3f81dbaa3bdad4bc7c00ec`
+- V1 tamamlama görevi: `https://app.notion.com/p/3d9afec61a3f81ebabd2fad7483e3c7e`
 
-There must be exactly one Medication Tracker project. Do not create a second one.
+Tek bir Medication Tracker projesi olmalı. İkincisini oluşturmayın.
 
-## 2. Project-level fields to update
+## 2. Proje düzeyinde güncellenecek alanlar
 
-| Field | New value |
+| Alan | Yeni değer |
 | --- | --- |
-| V1 status | **In progress — domain rebuilt, clients outstanding.** Not complete. |
-| Current branch | `claude/v1-domain-rebuild` |
-| Open PR | [#11](https://github.com/mFurkanHiz/medication-tracker/pull/11) |
-| Production commit | still `0b463d3a3b4afb15ee5fc0873b89fb0d5f4d50a1` — **not** redeployed |
-| Architecture decisions | ADR 0013 (rebuild strategy), ADR 0014 (package-first inventory) |
-| Scope authority | `docs/v1-acceptance.md`, reconciled 2026-10-02 |
-| Resumable checkpoint | `docs/v1-progress.md` |
+| V1 durumu | **Devam ediyor — API, web ve mobil yeniden yazıldı; cihaz kabulü ve raporlama açık.** Tamamlanmadı. |
+| Güncel dal | `claude/v1-domain-rebuild` |
+| Açık PR | [#11](https://github.com/mFurkanHiz/medication-tracker/pull/11) |
+| Production commit | dağıtımdan önce `0b463d3a3b4afb15ee5fc0873b89fb0d5f4d50a1` |
+| Mimari kararlar | ADR 0013 (yeniden yapım stratejisi), ADR 0014 (paket-öncelikli envanter) |
+| Kapsam otoritesi | `docs/v1-acceptance.md`, 2026-10-02'de uzlaştırıldı |
+| Devam noktası | `docs/v1-progress.md` |
 
-Add a project note: the owner redefined the inventory domain around medication
-definitions, physical packages and auditable consumption allocations. Acceptance rows
-whose previous evidence depended on the superseded model were re-opened; no required
-V1 item was narrowed or deferred.
+Projeye not olarak eklenecek: sahip, envanter alanını ilaç tanımları, fiziksel kutular
+ve denetlenebilir tüketim tahsisleri etrafında yeniden tanımladı. Kanıtı eski modele
+dayanan kabul satırları yeniden açıldı; zorunlu hiçbir V1 maddesi daraltılmadı veya
+ertelenmedi.
 
-## 3. Close out the existing PR #9 record
+## 3. PR #9 kaydının kapatılması
 
-PR #9 (`Add weekday and interval treatment schedules`) is **subsumed by PR #11**, not
-abandoned or rejected. PR #11 branches from PR #9's head, so its commits and authorship
-are preserved and its recurrence rules were carried onto the rebuilt plan model.
+PR #9 (`Add weekday and interval treatment schedules`) **PR #11 tarafından kapsandı**;
+reddedilmedi veya terk edilmedi. PR #11, PR #9'un ucundan dallandığı için commit'leri ve
+katkı sahipliği korunuyor; tekrarlama kuralları yeniden yazılmak yerine yeni plan
+modeline taşındı.
 
-Set its task status to *Superseded by PR #11* with that explanation. Do not merge PR #9
-separately.
+Durumunu *PR #11 tarafından kapsandı* olarak işaretleyin. PR #9'u ayrıca merge etmeyin.
 
-## 4. New sprint to create
+## 4. Oluşturulacak yeni sprint
 
-**Name:** `Medication Tracker — V1 Domain Rebuild`
+**Ad:** `Medication Tracker — V1 Domain Rebuild`
 
-**Goal:** Deliver the owner-defined package-first V1 — medication definitions, physical
-packages, auditable consumption allocations and corrections — across API, web, mobile
-and production, without reducing V1 scope.
+**Hedef:** Sahip tarafından tanımlanan paket-öncelikli V1'i — ilaç tanımları, fiziksel
+kutular, denetlenebilir tüketim tahsisleri ve düzeltmeleri — API, web, mobil ve
+production genelinde, V1 kapsamını daraltmadan teslim etmek.
 
-### Tasks
+### Görevler
 
-Status values below reflect reality as of 2026-10-02.
+Durumlar 2026-10-02 itibarıyla gerçeği yansıtır.
 
-| # | Task | Status | Notes to paste |
+| # | Görev | Durum | Nota yapıştırılacak açıklama |
 | --- | --- | --- | --- |
-| 1 | Existing system audit | **Done** | Measured the product at ~1,500 lines of C# plus ~650 of client code outside migration scaffolding. Kept: CI's packaged-migration gate, production compose/deploy/nginx/smoke, session identity, `ExactQuantity`, advisory-lock serialisation, revisioned counts, PR #9 recurrence. Rejected: the single ambiguous `Medication` entity, the capacity/balance package, the absent allocation record, the absent correction path. Recorded in ADR 0013. Also verified the `X-Account-Id` header was **not** an auth bypass — fragile design, not a live hole. |
-| 2 | Package-first domain redesign | **Done** | ADR 0014. `MedicationDefinition` → `MedicationPackage` → `AdministrationEvent` → `AdministrationAllocation` → ledger, with corrections as appended reversal + re-charge. `PackageConsumptionPolicy` is a unit-tested domain service. Commit `3f4d0cc`. |
-| 3 | Database / migration strategy | **Done** | Hand-assembled migration. EF scaffolded drop-and-create for five populated tables and mis-guessed two `administration_events` renames by position. Replaced with create-copy-drop plus 13 backfills; historical consumption promoted to allocations. `Down` refused; rollback is the verified backup. Commits `a18b8e1`, `d7c0a60`. |
-| 4 | API implementation | **Done** | Catalog, inventory/packages, plans, today, dose recording (automatic / specific package / loose / untracked), allocation correction, refill policy and forecast, counts, workspace and activity reads. Identity now read from the validated principal. |
-| 5 | Domain and API test coverage | **Done** | 99 local tests. PostgreSQL suite covers the mandatory acceptance scenario end to end, allocation correction conserving the total, concurrency, idempotency, untracked source, cross-household authorisation, capacity snapshotting, retire-through-ledger, refill gap, and count revisioning. |
-| 6 | Web UX rebuild | **Done** | Typed API client, exact-quantity module, complete TR/EN dictionaries typed so a missing translation fails the build, and screens per concern: Today (one-tap default, advanced source selection, allocation correction), medications with package detail, plans with versioning, people, history, refill settings, lending. Verified in a browser at desktop and 375px. Still missing from the web surface: counting, reports and export. |
-| 7 | **Mobile / offline rebuild** | **Next** | Durable SQLite + outbox, offline Today flow, idempotent sync, no silent last-write-wins on health or inventory records. Needs physical-device acceptance. |
-| 8 | Local reminders | Open | Reliability across reboot, notification and exact-alarm permissions, time-zone change, DST, and app update. Physical-device evidence required. Push is not a substitute. |
-| 9 | Reports and export | Open | Basic medication / adherence / inventory reporting plus export with no secret or cross-household leakage. |
-| 10 | Accessibility | Open | Large text, touch targets, screen-reader labels on core workflows. |
-| 11 | Synthetic demo seed | Open | Reproducible seed for safe public demonstration. Invented people and medications only. |
-| 12 | TR/EN completion | Open | Every user-facing string through a translation key across the rebuilt surfaces. |
-| 13 | Security hardening review | Open | Re-cover every rebuilt endpoint: household authorisation, export authorisation, rate limiting, log redaction, cross-household regression. |
-| 14 | Production migration and deploy | **Blocked** | Requires an owner-approved preflight report. The web client is rebuilt, so the branch is self-consistent; the mobile client is still broken against the new API, which the owner must accept before any deploy. |
-| 15 | Final owner acceptance | Open | Owner runs the acceptance flow and explicitly approves. |
+| 1 | Mevcut sistem denetimi | **Bitti** | Ürün, migration iskeleti dışında ~1.500 satır C# ve ~650 satır istemci kodu olarak ölçüldü. Korunanlar: CI'ın paketlenmiş migration geçidi, production compose/deploy/nginx/smoke, oturum kimliği, `ExactQuantity`, advisory-lock serileştirmesi, revizyonlu sayımlar, PR #9 tekrarlama kuralları. Reddedilenler: tek ve belirsiz `Medication` varlığı, kapasite/bakiye çifti olan paket, tahsis kaydının yokluğu, düzeltme yolunun yokluğu. ADR 0013'te kayıtlı. Ayrıca `X-Account-Id` başlığının **kimlik doğrulama açığı olmadığı** doğrulandı — kırılgan tasarım, canlı açık değil. |
+| 2 | Paket-öncelikli alan tasarımı | **Bitti** | ADR 0014. `MedicationDefinition` → `MedicationPackage` → `AdministrationEvent` → `AdministrationAllocation` → ledger; düzeltmeler eklenen iade + yeniden tahsis olarak. `PackageConsumptionPolicy` birim testli bir alan servisi. Commit `3f4d0cc`. |
+| 3 | Veritabanı / migration stratejisi | **Bitti** | Migration elle kuruldu. EF, dolu beş tabloyu düşürüp yeniden oluşturacaktı ve iki `administration_events` yeniden adlandırmasını konuma göre yanlış tahmin etmişti. Oluştur-kopyala-düşür + 13 geri doldurma ile değiştirildi; geçmiş tüketim tahsislere terfi ettirildi. `Down` reddediliyor; geri dönüş yolu doğrulanmış yedek. Commit `a18b8e1`, `d7c0a60`. |
+| 4 | API uygulaması | **Bitti** | Katalog, envanter/kutular, planlar, bugün, doz kaydı (otomatik / belirli kutu / kutusuz / takip edilmeyen), tahsis düzeltme, temin politikası ve tahmini, sayımlar, workspace ve aktivite okumaları. Kimlik artık doğrulanmış principal'dan okunuyor. |
+| 5 | Alan ve API test kapsamı | **Bitti** | Zorunlu kabul senaryosu uçtan uca, tahsis düzeltmesinin toplamı koruması, eşzamanlılık, idempotency, takip edilmeyen kaynak, ev-arası yetkilendirme, kapasite anlık görüntüsü, ledger üzerinden kullanımdan çıkarma, temin açığı ve sayım revizyonu. |
+| 6 | Web arayüzü yeniden yapımı | **Bitti** | Tipli API istemcisi, kesin miktar modülü, eksik çeviri derlemeyi bozacak şekilde tiplenmiş TR/EN sözlükleri, konu başına ekranlar: Bugün (tek dokunuş varsayılan, gelişmiş kaynak seçimi, tahsis düzeltme), kutu ayrıntılı ilaçlar, sürümlü planlar, kişiler, geçmiş, temin ayarları, ödünç verme. Tarayıcıda masaüstü ve 375px'te doğrulandı. Web yüzeyinde hâlâ eksik: sayım, raporlar, dışa aktarma. |
+| 7 | Mobil / çevrimdışı yeniden yapım | **Bitti (cihaz kabulü hariç)** | SQLite anlık görüntüsü, istek denenmeden önce commit edilen dayanıklı outbox, serileştirilmiş senkronizasyon, ağsız çalışan Bugün ekranı, gelişmiş kaynak seçimi, cihaz-yerel hatırlatıcılar. Çakışmalar yüzeye çıkarılıyor, sessizce çözülmüyor. **Fiziksel Android cihazda hiçbir şey çalıştırılmadı.** |
+| 8 | Yerel hatırlatıcılar | **Bitti (cihaz kabulü hariç)** | Kütüphanenin kendi Android manifest'i okunarak uygulandı: `BOOT_COMPLETED` ve `MY_PACKAGE_REPLACED` alıcıları var, yani yeniden başlatma ve güncelleme kendiliğinden kurtarılıyor. Saat dilimi alıcısı yok, bu yüzden uygulama her öne gelişte yeniden uzlaştırıyor. Açıkça belirtilen sınırlar: `SCHEDULE_EXACT_ALARM` istenmiyor (Doze'da gecikebilir); yalnızca adlandırılmış gün dilimi olan plana hatırlatıcı kurulmuyor (ürün saat uydurmaz); saat dilimi değişiminden sonraki ilk hatırlatıcı eski anda çalabilir. |
+| 9 | Raporlar ve dışa aktarma | Açık | Temel ilaç / uyum / envanter raporlaması ve sır ya da ev-arası veri sızdırmayan dışa aktarma. |
+| 10 | Sayım arayüzü | Açık | API ve revizyonlama kanıtlı; hiçbir istemci bunları çağırmıyor. |
+| 11 | Erişilebilirlik denetimi | Açık | Her iki istemcide etiketler, dokunma hedefleri ve odak halkaları var; resmî denetim ve ekran okuyucu geçişi yapılmadı. |
+| 12 | Sentetik demo seed | Açık | Güvenli kamuya açık gösterim için tekrarlanabilir seed. Yalnızca hayalî kişiler ve ilaçlar. |
+| 13 | Güvenlik sıkılaştırma incelemesi | Açık | Log redaksiyonu doğrulanmadı, mobil depolama incelenmedi, hız sınırlama yalnızca auth uçlarında. |
+| 14 | Production migration ve dağıtım | **Sahip onayladı** | Sahip 2026-10-02'de açıkça dağıtım talimatı verdi. Preflight raporu hazırlandı; dağıtım `docs/web-vps-deployment.md` içinde kayıtlı. |
+| 15 | Nihai sahip kabulü | Açık | Sahip `https://medicationtracker.rapidconfigs.com` üzerinde kabul akışını çalıştırıp açıkça onaylar. |
 
-## 5. Per-task fields to keep current
+## 5. Her görevde güncel tutulacak alanlar
 
-For each task above, maintain:
+- **Özet** — ne teslim ettiği, tek satır.
+- **Talep / Plan** — `docs/v1-acceptance.md` içindeki hangi kabul satırlarını karşıladığı.
+- **Durum** — tablodaki gibi, iş ilerledikçe güncellenir.
+- **Bileşen** — API / Web / Mobil / Veritabanı / CI / Dağıtım / Dokümantasyon.
+- **Ortam** — Local / CI / Production.
+- **Dal, commit, PR** — `claude/v1-domain-rebuild`, commit SHA, PR #11.
+- **CI** — kanıtı üreten run ID.
+- **Uygulama notları** — ne yapıldığı ve beklenmedik şekilde ne bulunduğu.
+- **Dağıtım durumu** — dağıtılan commit ve tarihi.
+- **Açık riskler** — aşağıya bakın.
 
-- **Summary** — one line on what it delivers.
-- **Requested / Plan** — the acceptance rows it satisfies, by name from
-  `docs/v1-acceptance.md`.
-- **Status** — as in the table, updated as work lands.
-- **Component** — API / Web / Mobile / Database / CI / Deployment / Docs.
-- **Environment** — Local / CI / Production.
-- **Branch, commit, PR** — `claude/v1-domain-rebuild`, the commit SHA, PR #11.
-- **CI** — the run ID that produced the evidence.
-- **Implementation notes** — what was built and anything surprising found.
-- **Deployment status** — explicitly "not deployed" until the owner approves a preflight.
-- **Open risks** — see below.
+Her küçük kod değişikliği için Notion görevi açmayın; yalnızca anlamlı yürütme
+birimlerini takip edin.
 
-Do not create a Notion task for every small code change. Track meaningful execution
-units only.
+Mimari kararlar yalnızca Notion'a değil, depodaki ADR'lere yazılır. Mimariyi değiştiren
+her Notion görevi ilgili ADR'ye bağlantı vermeli, içeriğini tekrarlamamalı.
 
-Architecture decisions belong in repository ADRs, not only in Notion. Each Notion task
-that changes architecture should link to its ADR rather than restating it.
+## 6. Kaydedilecek açık riskler
 
-## 6. Open risks to record
+1. **Hiçbir şey fiziksel Android cihazda çalıştırılmadı.** Çevrimdışı akış ve
+   hatırlatıcılar uygulandı ve tiplendi, ama yeniden başlatma, izin iptali, saat dilimi
+   değişimi ve Doze davranışı yalnızca gerçek bir telefonda kanıtlanabilir.
+2. **Yeniden yapım migration'ı geri alınamaz.** `Down` bilerek hata fırlatıyor. Geri
+   dönüş yolu, `deploy-production.sh`'ın aldığı ve `pg_restore -l` ile doğruladığı
+   dağıtım öncesi yedektir.
+3. **Production, main'in gerisindeydi ve on migration çalıştırıyordu, on bir değil.**
+   Schedule migration'ı hiç dağıtılmamıştı, bu yüzden gerçek yükseltme yolu tek geçişte
+   10 → 11 → 12 idi. CI artık tam olarak bu yolu production şekilli veriyle test ediyor.
+4. **Production, altı adet sıfır miktarlı `acquisition` ledger satırı tutuyor.** Kontrol
+   kısıtı başta yalnızca sayım düzeltmelerini muaf tutuyordu; bu satırlarda migration
+   çökerdi. Preflight sırasında yakalandı ve düzeltildi.
+5. **Migration'lar artık tablo yeniden adlandırıyor.** Dağıtım betiği şema değişmeden
+   önce yalnızca bu projenin api ve web konteynerlerini durduruyor — kısa bir kesinti,
+   bilinçli bir tercih.
+6. **Yerel veritabanı yok.** Bu makinede Docker ve PostgreSQL yok, bu yüzden tüm
+   veritabanı, eşzamanlılık ve migration kanıtı GitHub Actions'tan geliyor.
+7. **Hatırlatıcılar kesin zamanlı değil.** `SCHEDULE_EXACT_ALARM` istenmiyor; Google Play
+   politikası bu izni takvim/alarm uygulamalarıyla sınırlıyor. Sahip kesin zamanlama
+   isterse `app.json` içindeki `android.permissions` listesine tek satır eklemek yeterli.
 
-1. **The mobile client is broken against the new API.** The web client is rebuilt, so
-   deploying would not take the site down, but mobile would stop working until task 7
-   lands. The owner must decide whether to deploy before then.
-2. **The rebuild migration is not reversible.** `Down` deliberately throws. The rollback
-   path is the pre-deployment PostgreSQL backup, which `deploy-production.sh` now takes
-   and verifies with `pg_restore -l` before changing anything.
-3. **Production is behind main, and now far behind this branch.** Do not assume anything
-   on main is live. Verify the running image revision, migration history and schema on
-   the VPS during preflight.
-4. **Migrations now rename tables.** The deploy script stops this project's api and web
-   containers before applying them, which introduces brief downtime. That is deliberate:
-   a rename cannot run safely underneath the previous release.
-5. **No local database.** This workstation has neither Docker nor PostgreSQL, so all
-   database, concurrency and migration evidence comes from GitHub Actions. Any claim
-   about database behaviour must cite a CI run.
-6. **Mobile reminder reliability is unproven** and cannot be proven in CI. It needs a
-   physical Android device.
-
-## 7. Evidence links to attach
+## 7. Eklenecek kanıt bağlantıları
 
 - PR: https://github.com/mFurkanHiz/medication-tracker/pull/11
-- Commits: `a75338e` (decisions), `3f4d0cc` (domain core), `a18b8e1` (rebuild),
-  `d7c0a60` (ordering fixes)
-- ADRs: `docs/adr/0013-v1-domain-rebuild-strategy.md`,
+- Commit'ler: `a75338e` (kararlar), `3f4d0cc` (alan çekirdeği), `a18b8e1` (yeniden yapım),
+  `d7c0a60` (sıralama düzeltmeleri), `41ea4aa` (web), `4f3a144` (production migration
+  geçidi), `df808eb` (mobil)
+- ADR'ler: `docs/adr/0013-v1-domain-rebuild-strategy.md`,
   `docs/adr/0014-package-first-inventory-model.md`
-- Acceptance contract: `docs/v1-acceptance.md`
-- Checkpoint: `docs/v1-progress.md`
-- CI run `37036017899`: 124 tests, 0 failed, 0 skipped, both jobs green, including the
-  packaged migration SQL applied twice to a blank database and twice to a seeded
-  production-shaped baseline with row-by-row preservation assertions.
-- Acceptance standing after the web rebuild: 26 DONE, 9 PARTIAL, 5 OPEN of 40 rows.
+- Kabul sözleşmesi: `docs/v1-acceptance.md`
+- Devam noktası: `docs/v1-progress.md`
+- Dağıtım kaydı: `docs/web-vps-deployment.md`
+- CI run `37036017899`: 124 test, 0 başarısız, 0 atlanmış; her iki iş de yeşil.

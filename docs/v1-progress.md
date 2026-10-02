@@ -13,8 +13,7 @@ reconstructing the product history from a long conversation.
   rebuild branch.**
 - Active branch: `claude/v1-domain-rebuild`, proposed in PR #11, branched from PR #9's
   head so the schedule work is preserved rather than merged separately.
-- The API and the web client are rebuilt. The **mobile client is not** and still calls
-  the superseded endpoints.
+- The API, the web client and the mobile client are all rebuilt against the new model.
 - PR #9 is **subsumed** by PR #11, not abandoned. Its recurrence rules are carried
   forward onto `TreatmentPlanVersion`. Do not merge PR #9 separately.
 - PR #10 (packaged migration SQL fix) is already on main.
@@ -44,48 +43,34 @@ Domain, application, persistence and API layers for the package-first model:
 These are `OPEN` or `PARTIAL` in the acceptance contract and have **not** been
 narrowed or moved out of V1:
 
-1. **Mobile offline rebuild** — durable SQLite/outbox, offline Today flow, idempotent
-   sync, plus physical-device acceptance. The mobile client still calls the superseded
-   endpoints.
-2. **Local reminders** — reliability across reboot, permission, time-zone, DST and app
-   update, with physical-device evidence.
-3. **Reports** and **export**, neither of which exists.
-4. **Inventory counting has no client surface.** The API and its revisioning are proven;
-   nothing in the web client calls them yet.
-5. **Accessibility** has no formal audit, and **TR/EN** is complete for web but not for
-   mobile.
+1. **Physical-device acceptance.** Offline mobile and local reminders are implemented
+   and type-checked, but reboot, permission revocation, time-zone change, DST and Doze
+   behaviour can only be proven on a real Android phone. Nothing here has run on one.
+2. **Reports** and **export**, neither of which exists.
+3. **Inventory counting has no client surface.** The API and its revisioning are proven;
+   nothing in either client calls them.
+4. **Accessibility** has no formal audit and no screen-reader pass on a device.
+5. **Synthetic demo seed** for safe public demonstration.
 6. Package-level count reconciliation is modelled (`count_sessions.package_id`) but has
    no client surface.
 
 ## Next exact action
 
-Rebuild `apps/mobile` against the new API, offline-first.
+Reports and export, then the inventory counting surface.
 
-The core daily workflow must work with no network: see what is due, record a dose, and
-sync later without double-consuming stock. The server side of that is already proven —
-a replayed idempotency key returns the original event and consumes once — so the work is
-the client's durable queue, not the protocol.
+- **Reports**: a household-scoped adherence view (taken / skipped / partial / extra over
+  a period, per person and per medication) and an inventory view (current totals,
+  projected depletion, refill gaps). Both read from data the API already exposes;
+  neither needs a new write path.
+- **Export**: the agreed basic V1 data as a file the user can keep. It must be
+  household-scoped and must be covered by a cross-household test when it lands, which is
+  acceptance row 32's explicit requirement.
+- **Counting**: the API is complete and proven, including revisioning and
+  stale-revision rejection. It needs a client surface — medication-level for the default
+  user, package-level under advanced.
 
-Shape it as:
-
-- A SQLite snapshot of `GET /api/households/{id}/workspace` and
-  `GET /api/households/{id}/today`, refreshed when online.
-- A durable outbox row per command, written before the request is attempted and cleared
-  only on a successful response, so a crash or a lost connection safely retries the same
-  `idempotencyKey`.
-- `POST /api/households/{id}/administrations` with `{ planVersionId, scheduledFor,
-  idempotencyKey }` for the one-tap path.
-- Session credentials in Expo SecureStore; a separate SQLite cache per household.
-- Conflicts surfaced, never resolved silently as last-write-wins on a health or
-  inventory record.
-
-Then local reminders, which need physical-device evidence across reboot, notification
-and exact-alarm permissions, time-zone change, DST and app update.
-
-The web client is rebuilt and the API is green, so the branch is no longer
-self-inconsistent. Production deployment still requires an owner-approved preflight, and
-should not happen while the mobile client is broken against the new API unless the owner
-accepts that mobile is temporarily non-functional.
+Physical-device acceptance for rows 28 and 29 needs the owner's Android phone and
+cannot be produced here.
 
 ## Resume protocol
 
@@ -183,3 +168,22 @@ When the owner says **"continue" / "kaldığın yerden devam et"**:
   0 failed, 0 skipped and both jobs green, covering the rebuilt API, the rebuilt web
   client's lint and production build, both Docker builds and the full migration gate.
   The branch is now self-consistent: API and web agree. Mobile does not.
+- 2026-10-02: Mobile client rebuilt offline-first (`df808eb`). A SQLite snapshot, a
+  durable outbox whose idempotency key is committed before the request is attempted,
+  serialised sync, a Today screen that renders and records with no network, advanced
+  source selection, and device-local reminders. Conflicts are surfaced rather than
+  resolved. CI run `37044185829` green on both jobs.
+- 2026-10-02: Reading the installed `expo-sqlite` rather than trusting documentation
+  changed the design three times: `withExclusiveTransactionAsync` opens a second native
+  connection so per-connection PRAGMAs do not carry into it and `ON DELETE CASCADE`
+  cannot be relied on there; the library sets no `busy_timeout`, so that second
+  connection deadlocks against a read on the first; and an unmatched named parameter
+  binds silently as NULL. Writes use the shared connection, sync runs are serialised in
+  JS, and queue rows are deleted explicitly.
+- 2026-10-02: The SDK 57 notification documentation revealed that without
+  `setNotificationHandler` a triggered notification is not presented at all. Reminders
+  would have silently never shown.
+- 2026-10-02: Found and fixed an API gap the mobile work exposed: a second device
+  recording the same scheduled slot under a different idempotency key hit the unique
+  index and produced a 500. It now replays when the outcome agrees and returns
+  `slot_already_recorded` when it does not, with a PostgreSQL test for both.

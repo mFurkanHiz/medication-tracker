@@ -1,14 +1,26 @@
+using MedicationTracker.Api.Modules.Administrations;
+using MedicationTracker.Api.Modules.Audit;
+using MedicationTracker.Api.Modules.Catalog;
 using MedicationTracker.Api.Modules.Households;
 using MedicationTracker.Api.Modules.Identity;
+using MedicationTracker.Api.Modules.Inventory;
+using MedicationTracker.Api.Modules.People;
+using MedicationTracker.Api.Modules.Refill;
 using MedicationTracker.Api.Modules.Subscriptions;
-using MedicationTracker.Api.Modules.Care;
+using MedicationTracker.Api.Modules.Sync;
+using MedicationTracker.Api.Modules.Treatments;
 using Microsoft.EntityFrameworkCore;
 
 namespace MedicationTracker.Api.Persistence;
 
+/// <summary>
+/// The single context for this modular monolith. Sets are grouped by module so the
+/// boundaries are visible here even though they share one database and one transaction.
+/// </summary>
 public sealed class MedicationTrackerDbContext(DbContextOptions<MedicationTrackerDbContext> options)
     : DbContext(options)
 {
+    // Identity and access
     public DbSet<Account> Accounts => Set<Account>();
 
     public DbSet<Household> Households => Set<Household>();
@@ -18,55 +30,60 @@ public sealed class MedicationTrackerDbContext(DbContextOptions<MedicationTracke
     public DbSet<Subscription> Subscriptions => Set<Subscription>();
 
     public DbSet<Entitlement> Entitlements => Set<Entitlement>();
+
+    // People
     public DbSet<Person> People => Set<Person>();
-    public DbSet<Medication> Medications => Set<Medication>();
-    public DbSet<InventoryItem> InventoryItems => Set<InventoryItem>();
-    public DbSet<InventoryLedgerEntry> InventoryLedgerEntries => Set<InventoryLedgerEntry>();
-    public DbSet<InventoryPackage> InventoryPackages => Set<InventoryPackage>();
-    public DbSet<InventoryPackageAssignmentEvent> InventoryPackageAssignmentEvents => Set<InventoryPackageAssignmentEvent>();
-    public DbSet<InventoryLoan> InventoryLoans => Set<InventoryLoan>();
+
+    // Medication catalog
+    public DbSet<MedicationDefinition> MedicationDefinitions => Set<MedicationDefinition>();
+
+    // Inventory and physical packages
+    public DbSet<LegacyInventoryItem> LegacyInventoryItems => Set<LegacyInventoryItem>();
+
+    public DbSet<MedicationPackage> Packages => Set<MedicationPackage>();
+
+    public DbSet<InventoryLedgerEntry> LedgerEntries => Set<InventoryLedgerEntry>();
+
+    public DbSet<PackageAssignmentEvent> PackageAssignmentEvents => Set<PackageAssignmentEvent>();
+
+    public DbSet<PackageLoan> PackageLoans => Set<PackageLoan>();
+
     public DbSet<InventoryCountBatch> InventoryCountBatches => Set<InventoryCountBatch>();
+
     public DbSet<InventoryCount> InventoryCounts => Set<InventoryCount>();
-    public DbSet<MedicationChangeEvent> MedicationChangeEvents => Set<MedicationChangeEvent>();
-    public DbSet<Regimen> Regimens => Set<Regimen>();
-    public DbSet<RegimenVersion> RegimenVersions => Set<RegimenVersion>();
-    public DbSet<RegimenChangeEvent> RegimenChangeEvents => Set<RegimenChangeEvent>();
+
+    // Treatments and scheduling
+    public DbSet<TreatmentPlan> TreatmentPlans => Set<TreatmentPlan>();
+
+    public DbSet<TreatmentPlanVersion> TreatmentPlanVersions => Set<TreatmentPlanVersion>();
+
+    // Administrations and allocations
     public DbSet<AdministrationEvent> AdministrationEvents => Set<AdministrationEvent>();
-    public DbSet<ProcessedAdministrationCommand> ProcessedAdministrationCommands => Set<ProcessedAdministrationCommand>();
+
+    public DbSet<AdministrationAllocation> AdministrationAllocations => Set<AdministrationAllocation>();
+
+    public DbSet<AdministrationAllocationCorrection> AllocationCorrections =>
+        Set<AdministrationAllocationCorrection>();
+
+    // Refill
+    public DbSet<MedicationRefillPolicy> RefillPolicies => Set<MedicationRefillPolicy>();
+
+    // Audit
+    public DbSet<MedicationDefinitionChangeEvent> MedicationDefinitionChangeEvents =>
+        Set<MedicationDefinitionChangeEvent>();
+
+    public DbSet<TreatmentPlanChangeEvent> TreatmentPlanChangeEvents => Set<TreatmentPlanChangeEvent>();
+
+    // Offline sync
     public DbSet<SyncCommandReceipt> SyncCommandReceipts => Set<SyncCommandReceipt>();
+
+    public DbSet<ProcessedAdministrationCommand> ProcessedAdministrationCommands =>
+        Set<ProcessedAdministrationCommand>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(MedicationTrackerDbContext).Assembly);
-        modelBuilder.Entity<InventoryCount>(b =>
-        {
-            b.ToTable("count_sessions", "inventory");
-            b.HasKey(x => x.Id);
-            b.HasOne<InventoryCountBatch>().WithMany().HasForeignKey(x => x.BatchId).OnDelete(DeleteBehavior.Restrict);
-            b.HasOne<Household>().WithMany().HasForeignKey(x => x.HouseholdId).OnDelete(DeleteBehavior.Restrict);
-            b.HasOne<Account>().WithMany().HasForeignKey(x => x.AccountId).OnDelete(DeleteBehavior.Restrict);
-            b.HasOne<InventoryItem>().WithMany().HasForeignKey(x => x.InventoryItemId).OnDelete(DeleteBehavior.Restrict);
-            b.HasOne<InventoryLedgerEntry>().WithMany().HasForeignKey(x => x.LedgerEntryId).OnDelete(DeleteBehavior.Restrict);
-            b.HasIndex(x => new { x.HouseholdId, x.BatchId });
-            b.HasIndex(x => x.LedgerEntryId).IsUnique();
-        });
-        modelBuilder.Entity<InventoryCountBatch>(b =>
-        {
-            b.ToTable("count_batches", "inventory", table =>
-                table.HasCheckConstraint("ck_count_batches_revision", "revision_number > 0"));
-            b.HasKey(x => x.Id);
-            b.Property(x => x.Id).HasColumnName("id");
-            b.Property(x => x.HouseholdId).HasColumnName("household_id");
-            b.Property(x => x.AccountId).HasColumnName("account_id");
-            b.Property(x => x.PreviousBatchId).HasColumnName("previous_batch_id");
-            b.Property(x => x.RevisionNumber).HasColumnName("revision_number");
-            b.Property(x => x.AcceptedAt).HasColumnName("accepted_at");
-            b.HasOne<Household>().WithMany().HasForeignKey(x => x.HouseholdId).OnDelete(DeleteBehavior.Restrict);
-            b.HasOne<Account>().WithMany().HasForeignKey(x => x.AccountId).OnDelete(DeleteBehavior.Restrict);
-            b.HasOne<InventoryCountBatch>().WithMany().HasForeignKey(x => x.PreviousBatchId).OnDelete(DeleteBehavior.Restrict);
-            b.HasIndex(x => new { x.HouseholdId, x.AcceptedAt });
-            b.HasIndex(x => x.PreviousBatchId).IsUnique();
-        });
+
         modelBuilder.Entity<AccountSession>(b =>
         {
             b.ToTable("sessions", "identity");

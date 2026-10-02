@@ -21,7 +21,10 @@ public static class IdentityEndpoints
 
     public static async Task Authenticate(HttpContext context, RequestDelegate next)
     {
-        // Legacy clients cannot choose their identity. Only validated sessions set this internal adapter header.
+        // A client can never choose its own identity. The header is stripped
+        // unconditionally and nothing re-populates it: endpoints read the validated
+        // principal instead, so request-header rewriting is no longer load-bearing for
+        // authorisation. See ADR 0013, finding 9.
         context.Request.Headers.Remove("X-Account-Id");
         if (context.Request.Path.StartsWithSegments("/api"))
         {
@@ -39,8 +42,8 @@ public static class IdentityEndpoints
                 var session = await db.Set<AccountSession>().AsNoTracking().SingleOrDefaultAsync(x => x.TokenHash == hash && x.ExpiresAt > DateTimeOffset.UtcNow, context.RequestAborted);
                 if (session is not null)
                 {
-                    context.User = new ClaimsPrincipal(new ClaimsIdentity([new Claim(ClaimTypes.NameIdentifier, session.AccountId.ToString())], "session"));
-                    context.Request.Headers["X-Account-Id"] = session.AccountId.ToString();
+                    context.User = new ClaimsPrincipal(new ClaimsIdentity(
+                        [new Claim(ClaimTypes.NameIdentifier, session.AccountId.ToString())], "session"));
                 }
             }
             if (!context.Request.Path.StartsWithSegments("/api/auth") && context.User.Identity?.IsAuthenticated != true)

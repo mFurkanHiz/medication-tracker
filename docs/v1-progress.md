@@ -179,3 +179,7 @@ When the owner says **"continue" / "kaldığın yerden devam et"**:
   through `useSyncExternalStore`. The authenticated screens are typed against the API
   client but were not exercised in a browser, because this workstation has no PostgreSQL
   to run the API against.
+- 2026-10-02: Final CI on the branch head, run **`37038800495`**, passed with 124 tests,
+  0 failed, 0 skipped and both jobs green, covering the rebuilt API, the rebuilt web
+  client's lint and production build, both Docker builds and the full migration gate.
+  The branch is now self-consistent: API and web agree. Mobile does not.

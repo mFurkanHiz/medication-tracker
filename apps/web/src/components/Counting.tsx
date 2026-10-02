@@ -378,7 +378,42 @@ function CountRow({ medication, entries, onEntry, byPackage, onByPackage }: {
         ) : null}
       </div>
 
-      {available.length > 0 ? (
+      {available.length === 0 ? null : byPackage ? (
+        // Once the user is counting boxes, the boxes are the task — not an advanced
+        // detail to go looking for. Keeping them inside a closed disclosure would also
+        // hide the values a correction prefills, leaving a card with no visible input.
+        <div className="flex flex-col gap-3">
+          <ul className="flex list-none flex-wrap gap-3 p-0">
+            {available.map((entry) => (
+              <li key={entry.view.id}>
+                {/* Labelled by its own box, so three inputs are not three
+                    identically-named fields to anyone reading the page aloud. */}
+                <Field
+                  label={`${t('packageOrdinal')} ${entry.view.ordinal}`}
+                  hint={`${t('countingExpected')}: ${formatQuantity(entry.view.remaining)}`}
+                  className="w-36"
+                >
+                  {({ id, describedBy }) => (
+                    <Input
+                      id={id}
+                      aria-describedby={describedBy}
+                      inputMode="decimal"
+                      value={entries[packageKey(medication.id, entry.view.id)] ?? ''}
+                      onChange={(event) =>
+                        onEntry(packageKey(medication.id, entry.view.id), event.target.value)
+                      }
+                    />
+                  )}
+                </Field>
+              </li>
+            ))}
+          </ul>
+
+          <Button variant="secondary" aria-pressed onClick={() => onByPackage(false)}>
+            {t('countingWholeMedication')}
+          </Button>
+        </div>
+      ) : (
         // The disclosure keeps one stable label describing what is inside. Naming it
         // after the action would make the summary and the button below read the same
         // while doing different things.
@@ -388,42 +423,14 @@ function CountRow({ medication, entries, onEntry, byPackage, onByPackage }: {
 
             <Button
               variant="secondary"
-              aria-pressed={byPackage}
-              onClick={() => onByPackage(!byPackage)}
+              aria-pressed={false}
+              onClick={() => onByPackage(true)}
             >
-              {byPackage ? t('countingWholeMedication') : t('countingByPackage')}
+              {t('countingByPackage')}
             </Button>
-
-            {byPackage ? (
-              <ul className="flex list-none flex-wrap gap-3 p-0">
-                {available.map((entry) => (
-                  <li key={entry.view.id}>
-                    {/* Labelled by its own box, so three inputs are not three
-                        identically-named fields to anyone reading the page aloud. */}
-                    <Field
-                      label={`${t('packageOrdinal')} ${entry.view.ordinal}`}
-                      hint={`${t('countingExpected')}: ${formatQuantity(entry.view.remaining)}`}
-                      className="w-36"
-                    >
-                      {({ id, describedBy }) => (
-                        <Input
-                          id={id}
-                          aria-describedby={describedBy}
-                          inputMode="decimal"
-                          value={entries[packageKey(medication.id, entry.view.id)] ?? ''}
-                          onChange={(event) =>
-                            onEntry(packageKey(medication.id, entry.view.id), event.target.value)
-                          }
-                        />
-                      )}
-                    </Field>
-                  </li>
-                ))}
-              </ul>
-            ) : null}
           </div>
         </Advanced>
-      ) : null}
+      )}
     </Card>
   );
 }

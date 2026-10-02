@@ -9,6 +9,17 @@ if [ ! -f .env.production ]; then
   printf 'DATABASE_PASSWORD=%s\n' "$(openssl rand -hex 32)" > .env.production
 fi
 chmod 600 .env.production
+# Pin whatever is running right now under a stable tag before the incoming archive
+# takes over the :ci names. Without this the outgoing images become dangling and a
+# rollback has to hunt for a sha256 in `docker images -a`.
+compose_project=medication-tracker
+for service in web api; do
+  running="$(docker inspect "${compose_project}-${service}-1" --format '{{.Image}}' 2>/dev/null || true)"
+  if [ -n "$running" ]; then
+    docker tag "$running" "medication-tracker-${service}:previous"
+  fi
+done
+
 docker load --input .deploy/medication-tracker-web.tar.gz
 docker tag medication-tracker-web:ci medication-tracker-web:local
 docker tag medication-tracker-api:ci medication-tracker-api:local

@@ -32,10 +32,24 @@ done
 "${compose[@]}" exec -T database pg_isready -U medication_tracker -d medication_tracker
 mkdir -p .deploy/backups
 backup=".deploy/backups/pre-migration-$(date -u +%Y%m%dT%H%M%SZ).dump"
-"${compose[@]}" exec -T database pg_dump -U medication_tracker -d medication_tracker -Fc > "$backup"
-# A backup nobody has read is not a rollback plan. Listing its table of contents
-# proves the archive is well-formed and non-empty before anything is migrated.
-"${compose[@]}" exec -T database pg_restore -l /dev/stdin < "$backup" > .deploy/backup-contents.txt
+database_container="$("${compose[@]}" ps -q database)"
+test -n "$database_container"
+
+# A backup nobody has read is not a rollback plan, so its table of contents is listed
+# before anything is migrated. Both the dump and the check happen inside the container
+# against a real file: a custom-format archive is seekable, and pg_restore cannot read
+# its header from a piped stdin — attempting that fails with "did not find magic string
+# in file header" even though the dump itself is sound.
+"${compose[@]}" exec -T database sh -c '
+  set -e
+  pg_dump -U medication_tracker -d medication_tracker -Fc -f /tmp/pre-migration.dump
+  pg_restore -l /tmp/pre-migration.dump > /tmp/pre-migration.toc
+  test -s /tmp/pre-migration.toc
+'
+docker cp "$database_container:/tmp/pre-migration.dump" "$backup"
+docker cp "$database_container:/tmp/pre-migration.toc" .deploy/backup-contents.txt
+"${compose[@]}" exec -T database rm -f /tmp/pre-migration.dump /tmp/pre-migration.toc
+test -s "$backup"
 test -s .deploy/backup-contents.txt
 container=$(docker create medication-tracker-api:local)
 docker cp "$container:/app/migrations.sql" .deploy/migrations.sql

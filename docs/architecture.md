@@ -17,20 +17,35 @@ Mobile commands are written to SQLite first. A durable outbox syncs them to the 
 
 ## Module boundaries
 
-- Identity and Access
-- Households
-- People
-- Medication Catalog
-- Treatments and Regimens
-- Dose Scheduling
-- Administrations
-- Inventory
-- Prescriptions and Refill Eligibility
-- Notifications
-- Notes and Attachments
-- Sync
-- Audit
-- Subscriptions and Entitlements (future adapter boundary only)
+The rebuild replaced a single `Modules/Care/SprintOneEntities.cs` holding fourteen
+entities with one directory per boundary, each mapped to its own PostgreSQL schema.
+See ADR 0013.
+
+| Module | Schema | Owns |
+| --- | --- | --- |
+| Identity and Access | `identity` | Accounts, revocable sessions |
+| Households | `households` | Households, effective-dated memberships |
+| People | `care` | The people whose medication is organised |
+| Medication Catalog | `catalog` | Medication definitions and their audit history |
+| Inventory | `inventory` | Physical packages, the append-only ledger, loans, custody events, counts |
+| Treatments | `treatments` | Plans, immutable effective-dated versions, plan audit history |
+| Administrations | `administrations` | Recorded doses, consumption allocations, allocation corrections |
+| Refill | `refill` | Low-stock settings and official refill eligibility |
+| Sync | `sync` | Idempotency receipts for offline commands |
+| Subscriptions and Entitlements | `subscriptions` | Future commercial boundary only |
+
+Still to come as their own boundaries: Notifications, Reporting, and Notes and
+Attachments.
+
+Cross-module reads go through the module that owns the data. The application layer
+(`apps/api/Application`) holds the transactional services that span modules —
+household authorisation, stock projection, and dose recording with its allocation
+writes — because reading a balance and writing its consumption must be one
+serialised unit.
+
+The pure domain (`apps/api/Domain`) holds no persistence references at all: exact
+quantities, the package consumption policy, the allocation correction planner, the
+recurrence rule and the refill forecast are all directly testable without a database.
 
 ## Identity, household, and membership
 
@@ -60,6 +75,12 @@ uses the `infrastructure` schema.
 - Deletions use tombstones until all relevant devices have synchronized.
 - Clinical and inventory conflicts are surfaced; they are never silently resolved with last-write-wins.
 - Local dose notifications are the offline reliability path. Server push is a secondary cross-device/caregiver channel.
+- A replayed command returns its original result rather than applying twice, enforced
+  by unique indexes on `(household_id, idempotency_key)` rather than by application
+  convention. A duplicated offline sync therefore cannot double-consume stock.
+- Stock-mutating work for one household runs inside a transaction holding a
+  per-household advisory lock, so two concurrent doses cannot each read the same
+  balance and both decide there is enough.
 
 ## Security baseline
 

@@ -22,20 +22,197 @@ namespace MedicationTracker.Api.Persistence.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
-            modelBuilder.Entity("MedicationTracker.Api.Modules.Care.AdministrationEvent", b =>
+            modelBuilder.Entity("MedicationTracker.Api.Modules.Administrations.AdministrationAllocation", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<Guid>("AdministrationEventId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("administration_event_id");
+
+                    b.Property<Guid>("CorrelationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("correlation_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
                     b.Property<Guid>("HouseholdId")
                         .HasColumnType("uuid")
                         .HasColumnName("household_id");
 
-                    b.Property<Guid>("MedicationId")
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true)
+                        .HasColumnName("is_active");
+
+                    b.Property<Guid>("LedgerEntryId")
                         .HasColumnType("uuid")
-                        .HasColumnName("medication_id");
+                        .HasColumnName("ledger_entry_id");
+
+                    b.Property<Guid?>("PackageId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("package_id");
+
+                    b.Property<long>("QuantityDenominator")
+                        .HasColumnType("bigint")
+                        .HasColumnName("quantity_denominator");
+
+                    b.Property<long>("QuantityNumerator")
+                        .HasColumnType("bigint")
+                        .HasColumnName("quantity_numerator");
+
+                    b.Property<DateTimeOffset?>("SupersededAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("superseded_at");
+
+                    b.Property<Guid?>("SupersededByAllocationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("superseded_by_allocation_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("HouseholdId");
+
+                    b.HasIndex("LedgerEntryId")
+                        .IsUnique();
+
+                    b.HasIndex("PackageId")
+                        .HasFilter("package_id IS NOT NULL");
+
+                    b.HasIndex("SupersededByAllocationId");
+
+                    b.HasIndex("AdministrationEventId", "IsActive");
+
+                    b.ToTable("allocations", "administrations", t =>
+                        {
+                            t.HasCheckConstraint("ck_allocations_quantity", "quantity_numerator > 0 AND quantity_denominator > 0");
+                        });
+                });
+
+            modelBuilder.Entity("MedicationTracker.Api.Modules.Administrations.AdministrationAllocationCorrection", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("ActorAccountId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("actor_account_id");
+
+                    b.Property<Guid>("AdministrationEventId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("administration_event_id");
+
+                    b.Property<Guid>("ConsumeLedgerEntryId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("consume_ledger_entry_id");
+
+                    b.Property<Guid>("CorrelationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("correlation_id");
+
+                    b.Property<Guid?>("FromPackageId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("from_package_id");
+
+                    b.Property<Guid>("HouseholdId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("household_id");
+
+                    b.Property<long>("QuantityDenominator")
+                        .HasColumnType("bigint")
+                        .HasColumnName("quantity_denominator");
+
+                    b.Property<long>("QuantityNumerator")
+                        .HasColumnType("bigint")
+                        .HasColumnName("quantity_numerator");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("reason");
+
+                    b.Property<DateTimeOffset>("RecordedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("recorded_at");
+
+                    b.Property<Guid>("ReplacementAllocationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("replacement_allocation_id");
+
+                    b.Property<Guid>("ReversalLedgerEntryId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("reversal_ledger_entry_id");
+
+                    b.Property<Guid>("SupersededAllocationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("superseded_allocation_id");
+
+                    b.Property<Guid?>("ToPackageId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("to_package_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ActorAccountId");
+
+                    b.HasIndex("AdministrationEventId");
+
+                    b.HasIndex("FromPackageId");
+
+                    b.HasIndex("SupersededAllocationId")
+                        .IsUnique();
+
+                    b.HasIndex("ToPackageId");
+
+                    b.HasIndex("HouseholdId", "AdministrationEventId", "RecordedAt");
+
+                    b.ToTable("allocation_corrections", "administrations", t =>
+                        {
+                            t.HasCheckConstraint("ck_allocation_corrections_distinct_source", "from_package_id IS DISTINCT FROM to_package_id");
+
+                            t.HasCheckConstraint("ck_allocation_corrections_quantity", "quantity_numerator > 0 AND quantity_denominator > 0");
+                        });
+                });
+
+            modelBuilder.Entity("MedicationTracker.Api.Modules.Administrations.AdministrationEvent", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("ActorAccountId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("actor_account_id");
+
+                    b.Property<long?>("ActualQuantityDenominator")
+                        .HasColumnType("bigint")
+                        .HasColumnName("actual_quantity_denominator");
+
+                    b.Property<long?>("ActualQuantityNumerator")
+                        .HasColumnType("bigint")
+                        .HasColumnName("actual_quantity_numerator");
+
+                    b.Property<Guid>("HouseholdId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("household_id");
+
+                    b.Property<Guid>("MedicationDefinitionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("medication_definition_id");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("note");
 
                     b.Property<DateTimeOffset>("OccurredAt")
                         .HasColumnType("timestamp with time zone")
@@ -51,328 +228,57 @@ namespace MedicationTracker.Api.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("person_id");
 
+                    b.Property<long?>("PlannedQuantityDenominator")
+                        .HasColumnType("bigint")
+                        .HasColumnName("planned_quantity_denominator");
+
+                    b.Property<long?>("PlannedQuantityNumerator")
+                        .HasColumnType("bigint")
+                        .HasColumnName("planned_quantity_numerator");
+
                     b.Property<DateTimeOffset>("RecordedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("recorded_at");
 
-                    b.Property<Guid>("RegimenVersionId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("regimen_version_id");
-
-                    b.Property<DateTimeOffset>("ScheduledFor")
+                    b.Property<DateTimeOffset?>("ScheduledFor")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("scheduled_for");
 
-                    b.HasKey("Id");
-
-                    b.HasIndex("RegimenVersionId");
-
-                    b.HasIndex("HouseholdId", "RegimenVersionId", "ScheduledFor")
-                        .IsUnique();
-
-                    b.ToTable("administration_events", "administrations", t =>
-                        {
-                            t.HasCheckConstraint("ck_administration_events_outcome", "outcome IN ('taken', 'skipped')");
-                        });
-                });
-
-            modelBuilder.Entity("MedicationTracker.Api.Modules.Care.InventoryCount", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTimeOffset>("AcceptedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid>("AccountId")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid?>("BatchId")
-                        .HasColumnType("uuid");
-
-                    b.Property<long>("BeforeDenominator")
-                        .HasColumnType("bigint");
-
-                    b.Property<long>("BeforeNumerator")
-                        .HasColumnType("bigint");
-
-                    b.Property<Guid>("HouseholdId")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("InventoryItemId")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("LedgerEntryId")
-                        .HasColumnType("uuid");
-
-                    b.Property<long>("ObservedDenominator")
-                        .HasColumnType("bigint");
-
-                    b.Property<long>("ObservedNumerator")
-                        .HasColumnType("bigint");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("AccountId");
-
-                    b.HasIndex("BatchId");
-
-                    b.HasIndex("InventoryItemId");
-
-                    b.HasIndex("LedgerEntryId")
-                        .IsUnique();
-
-                    b.HasIndex("HouseholdId", "BatchId");
-
-                    b.ToTable("count_sessions", "inventory");
-                });
-
-            modelBuilder.Entity("MedicationTracker.Api.Modules.Care.InventoryCountBatch", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
-
-                    b.Property<DateTimeOffset>("AcceptedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("accepted_at");
-
-                    b.Property<Guid>("AccountId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("account_id");
-
-                    b.Property<Guid>("HouseholdId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("household_id");
-
-                    b.Property<Guid?>("PreviousBatchId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("previous_batch_id");
-
-                    b.Property<int>("RevisionNumber")
-                        .HasColumnType("integer")
-                        .HasColumnName("revision_number");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("AccountId");
-
-                    b.HasIndex("PreviousBatchId")
-                        .IsUnique();
-
-                    b.HasIndex("HouseholdId", "AcceptedAt");
-
-                    b.ToTable("count_batches", "inventory", t =>
-                        {
-                            t.HasCheckConstraint("ck_count_batches_revision", "revision_number > 0");
-                        });
-                });
-
-            modelBuilder.Entity("MedicationTracker.Api.Modules.Care.InventoryItem", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at");
-
-                    b.Property<Guid>("HouseholdId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("household_id");
-
-                    b.Property<Guid>("MedicationId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("medication_id");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("HouseholdId");
-
-                    b.HasIndex("MedicationId")
-                        .IsUnique();
-
-                    b.ToTable("inventory_items", "inventory");
-                });
-
-            modelBuilder.Entity("MedicationTracker.Api.Modules.Care.InventoryLedgerEntry", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
-
-                    b.Property<Guid?>("AdministrationEventId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("administration_event_id");
-
-                    b.Property<Guid>("HouseholdId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("household_id");
-
-                    b.Property<Guid>("InventoryItemId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("inventory_item_id");
-
-                    b.Property<DateTimeOffset>("OccurredAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("occurred_at");
-
-                    b.Property<Guid?>("PackageId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("package_id");
-
-                    b.Property<long>("QuantityDenominator")
-                        .HasColumnType("bigint")
-                        .HasColumnName("quantity_denominator");
-
-                    b.Property<long>("QuantityNumerator")
-                        .HasColumnType("bigint")
-                        .HasColumnName("quantity_numerator");
-
-                    b.Property<string>("Reason")
+                    b.Property<string>("StockSource")
                         .IsRequired()
-                        .HasMaxLength(40)
-                        .HasColumnType("character varying(40)")
-                        .HasColumnName("reason");
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("stock_source");
 
-                    b.Property<DateTimeOffset>("RecordedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("recorded_at");
+                    b.Property<Guid?>("TreatmentPlanVersionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("plan_version_id");
 
                     b.HasKey("Id");
 
-                    b.HasIndex("AdministrationEventId")
-                        .HasFilter("administration_event_id IS NOT NULL");
+                    b.HasIndex("ActorAccountId");
 
-                    b.HasIndex("InventoryItemId");
-
-                    b.HasIndex("PackageId")
-                        .HasFilter("package_id IS NOT NULL");
-
-                    b.ToTable("ledger_entries", "inventory", t =>
-                        {
-                            t.HasCheckConstraint("ck_ledger_entries_denominator", "quantity_denominator > 0");
-                        });
-                });
-
-            modelBuilder.Entity("MedicationTracker.Api.Modules.Care.InventoryLoan", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
-
-                    b.Property<Guid>("BorrowerPersonId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("borrower_person_id");
-
-                    b.Property<Guid>("HouseholdId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("household_id");
-
-                    b.Property<DateTimeOffset>("LentAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("lent_at");
-
-                    b.Property<Guid>("LentByAccountId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("lent_by_account_id");
-
-                    b.Property<Guid>("OwnerPersonId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("owner_person_id");
-
-                    b.Property<Guid>("PackageId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("package_id");
-
-                    b.Property<DateTimeOffset?>("ReturnedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("returned_at");
-
-                    b.Property<Guid?>("ReturnedByAccountId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("returned_by_account_id");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("BorrowerPersonId");
-
-                    b.HasIndex("LentByAccountId");
-
-                    b.HasIndex("OwnerPersonId");
-
-                    b.HasIndex("PackageId");
-
-                    b.HasIndex("ReturnedByAccountId");
-
-                    b.HasIndex("HouseholdId", "PackageId")
-                        .IsUnique()
-                        .HasFilter("returned_at IS NULL");
-
-                    b.ToTable("package_loans", "inventory", t =>
-                        {
-                            t.HasCheckConstraint("ck_package_loans_people", "owner_person_id <> borrower_person_id");
-                        });
-                });
-
-            modelBuilder.Entity("MedicationTracker.Api.Modules.Care.InventoryPackage", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
-
-                    b.Property<long>("CapacityDenominator")
-                        .HasColumnType("bigint")
-                        .HasColumnName("capacity_denominator");
-
-                    b.Property<long>("CapacityNumerator")
-                        .HasColumnType("bigint")
-                        .HasColumnName("capacity_numerator");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at");
-
-                    b.Property<Guid>("HouseholdId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("household_id");
-
-                    b.Property<Guid>("InventoryItemId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("inventory_item_id");
-
-                    b.Property<Guid?>("OwnerPersonId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("owner_person_id");
-
-                    b.Property<Guid?>("PersonId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("person_id");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("InventoryItemId");
-
-                    b.HasIndex("OwnerPersonId");
+                    b.HasIndex("MedicationDefinitionId");
 
                     b.HasIndex("PersonId");
 
-                    b.HasIndex("HouseholdId", "InventoryItemId");
+                    b.HasIndex("TreatmentPlanVersionId");
 
-                    b.ToTable("packages", "inventory", t =>
+                    b.HasIndex("HouseholdId", "OccurredAt");
+
+                    b.HasIndex("HouseholdId", "TreatmentPlanVersionId", "ScheduledFor")
+                        .IsUnique()
+                        .HasFilter("plan_version_id IS NOT NULL AND scheduled_for IS NOT NULL AND outcome <> 'ExtraDose'");
+
+                    b.ToTable("administration_events", "administrations", t =>
                         {
-                            t.HasCheckConstraint("ck_packages_capacity", "capacity_numerator > 0 AND capacity_denominator > 0");
+                            t.HasCheckConstraint("ck_administration_events_outcome", "outcome IN ('Taken', 'Skipped', 'PartialDose', 'ExtraDose')");
+
+                            t.HasCheckConstraint("ck_administration_events_quantity", "(outcome = 'Skipped' AND actual_quantity_numerator IS NULL AND stock_source = 'NotApplicable') OR (outcome <> 'Skipped' AND actual_quantity_numerator > 0 AND actual_quantity_denominator > 0 AND stock_source <> 'NotApplicable')");
                         });
                 });
 
-            modelBuilder.Entity("MedicationTracker.Api.Modules.Care.InventoryPackageAssignmentEvent", b =>
+            modelBuilder.Entity("MedicationTracker.Api.Modules.Audit.MedicationDefinitionChangeEvent", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -383,52 +289,115 @@ namespace MedicationTracker.Api.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("account_id");
 
-                    b.Property<Guid?>("FromPersonId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("from_person_id");
-
                     b.Property<Guid>("HouseholdId")
                         .HasColumnType("uuid")
                         .HasColumnName("household_id");
 
-                    b.Property<Guid>("PackageId")
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("kind");
+
+                    b.Property<Guid>("MedicationDefinitionId")
                         .HasColumnType("uuid")
-                        .HasColumnName("package_id");
+                        .HasColumnName("medication_definition_id");
+
+                    b.Property<string>("NewValue")
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)")
+                        .HasColumnName("new_value");
+
+                    b.Property<string>("PreviousValue")
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)")
+                        .HasColumnName("previous_value");
 
                     b.Property<DateTimeOffset>("RecordedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("recorded_at");
 
-                    b.Property<Guid?>("ToPersonId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("to_person_id");
-
                     b.HasKey("Id");
 
                     b.HasIndex("AccountId");
 
-                    b.HasIndex("FromPersonId");
+                    b.HasIndex("MedicationDefinitionId");
 
-                    b.HasIndex("PackageId");
+                    b.HasIndex("HouseholdId", "MedicationDefinitionId", "RecordedAt");
 
-                    b.HasIndex("ToPersonId");
-
-                    b.HasIndex("HouseholdId", "PackageId", "RecordedAt");
-
-                    b.ToTable("package_assignment_events", "inventory");
+                    b.ToTable("medication_definition_change_events", "catalog");
                 });
 
-            modelBuilder.Entity("MedicationTracker.Api.Modules.Care.Medication", b =>
+            modelBuilder.Entity("MedicationTracker.Api.Modules.Audit.TreatmentPlanChangeEvent", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
-                    b.Property<string>("ActiveIngredient")
+                    b.Property<Guid>("AccountId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("account_id");
+
+                    b.Property<Guid>("HouseholdId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("household_id");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("kind");
+
+                    b.Property<string>("NewValue")
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)")
+                        .HasColumnName("new_value");
+
+                    b.Property<string>("PreviousValue")
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)")
+                        .HasColumnName("previous_value");
+
+                    b.Property<DateTimeOffset>("RecordedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("recorded_at");
+
+                    b.Property<Guid>("TreatmentPlanId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("plan_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AccountId");
+
+                    b.HasIndex("TreatmentPlanId");
+
+                    b.HasIndex("HouseholdId", "TreatmentPlanId", "RecordedAt");
+
+                    b.ToTable("plan_change_events", "treatments");
+                });
+
+            modelBuilder.Entity("MedicationTracker.Api.Modules.Catalog.MedicationDefinition", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.PrimitiveCollection<string[]>("ActiveIngredients")
+                        .IsRequired()
+                        .HasColumnType("text[]")
+                        .HasColumnName("active_ingredients");
+
+                    b.Property<DateTimeOffset?>("ArchivedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("archived_at");
+
+                    b.Property<string>("Brand")
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)")
-                        .HasColumnName("active_ingredient");
+                        .HasColumnName("brand");
 
                     b.Property<string>("Category")
                         .HasMaxLength(100)
@@ -439,9 +408,17 @@ namespace MedicationTracker.Api.Persistence.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
 
-                    b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("deleted_at");
+                    b.Property<long?>("DefaultPackageCapacityDenominator")
+                        .HasColumnType("bigint")
+                        .HasColumnName("default_package_capacity_denominator");
+
+                    b.Property<long?>("DefaultPackageCapacityNumerator")
+                        .HasColumnType("bigint")
+                        .HasColumnName("default_package_capacity_numerator");
+
+                    b.Property<string>("ExternalCodes")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("external_codes");
 
                     b.Property<string>("Form")
                         .IsRequired()
@@ -453,11 +430,14 @@ namespace MedicationTracker.Api.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("household_id");
 
-                    b.Property<bool>("IsActive")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("boolean")
-                        .HasDefaultValue(true)
-                        .HasColumnName("is_active");
+                    b.Property<Guid?>("LegacyPersonId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("legacy_person_id");
+
+                    b.Property<string>("Manufacturer")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("manufacturer");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -470,10 +450,6 @@ namespace MedicationTracker.Api.Persistence.Migrations
                         .HasColumnType("character varying(2000)")
                         .HasColumnName("notes");
 
-                    b.Property<Guid?>("PersonId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("person_id");
-
                     b.Property<string>("Strength")
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)")
@@ -484,349 +460,22 @@ namespace MedicationTracker.Api.Persistence.Migrations
                         .HasColumnType("text[]")
                         .HasColumnName("tags");
 
-                    b.HasKey("Id");
-
-                    b.HasIndex("HouseholdId");
-
-                    b.HasIndex("PersonId");
-
-                    b.ToTable("medications", "care", t =>
-                        {
-                            t.HasCheckConstraint("ck_medications_tablet_form", "form = 'tablet'");
-                        });
-                });
-
-            modelBuilder.Entity("MedicationTracker.Api.Modules.Care.MedicationChangeEvent", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
-
-                    b.Property<Guid>("AccountId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("account_id");
-
-                    b.Property<Guid>("HouseholdId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("household_id");
-
-                    b.Property<string>("Kind")
+                    b.Property<string>("Unit")
                         .IsRequired()
                         .HasMaxLength(40)
                         .HasColumnType("character varying(40)")
-                        .HasColumnName("kind");
-
-                    b.Property<Guid>("MedicationId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("medication_id");
-
-                    b.Property<string>("NewValue")
-                        .HasMaxLength(4000)
-                        .HasColumnType("character varying(4000)")
-                        .HasColumnName("new_value");
-
-                    b.Property<string>("PreviousValue")
-                        .HasMaxLength(4000)
-                        .HasColumnType("character varying(4000)")
-                        .HasColumnName("previous_value");
-
-                    b.Property<DateTimeOffset>("RecordedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("recorded_at");
+                        .HasColumnName("unit");
 
                     b.HasKey("Id");
 
-                    b.HasIndex("AccountId");
+                    b.HasIndex("LegacyPersonId");
 
-                    b.HasIndex("MedicationId");
+                    b.HasIndex("HouseholdId", "Name");
 
-                    b.HasIndex("HouseholdId", "MedicationId", "RecordedAt");
-
-                    b.ToTable("medication_change_events", "care");
-                });
-
-            modelBuilder.Entity("MedicationTracker.Api.Modules.Care.Person", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at");
-
-                    b.Property<Guid>("HouseholdId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("household_id");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(160)
-                        .HasColumnType("character varying(160)")
-                        .HasColumnName("name");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("HouseholdId", "Id")
-                        .IsUnique();
-
-                    b.ToTable("people", "care");
-                });
-
-            modelBuilder.Entity("MedicationTracker.Api.Modules.Care.ProcessedAdministrationCommand", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
-
-                    b.Property<Guid>("AccountId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("account_id");
-
-                    b.Property<Guid>("AdministrationEventId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("administration_event_id");
-
-                    b.Property<Guid>("HouseholdId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("household_id");
-
-                    b.Property<string>("IdempotencyKey")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
-                        .HasColumnName("idempotency_key");
-
-                    b.Property<DateTimeOffset>("ProcessedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("processed_at");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("AccountId");
-
-                    b.HasIndex("AdministrationEventId");
-
-                    b.HasIndex("HouseholdId", "IdempotencyKey")
-                        .IsUnique();
-
-                    b.ToTable("processed_administration_commands", "sync");
-                });
-
-            modelBuilder.Entity("MedicationTracker.Api.Modules.Care.Regimen", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at");
-
-                    b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("deleted_at");
-
-                    b.Property<Guid>("HouseholdId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("household_id");
-
-                    b.Property<Guid>("MedicationId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("medication_id");
-
-                    b.Property<Guid>("PersonId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("person_id");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("HouseholdId");
-
-                    b.HasIndex("MedicationId");
-
-                    b.HasIndex("PersonId");
-
-                    b.ToTable("regimens", "treatments");
-                });
-
-            modelBuilder.Entity("MedicationTracker.Api.Modules.Care.RegimenChangeEvent", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
-
-                    b.Property<Guid>("AccountId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("account_id");
-
-                    b.Property<Guid>("HouseholdId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("household_id");
-
-                    b.Property<string>("Kind")
-                        .IsRequired()
-                        .HasMaxLength(40)
-                        .HasColumnType("character varying(40)")
-                        .HasColumnName("kind");
-
-                    b.Property<string>("NewValue")
-                        .HasMaxLength(4000)
-                        .HasColumnType("character varying(4000)")
-                        .HasColumnName("new_value");
-
-                    b.Property<string>("PreviousValue")
-                        .HasMaxLength(4000)
-                        .HasColumnType("character varying(4000)")
-                        .HasColumnName("previous_value");
-
-                    b.Property<DateTimeOffset>("RecordedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("recorded_at");
-
-                    b.Property<Guid>("RegimenId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("regimen_id");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("AccountId");
-
-                    b.HasIndex("RegimenId");
-
-                    b.HasIndex("HouseholdId", "RegimenId", "RecordedAt");
-
-                    b.ToTable("regimen_change_events", "treatments");
-                });
-
-            modelBuilder.Entity("MedicationTracker.Api.Modules.Care.RegimenVersion", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at");
-
-                    b.Property<string>("DayPeriod")
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
-                        .HasColumnName("day_period");
-
-                    b.Property<long>("DoseDenominator")
-                        .HasColumnType("bigint")
-                        .HasColumnName("dose_denominator");
-
-                    b.Property<long>("DoseNumerator")
-                        .HasColumnType("bigint")
-                        .HasColumnName("dose_numerator");
-
-                    b.Property<TimeOnly?>("LocalTime")
-                        .HasColumnType("time without time zone")
-                        .HasColumnName("local_time");
-
-                    b.Property<string>("MealRelation")
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
-                        .HasColumnName("meal_relation");
-
-                    b.Property<int?>("MinimumIntervalMinutes")
-                        .HasColumnType("integer")
-                        .HasColumnName("minimum_interval_minutes");
-
-                    b.Property<Guid>("RegimenId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("regimen_id");
-
-                    b.Property<string>("ScheduleType")
-                        .IsRequired()
-                        .ValueGeneratedOnAdd()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
-                        .HasDefaultValue("scheduled")
-                        .HasColumnName("schedule_type");
-
-                    b.Property<string>("TimeZoneId")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
-                        .HasColumnName("time_zone_id");
-
-                    b.Property<DateOnly?>("ValidFrom")
-                        .HasColumnType("date")
-                        .HasColumnName("valid_from");
-
-                    b.Property<DateOnly?>("ValidTo")
-                        .HasColumnType("date")
-                        .HasColumnName("valid_to");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("RegimenId", "CreatedAt")
-                        .IsUnique();
-
-                    b.ToTable("regimen_versions", "treatments", t =>
+                    b.ToTable("medication_definitions", "catalog", t =>
                         {
-                            t.HasCheckConstraint("ck_regimen_versions_denominator", "dose_denominator > 0");
-
-                            t.HasCheckConstraint("ck_regimen_versions_period", "valid_from IS NULL OR valid_to IS NULL OR valid_to >= valid_from");
-
-                            t.HasCheckConstraint("ck_regimen_versions_schedule", "schedule_type = 'as_needed' OR local_time IS NOT NULL OR day_period IS NOT NULL");
-
-                            t.HasCheckConstraint("ck_regimen_versions_schedule_type", "schedule_type IN ('scheduled', 'as_needed')");
+                            t.HasCheckConstraint("ck_medication_definitions_default_capacity", "(default_package_capacity_numerator IS NULL AND default_package_capacity_denominator IS NULL) OR (default_package_capacity_numerator > 0 AND default_package_capacity_denominator > 0)");
                         });
-                });
-
-            modelBuilder.Entity("MedicationTracker.Api.Modules.Care.SyncCommandReceipt", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
-
-                    b.Property<Guid>("AccountId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("account_id");
-
-                    b.Property<Guid>("HouseholdId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("household_id");
-
-                    b.Property<string>("IdempotencyKey")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
-                        .HasColumnName("idempotency_key");
-
-                    b.Property<string>("Kind")
-                        .IsRequired()
-                        .HasMaxLength(60)
-                        .HasColumnType("character varying(60)")
-                        .HasColumnName("kind");
-
-                    b.Property<DateTimeOffset>("ProcessedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("processed_at");
-
-                    b.Property<Guid>("ResultEntityId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("result_entity_id");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("AccountId");
-
-                    b.HasIndex("HouseholdId", "IdempotencyKey")
-                        .IsUnique();
-
-                    b.ToTable("command_receipts", "sync");
                 });
 
             modelBuilder.Entity("MedicationTracker.Api.Modules.Households.Household", b =>
@@ -942,6 +591,577 @@ namespace MedicationTracker.Api.Persistence.Migrations
                     b.ToTable("sessions", "identity");
                 });
 
+            modelBuilder.Entity("MedicationTracker.Api.Modules.Inventory.InventoryCount", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("AcceptedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("accepted_at");
+
+                    b.Property<Guid>("AccountId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("account_id");
+
+                    b.Property<Guid?>("BatchId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("batch_id");
+
+                    b.Property<long>("BeforeDenominator")
+                        .HasColumnType("bigint")
+                        .HasColumnName("before_denominator");
+
+                    b.Property<long>("BeforeNumerator")
+                        .HasColumnType("bigint")
+                        .HasColumnName("before_numerator");
+
+                    b.Property<Guid>("HouseholdId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("household_id");
+
+                    b.Property<Guid>("LedgerEntryId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("ledger_entry_id");
+
+                    b.Property<Guid>("LegacyInventoryItemId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("inventory_item_id");
+
+                    b.Property<long>("ObservedDenominator")
+                        .HasColumnType("bigint")
+                        .HasColumnName("observed_denominator");
+
+                    b.Property<long>("ObservedNumerator")
+                        .HasColumnType("bigint")
+                        .HasColumnName("observed_numerator");
+
+                    b.Property<Guid?>("PackageId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("package_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AccountId");
+
+                    b.HasIndex("BatchId");
+
+                    b.HasIndex("LedgerEntryId")
+                        .IsUnique();
+
+                    b.HasIndex("LegacyInventoryItemId");
+
+                    b.HasIndex("PackageId");
+
+                    b.HasIndex("HouseholdId", "BatchId");
+
+                    b.ToTable("count_sessions", "inventory");
+                });
+
+            modelBuilder.Entity("MedicationTracker.Api.Modules.Inventory.InventoryCountBatch", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("AcceptedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("accepted_at");
+
+                    b.Property<Guid>("AccountId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("account_id");
+
+                    b.Property<Guid>("HouseholdId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("household_id");
+
+                    b.Property<Guid?>("PreviousBatchId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("previous_batch_id");
+
+                    b.Property<int>("RevisionNumber")
+                        .HasColumnType("integer")
+                        .HasColumnName("revision_number");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AccountId");
+
+                    b.HasIndex("PreviousBatchId")
+                        .IsUnique();
+
+                    b.HasIndex("HouseholdId", "AcceptedAt");
+
+                    b.ToTable("count_batches", "inventory", t =>
+                        {
+                            t.HasCheckConstraint("ck_count_batches_revision", "revision_number > 0");
+                        });
+                });
+
+            modelBuilder.Entity("MedicationTracker.Api.Modules.Inventory.InventoryLedgerEntry", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid?>("ActorAccountId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("actor_account_id");
+
+                    b.Property<Guid?>("AdministrationEventId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("administration_event_id");
+
+                    b.Property<Guid>("CorrelationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("correlation_id");
+
+                    b.Property<string>("EntryType")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("entry_type");
+
+                    b.Property<Guid>("HouseholdId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("household_id");
+
+                    b.Property<Guid>("LegacyInventoryItemId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("inventory_item_id");
+
+                    b.Property<Guid>("MedicationDefinitionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("medication_definition_id");
+
+                    b.Property<DateTimeOffset>("OccurredAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("occurred_at");
+
+                    b.Property<Guid?>("PackageId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("package_id");
+
+                    b.Property<long>("QuantityDenominator")
+                        .HasColumnType("bigint")
+                        .HasColumnName("quantity_denominator");
+
+                    b.Property<long>("QuantityNumerator")
+                        .HasColumnType("bigint")
+                        .HasColumnName("quantity_numerator");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("reason");
+
+                    b.Property<DateTimeOffset>("RecordedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("recorded_at");
+
+                    b.Property<Guid?>("ReversesEntryId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("reverses_entry_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ActorAccountId");
+
+                    b.HasIndex("AdministrationEventId")
+                        .HasFilter("administration_event_id IS NOT NULL");
+
+                    b.HasIndex("CorrelationId");
+
+                    b.HasIndex("LegacyInventoryItemId");
+
+                    b.HasIndex("MedicationDefinitionId");
+
+                    b.HasIndex("PackageId")
+                        .HasFilter("package_id IS NOT NULL");
+
+                    b.HasIndex("ReversesEntryId");
+
+                    b.HasIndex("HouseholdId", "MedicationDefinitionId");
+
+                    b.ToTable("ledger_entries", "inventory", t =>
+                        {
+                            t.HasCheckConstraint("ck_ledger_entries_denominator", "quantity_denominator > 0");
+
+                            t.HasCheckConstraint("ck_ledger_entries_non_zero", "quantity_numerator <> 0 OR entry_type IN ('Acquire', 'CountAdjustment')");
+                        });
+                });
+
+            modelBuilder.Entity("MedicationTracker.Api.Modules.Inventory.LegacyInventoryItem", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("HouseholdId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("household_id");
+
+                    b.Property<Guid>("MedicationDefinitionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("medication_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("HouseholdId");
+
+                    b.HasIndex("MedicationDefinitionId")
+                        .IsUnique();
+
+                    b.ToTable("inventory_items", "inventory");
+                });
+
+            modelBuilder.Entity("MedicationTracker.Api.Modules.Inventory.MedicationPackage", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateOnly?>("AcquiredOn")
+                        .HasColumnType("date")
+                        .HasColumnName("acquired_on");
+
+                    b.Property<string>("Barcode")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("barcode");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("CreatedByAccountId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by_account_id");
+
+                    b.Property<DateOnly?>("ExpiresOn")
+                        .HasColumnType("date")
+                        .HasColumnName("expires_on");
+
+                    b.Property<Guid?>("HolderPersonId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("holder_person_id");
+
+                    b.Property<Guid>("HouseholdId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("household_id");
+
+                    b.Property<bool>("IsPinned")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false)
+                        .HasColumnName("is_pinned");
+
+                    b.Property<Guid>("LegacyInventoryItemId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("inventory_item_id");
+
+                    b.Property<string>("LotNumber")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("lot_number");
+
+                    b.Property<Guid>("MedicationDefinitionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("medication_definition_id");
+
+                    b.Property<long>("NominalCapacityDenominator")
+                        .HasColumnType("bigint")
+                        .HasColumnName("nominal_capacity_denominator");
+
+                    b.Property<long>("NominalCapacityNumerator")
+                        .HasColumnType("bigint")
+                        .HasColumnName("nominal_capacity_numerator");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("note");
+
+                    b.Property<DateTimeOffset?>("OpenedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("opened_at");
+
+                    b.Property<int>("Ordinal")
+                        .HasColumnType("integer")
+                        .HasColumnName("ordinal");
+
+                    b.Property<Guid?>("OwnerPersonId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("owner_person_id");
+
+                    b.Property<DateTimeOffset?>("RetiredAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("retired_at");
+
+                    b.Property<string>("Source")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("source");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("state");
+
+                    b.Property<string>("StorageLocation")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("storage_location");
+
+                    b.Property<string>("Unit")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("unit");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedByAccountId");
+
+                    b.HasIndex("HolderPersonId");
+
+                    b.HasIndex("LegacyInventoryItemId");
+
+                    b.HasIndex("MedicationDefinitionId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_packages_single_pinned_per_medication")
+                        .HasFilter("is_pinned");
+
+                    b.HasIndex("OwnerPersonId");
+
+                    b.HasIndex("HouseholdId", "MedicationDefinitionId");
+
+                    b.HasIndex("MedicationDefinitionId", "Ordinal")
+                        .IsUnique();
+
+                    b.ToTable("packages", "inventory", t =>
+                        {
+                            t.HasCheckConstraint("ck_packages_capacity", "nominal_capacity_numerator > 0 AND nominal_capacity_denominator > 0");
+
+                            t.HasCheckConstraint("ck_packages_opened_at", "(state = 'Sealed' AND opened_at IS NULL) OR (state <> 'Sealed')");
+
+                            t.HasCheckConstraint("ck_packages_ordinal", "ordinal > 0");
+                        });
+                });
+
+            modelBuilder.Entity("MedicationTracker.Api.Modules.Inventory.PackageAssignmentEvent", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("AccountId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("account_id");
+
+                    b.Property<Guid?>("FromPersonId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("from_person_id");
+
+                    b.Property<Guid>("HouseholdId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("household_id");
+
+                    b.Property<Guid>("PackageId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("package_id");
+
+                    b.Property<DateTimeOffset>("RecordedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("recorded_at");
+
+                    b.Property<Guid?>("ToPersonId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("to_person_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AccountId");
+
+                    b.HasIndex("FromPersonId");
+
+                    b.HasIndex("PackageId");
+
+                    b.HasIndex("ToPersonId");
+
+                    b.HasIndex("HouseholdId", "PackageId", "RecordedAt");
+
+                    b.ToTable("package_assignment_events", "inventory");
+                });
+
+            modelBuilder.Entity("MedicationTracker.Api.Modules.Inventory.PackageLoan", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("BorrowerPersonId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("borrower_person_id");
+
+                    b.Property<Guid>("HouseholdId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("household_id");
+
+                    b.Property<DateTimeOffset>("LentAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("lent_at");
+
+                    b.Property<Guid>("LentByAccountId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("lent_by_account_id");
+
+                    b.Property<Guid>("OwnerPersonId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("owner_person_id");
+
+                    b.Property<Guid>("PackageId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("package_id");
+
+                    b.Property<DateTimeOffset?>("ReturnedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("returned_at");
+
+                    b.Property<Guid?>("ReturnedByAccountId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("returned_by_account_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BorrowerPersonId");
+
+                    b.HasIndex("LentByAccountId");
+
+                    b.HasIndex("OwnerPersonId");
+
+                    b.HasIndex("PackageId");
+
+                    b.HasIndex("ReturnedByAccountId");
+
+                    b.HasIndex("HouseholdId", "PackageId")
+                        .IsUnique()
+                        .HasFilter("returned_at IS NULL");
+
+                    b.ToTable("package_loans", "inventory", t =>
+                        {
+                            t.HasCheckConstraint("ck_package_loans_people", "owner_person_id <> borrower_person_id");
+                        });
+                });
+
+            modelBuilder.Entity("MedicationTracker.Api.Modules.People.Person", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset?>("ArchivedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("archived_at");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("HouseholdId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("household_id");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)")
+                        .HasColumnName("name");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("HouseholdId", "Id")
+                        .IsUnique();
+
+                    b.ToTable("people", "care");
+                });
+
+            modelBuilder.Entity("MedicationTracker.Api.Modules.Refill.MedicationRefillPolicy", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("HouseholdId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("household_id");
+
+                    b.Property<int?>("LowStockDays")
+                        .HasColumnType("integer")
+                        .HasColumnName("low_stock_days");
+
+                    b.Property<long?>("LowStockThresholdDenominator")
+                        .HasColumnType("bigint")
+                        .HasColumnName("low_stock_threshold_denominator");
+
+                    b.Property<long?>("LowStockThresholdNumerator")
+                        .HasColumnType("bigint")
+                        .HasColumnName("low_stock_threshold_numerator");
+
+                    b.Property<Guid>("MedicationDefinitionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("medication_definition_id");
+
+                    b.Property<DateOnly?>("NextEligibleRefillOn")
+                        .HasColumnType("date")
+                        .HasColumnName("next_eligible_refill_on");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("note");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid>("UpdatedByAccountId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by_account_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("HouseholdId");
+
+                    b.HasIndex("MedicationDefinitionId")
+                        .IsUnique();
+
+                    b.HasIndex("UpdatedByAccountId");
+
+                    b.ToTable("medication_refill_policies", "refill", t =>
+                        {
+                            t.HasCheckConstraint("ck_refill_policies_days", "low_stock_days IS NULL OR (low_stock_days >= 0 AND low_stock_days <= 365)");
+
+                            t.HasCheckConstraint("ck_refill_policies_threshold", "(low_stock_threshold_numerator IS NULL AND low_stock_threshold_denominator IS NULL) OR (low_stock_threshold_numerator >= 0 AND low_stock_threshold_denominator > 0)");
+                        });
+                });
+
             modelBuilder.Entity("MedicationTracker.Api.Modules.Subscriptions.Entitlement", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1024,27 +1244,253 @@ namespace MedicationTracker.Api.Persistence.Migrations
                         });
                 });
 
-            modelBuilder.Entity("MedicationTracker.Api.Modules.Care.AdministrationEvent", b =>
+            modelBuilder.Entity("MedicationTracker.Api.Modules.Sync.ProcessedAdministrationCommand", b =>
                 {
-                    b.HasOne("MedicationTracker.Api.Modules.Care.RegimenVersion", null)
-                        .WithMany()
-                        .HasForeignKey("RegimenVersionId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("AccountId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("account_id");
+
+                    b.Property<Guid>("AdministrationEventId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("administration_event_id");
+
+                    b.Property<Guid>("HouseholdId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("household_id");
+
+                    b.Property<string>("IdempotencyKey")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("idempotency_key");
+
+                    b.Property<DateTimeOffset>("ProcessedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("processed_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AccountId");
+
+                    b.HasIndex("AdministrationEventId");
+
+                    b.HasIndex("HouseholdId", "IdempotencyKey")
+                        .IsUnique();
+
+                    b.ToTable("processed_administration_commands", "sync");
                 });
 
-            modelBuilder.Entity("MedicationTracker.Api.Modules.Care.InventoryCount", b =>
+            modelBuilder.Entity("MedicationTracker.Api.Modules.Sync.SyncCommandReceipt", b =>
                 {
-                    b.HasOne("MedicationTracker.Api.Modules.Identity.Account", null)
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("AccountId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("account_id");
+
+                    b.Property<Guid>("HouseholdId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("household_id");
+
+                    b.Property<string>("IdempotencyKey")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("idempotency_key");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)")
+                        .HasColumnName("kind");
+
+                    b.Property<DateTimeOffset>("ProcessedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("processed_at");
+
+                    b.Property<Guid>("ResultEntityId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("result_entity_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AccountId");
+
+                    b.HasIndex("HouseholdId", "IdempotencyKey")
+                        .IsUnique();
+
+                    b.ToTable("command_receipts", "sync");
+                });
+
+            modelBuilder.Entity("MedicationTracker.Api.Modules.Treatments.TreatmentPlan", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("deleted_at");
+
+                    b.Property<Guid>("HouseholdId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("household_id");
+
+                    b.Property<Guid>("MedicationDefinitionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("medication_definition_id");
+
+                    b.Property<Guid>("PersonId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("person_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MedicationDefinitionId");
+
+                    b.HasIndex("PersonId");
+
+                    b.HasIndex("HouseholdId", "PersonId", "MedicationDefinitionId");
+
+                    b.ToTable("plans", "treatments");
+                });
+
+            modelBuilder.Entity("MedicationTracker.Api.Modules.Treatments.TreatmentPlanVersion", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("CreatedByAccountId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by_account_id");
+
+                    b.Property<string>("DayPeriod")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("day_period");
+
+                    b.Property<long>("DoseDenominator")
+                        .HasColumnType("bigint")
+                        .HasColumnName("dose_denominator");
+
+                    b.Property<long>("DoseNumerator")
+                        .HasColumnType("bigint")
+                        .HasColumnName("dose_numerator");
+
+                    b.Property<DateOnly?>("EffectiveFrom")
+                        .HasColumnType("date")
+                        .HasColumnName("effective_from");
+
+                    b.Property<DateOnly?>("EffectiveTo")
+                        .HasColumnType("date")
+                        .HasColumnName("effective_to");
+
+                    b.Property<string>("Instructions")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("instructions");
+
+                    b.Property<int?>("IntervalDays")
+                        .HasColumnType("integer")
+                        .HasColumnName("interval_days");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("kind");
+
+                    b.Property<TimeOnly?>("LocalTime")
+                        .HasColumnType("time without time zone")
+                        .HasColumnName("local_time");
+
+                    b.Property<string>("MealRelation")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("meal_relation");
+
+                    b.Property<int?>("MinimumIntervalMinutes")
+                        .HasColumnType("integer")
+                        .HasColumnName("minimum_interval_minutes");
+
+                    b.Property<string>("Pattern")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("pattern");
+
+                    b.Property<string>("TimeZoneId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("time_zone_id");
+
+                    b.Property<Guid>("TreatmentPlanId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("plan_id");
+
+                    b.Property<int>("VersionNumber")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(1)
+                        .HasColumnName("version_number");
+
+                    b.Property<int?>("WeekdayMask")
+                        .HasColumnType("integer")
+                        .HasColumnName("weekday_mask");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedByAccountId");
+
+                    b.HasIndex("TreatmentPlanId", "CreatedAt")
+                        .IsUnique();
+
+                    b.HasIndex("TreatmentPlanId", "VersionNumber")
+                        .IsUnique();
+
+                    b.ToTable("plan_versions", "treatments", t =>
+                        {
+                            t.HasCheckConstraint("ck_plan_versions_dose", "dose_numerator > 0 AND dose_denominator > 0");
+
+                            t.HasCheckConstraint("ck_plan_versions_kind", "kind IN ('Scheduled', 'AsNeeded')");
+
+                            t.HasCheckConstraint("ck_plan_versions_period", "effective_from IS NULL OR effective_to IS NULL OR effective_to >= effective_from");
+
+                            t.HasCheckConstraint("ck_plan_versions_recurrence", "(pattern = 'Daily' AND weekday_mask IS NULL AND interval_days IS NULL) OR (kind = 'Scheduled' AND pattern = 'SelectedWeekdays' AND weekday_mask BETWEEN 1 AND 127 AND interval_days IS NULL) OR (kind = 'Scheduled' AND pattern = 'EveryNDays' AND effective_from IS NOT NULL AND interval_days BETWEEN 1 AND 3650 AND weekday_mask IS NULL)");
+
+                            t.HasCheckConstraint("ck_plan_versions_schedule", "kind = 'AsNeeded' OR local_time IS NOT NULL OR day_period IS NOT NULL");
+
+                            t.HasCheckConstraint("ck_plan_versions_version_number", "version_number > 0");
+                        });
+                });
+
+            modelBuilder.Entity("MedicationTracker.Api.Modules.Administrations.AdministrationAllocation", b =>
+                {
+                    b.HasOne("MedicationTracker.Api.Modules.Administrations.AdministrationEvent", null)
                         .WithMany()
-                        .HasForeignKey("AccountId")
+                        .HasForeignKey("AdministrationEventId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
-
-                    b.HasOne("MedicationTracker.Api.Modules.Care.InventoryCountBatch", null)
-                        .WithMany()
-                        .HasForeignKey("BatchId")
-                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("MedicationTracker.Api.Modules.Households.Household", null)
                         .WithMany()
@@ -1052,254 +1498,93 @@ namespace MedicationTracker.Api.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.HasOne("MedicationTracker.Api.Modules.Care.InventoryItem", null)
-                        .WithMany()
-                        .HasForeignKey("InventoryItemId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("MedicationTracker.Api.Modules.Care.InventoryLedgerEntry", null)
+                    b.HasOne("MedicationTracker.Api.Modules.Inventory.InventoryLedgerEntry", null)
                         .WithMany()
                         .HasForeignKey("LedgerEntryId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
-                });
 
-            modelBuilder.Entity("MedicationTracker.Api.Modules.Care.InventoryCountBatch", b =>
-                {
-                    b.HasOne("MedicationTracker.Api.Modules.Identity.Account", null)
-                        .WithMany()
-                        .HasForeignKey("AccountId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("MedicationTracker.Api.Modules.Households.Household", null)
-                        .WithMany()
-                        .HasForeignKey("HouseholdId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("MedicationTracker.Api.Modules.Care.InventoryCountBatch", null)
-                        .WithMany()
-                        .HasForeignKey("PreviousBatchId")
-                        .OnDelete(DeleteBehavior.Restrict);
-                });
-
-            modelBuilder.Entity("MedicationTracker.Api.Modules.Care.InventoryItem", b =>
-                {
-                    b.HasOne("MedicationTracker.Api.Modules.Households.Household", null)
-                        .WithMany()
-                        .HasForeignKey("HouseholdId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("MedicationTracker.Api.Modules.Care.Medication", null)
-                        .WithMany()
-                        .HasForeignKey("MedicationId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-                });
-
-            modelBuilder.Entity("MedicationTracker.Api.Modules.Care.InventoryLedgerEntry", b =>
-                {
-                    b.HasOne("MedicationTracker.Api.Modules.Care.AdministrationEvent", null)
-                        .WithMany()
-                        .HasForeignKey("AdministrationEventId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
-                    b.HasOne("MedicationTracker.Api.Modules.Care.InventoryItem", null)
-                        .WithMany()
-                        .HasForeignKey("InventoryItemId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("MedicationTracker.Api.Modules.Care.InventoryPackage", null)
+                    b.HasOne("MedicationTracker.Api.Modules.Inventory.MedicationPackage", null)
                         .WithMany()
                         .HasForeignKey("PackageId")
                         .OnDelete(DeleteBehavior.Restrict);
-                });
 
-            modelBuilder.Entity("MedicationTracker.Api.Modules.Care.InventoryLoan", b =>
-                {
-                    b.HasOne("MedicationTracker.Api.Modules.Care.Person", null)
+                    b.HasOne("MedicationTracker.Api.Modules.Administrations.AdministrationAllocation", null)
                         .WithMany()
-                        .HasForeignKey("BorrowerPersonId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("MedicationTracker.Api.Modules.Households.Household", null)
-                        .WithMany()
-                        .HasForeignKey("HouseholdId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("MedicationTracker.Api.Modules.Identity.Account", null)
-                        .WithMany()
-                        .HasForeignKey("LentByAccountId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("MedicationTracker.Api.Modules.Care.Person", null)
-                        .WithMany()
-                        .HasForeignKey("OwnerPersonId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("MedicationTracker.Api.Modules.Care.InventoryPackage", null)
-                        .WithMany()
-                        .HasForeignKey("PackageId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("MedicationTracker.Api.Modules.Identity.Account", null)
-                        .WithMany()
-                        .HasForeignKey("ReturnedByAccountId")
+                        .HasForeignKey("SupersededByAllocationId")
                         .OnDelete(DeleteBehavior.Restrict);
                 });
 
-            modelBuilder.Entity("MedicationTracker.Api.Modules.Care.InventoryPackage", b =>
-                {
-                    b.HasOne("MedicationTracker.Api.Modules.Households.Household", null)
-                        .WithMany()
-                        .HasForeignKey("HouseholdId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("MedicationTracker.Api.Modules.Care.InventoryItem", null)
-                        .WithMany()
-                        .HasForeignKey("InventoryItemId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("MedicationTracker.Api.Modules.Care.Person", null)
-                        .WithMany()
-                        .HasForeignKey("OwnerPersonId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
-                    b.HasOne("MedicationTracker.Api.Modules.Care.Person", null)
-                        .WithMany()
-                        .HasForeignKey("PersonId")
-                        .OnDelete(DeleteBehavior.Restrict);
-                });
-
-            modelBuilder.Entity("MedicationTracker.Api.Modules.Care.InventoryPackageAssignmentEvent", b =>
+            modelBuilder.Entity("MedicationTracker.Api.Modules.Administrations.AdministrationAllocationCorrection", b =>
                 {
                     b.HasOne("MedicationTracker.Api.Modules.Identity.Account", null)
                         .WithMany()
-                        .HasForeignKey("AccountId")
+                        .HasForeignKey("ActorAccountId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.HasOne("MedicationTracker.Api.Modules.Care.Person", null)
-                        .WithMany()
-                        .HasForeignKey("FromPersonId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
-                    b.HasOne("MedicationTracker.Api.Modules.Households.Household", null)
-                        .WithMany()
-                        .HasForeignKey("HouseholdId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("MedicationTracker.Api.Modules.Care.InventoryPackage", null)
-                        .WithMany()
-                        .HasForeignKey("PackageId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("MedicationTracker.Api.Modules.Care.Person", null)
-                        .WithMany()
-                        .HasForeignKey("ToPersonId")
-                        .OnDelete(DeleteBehavior.Restrict);
-                });
-
-            modelBuilder.Entity("MedicationTracker.Api.Modules.Care.Medication", b =>
-                {
-                    b.HasOne("MedicationTracker.Api.Modules.Households.Household", null)
-                        .WithMany()
-                        .HasForeignKey("HouseholdId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("MedicationTracker.Api.Modules.Care.Person", null)
-                        .WithMany()
-                        .HasForeignKey("PersonId")
-                        .OnDelete(DeleteBehavior.Restrict);
-                });
-
-            modelBuilder.Entity("MedicationTracker.Api.Modules.Care.MedicationChangeEvent", b =>
-                {
-                    b.HasOne("MedicationTracker.Api.Modules.Identity.Account", null)
-                        .WithMany()
-                        .HasForeignKey("AccountId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("MedicationTracker.Api.Modules.Households.Household", null)
-                        .WithMany()
-                        .HasForeignKey("HouseholdId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("MedicationTracker.Api.Modules.Care.Medication", null)
-                        .WithMany()
-                        .HasForeignKey("MedicationId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-                });
-
-            modelBuilder.Entity("MedicationTracker.Api.Modules.Care.Person", b =>
-                {
-                    b.HasOne("MedicationTracker.Api.Modules.Households.Household", null)
-                        .WithMany()
-                        .HasForeignKey("HouseholdId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-                });
-
-            modelBuilder.Entity("MedicationTracker.Api.Modules.Care.ProcessedAdministrationCommand", b =>
-                {
-                    b.HasOne("MedicationTracker.Api.Modules.Identity.Account", null)
-                        .WithMany()
-                        .HasForeignKey("AccountId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("MedicationTracker.Api.Modules.Care.AdministrationEvent", null)
+                    b.HasOne("MedicationTracker.Api.Modules.Administrations.AdministrationEvent", null)
                         .WithMany()
                         .HasForeignKey("AdministrationEventId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("MedicationTracker.Api.Modules.Inventory.MedicationPackage", null)
+                        .WithMany()
+                        .HasForeignKey("FromPackageId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("MedicationTracker.Api.Modules.Households.Household", null)
                         .WithMany()
                         .HasForeignKey("HouseholdId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+
+                    b.HasOne("MedicationTracker.Api.Modules.Administrations.AdministrationAllocation", null)
+                        .WithMany()
+                        .HasForeignKey("SupersededAllocationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("MedicationTracker.Api.Modules.Inventory.MedicationPackage", null)
+                        .WithMany()
+                        .HasForeignKey("ToPackageId")
+                        .OnDelete(DeleteBehavior.Restrict);
                 });
 
-            modelBuilder.Entity("MedicationTracker.Api.Modules.Care.Regimen", b =>
+            modelBuilder.Entity("MedicationTracker.Api.Modules.Administrations.AdministrationEvent", b =>
                 {
+                    b.HasOne("MedicationTracker.Api.Modules.Identity.Account", null)
+                        .WithMany()
+                        .HasForeignKey("ActorAccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.HasOne("MedicationTracker.Api.Modules.Households.Household", null)
                         .WithMany()
                         .HasForeignKey("HouseholdId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.HasOne("MedicationTracker.Api.Modules.Care.Medication", null)
+                    b.HasOne("MedicationTracker.Api.Modules.Catalog.MedicationDefinition", null)
                         .WithMany()
-                        .HasForeignKey("MedicationId")
+                        .HasForeignKey("MedicationDefinitionId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.HasOne("MedicationTracker.Api.Modules.Care.Person", null)
+                    b.HasOne("MedicationTracker.Api.Modules.People.Person", null)
                         .WithMany()
                         .HasForeignKey("PersonId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+
+                    b.HasOne("MedicationTracker.Api.Modules.Treatments.TreatmentPlanVersion", null)
+                        .WithMany()
+                        .HasForeignKey("TreatmentPlanVersionId")
+                        .OnDelete(DeleteBehavior.Restrict);
                 });
 
-            modelBuilder.Entity("MedicationTracker.Api.Modules.Care.RegimenChangeEvent", b =>
+            modelBuilder.Entity("MedicationTracker.Api.Modules.Audit.MedicationDefinitionChangeEvent", b =>
                 {
                     b.HasOne("MedicationTracker.Api.Modules.Identity.Account", null)
                         .WithMany()
@@ -1313,23 +1598,14 @@ namespace MedicationTracker.Api.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.HasOne("MedicationTracker.Api.Modules.Care.Regimen", null)
+                    b.HasOne("MedicationTracker.Api.Modules.Catalog.MedicationDefinition", null)
                         .WithMany()
-                        .HasForeignKey("RegimenId")
+                        .HasForeignKey("MedicationDefinitionId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });
 
-            modelBuilder.Entity("MedicationTracker.Api.Modules.Care.RegimenVersion", b =>
-                {
-                    b.HasOne("MedicationTracker.Api.Modules.Care.Regimen", null)
-                        .WithMany()
-                        .HasForeignKey("RegimenId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-                });
-
-            modelBuilder.Entity("MedicationTracker.Api.Modules.Care.SyncCommandReceipt", b =>
+            modelBuilder.Entity("MedicationTracker.Api.Modules.Audit.TreatmentPlanChangeEvent", b =>
                 {
                     b.HasOne("MedicationTracker.Api.Modules.Identity.Account", null)
                         .WithMany()
@@ -1342,6 +1618,26 @@ namespace MedicationTracker.Api.Persistence.Migrations
                         .HasForeignKey("HouseholdId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+
+                    b.HasOne("MedicationTracker.Api.Modules.Treatments.TreatmentPlan", null)
+                        .WithMany()
+                        .HasForeignKey("TreatmentPlanId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MedicationTracker.Api.Modules.Catalog.MedicationDefinition", b =>
+                {
+                    b.HasOne("MedicationTracker.Api.Modules.Households.Household", null)
+                        .WithMany()
+                        .HasForeignKey("HouseholdId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("MedicationTracker.Api.Modules.People.Person", null)
+                        .WithMany()
+                        .HasForeignKey("LegacyPersonId")
+                        .OnDelete(DeleteBehavior.Restrict);
                 });
 
             modelBuilder.Entity("MedicationTracker.Api.Modules.Households.HouseholdMembership", b =>
@@ -1368,6 +1664,249 @@ namespace MedicationTracker.Api.Persistence.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("MedicationTracker.Api.Modules.Inventory.InventoryCount", b =>
+                {
+                    b.HasOne("MedicationTracker.Api.Modules.Identity.Account", null)
+                        .WithMany()
+                        .HasForeignKey("AccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("MedicationTracker.Api.Modules.Inventory.InventoryCountBatch", null)
+                        .WithMany()
+                        .HasForeignKey("BatchId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("MedicationTracker.Api.Modules.Households.Household", null)
+                        .WithMany()
+                        .HasForeignKey("HouseholdId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("MedicationTracker.Api.Modules.Inventory.InventoryLedgerEntry", null)
+                        .WithMany()
+                        .HasForeignKey("LedgerEntryId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("MedicationTracker.Api.Modules.Inventory.LegacyInventoryItem", null)
+                        .WithMany()
+                        .HasForeignKey("LegacyInventoryItemId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("MedicationTracker.Api.Modules.Inventory.MedicationPackage", null)
+                        .WithMany()
+                        .HasForeignKey("PackageId")
+                        .OnDelete(DeleteBehavior.Restrict);
+                });
+
+            modelBuilder.Entity("MedicationTracker.Api.Modules.Inventory.InventoryCountBatch", b =>
+                {
+                    b.HasOne("MedicationTracker.Api.Modules.Identity.Account", null)
+                        .WithMany()
+                        .HasForeignKey("AccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("MedicationTracker.Api.Modules.Households.Household", null)
+                        .WithMany()
+                        .HasForeignKey("HouseholdId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("MedicationTracker.Api.Modules.Inventory.InventoryCountBatch", null)
+                        .WithMany()
+                        .HasForeignKey("PreviousBatchId")
+                        .OnDelete(DeleteBehavior.Restrict);
+                });
+
+            modelBuilder.Entity("MedicationTracker.Api.Modules.Inventory.InventoryLedgerEntry", b =>
+                {
+                    b.HasOne("MedicationTracker.Api.Modules.Identity.Account", null)
+                        .WithMany()
+                        .HasForeignKey("ActorAccountId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("MedicationTracker.Api.Modules.Administrations.AdministrationEvent", null)
+                        .WithMany()
+                        .HasForeignKey("AdministrationEventId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("MedicationTracker.Api.Modules.Inventory.LegacyInventoryItem", null)
+                        .WithMany()
+                        .HasForeignKey("LegacyInventoryItemId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("MedicationTracker.Api.Modules.Catalog.MedicationDefinition", null)
+                        .WithMany()
+                        .HasForeignKey("MedicationDefinitionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("MedicationTracker.Api.Modules.Inventory.MedicationPackage", null)
+                        .WithMany()
+                        .HasForeignKey("PackageId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("MedicationTracker.Api.Modules.Inventory.InventoryLedgerEntry", null)
+                        .WithMany()
+                        .HasForeignKey("ReversesEntryId")
+                        .OnDelete(DeleteBehavior.Restrict);
+                });
+
+            modelBuilder.Entity("MedicationTracker.Api.Modules.Inventory.LegacyInventoryItem", b =>
+                {
+                    b.HasOne("MedicationTracker.Api.Modules.Households.Household", null)
+                        .WithMany()
+                        .HasForeignKey("HouseholdId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("MedicationTracker.Api.Modules.Catalog.MedicationDefinition", null)
+                        .WithMany()
+                        .HasForeignKey("MedicationDefinitionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MedicationTracker.Api.Modules.Inventory.MedicationPackage", b =>
+                {
+                    b.HasOne("MedicationTracker.Api.Modules.Identity.Account", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedByAccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("MedicationTracker.Api.Modules.People.Person", null)
+                        .WithMany()
+                        .HasForeignKey("HolderPersonId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("MedicationTracker.Api.Modules.Households.Household", null)
+                        .WithMany()
+                        .HasForeignKey("HouseholdId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("MedicationTracker.Api.Modules.Inventory.LegacyInventoryItem", null)
+                        .WithMany()
+                        .HasForeignKey("LegacyInventoryItemId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("MedicationTracker.Api.Modules.Catalog.MedicationDefinition", null)
+                        .WithMany()
+                        .HasForeignKey("MedicationDefinitionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("MedicationTracker.Api.Modules.People.Person", null)
+                        .WithMany()
+                        .HasForeignKey("OwnerPersonId")
+                        .OnDelete(DeleteBehavior.Restrict);
+                });
+
+            modelBuilder.Entity("MedicationTracker.Api.Modules.Inventory.PackageAssignmentEvent", b =>
+                {
+                    b.HasOne("MedicationTracker.Api.Modules.Identity.Account", null)
+                        .WithMany()
+                        .HasForeignKey("AccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("MedicationTracker.Api.Modules.People.Person", null)
+                        .WithMany()
+                        .HasForeignKey("FromPersonId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("MedicationTracker.Api.Modules.Households.Household", null)
+                        .WithMany()
+                        .HasForeignKey("HouseholdId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("MedicationTracker.Api.Modules.Inventory.MedicationPackage", null)
+                        .WithMany()
+                        .HasForeignKey("PackageId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("MedicationTracker.Api.Modules.People.Person", null)
+                        .WithMany()
+                        .HasForeignKey("ToPersonId")
+                        .OnDelete(DeleteBehavior.Restrict);
+                });
+
+            modelBuilder.Entity("MedicationTracker.Api.Modules.Inventory.PackageLoan", b =>
+                {
+                    b.HasOne("MedicationTracker.Api.Modules.People.Person", null)
+                        .WithMany()
+                        .HasForeignKey("BorrowerPersonId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("MedicationTracker.Api.Modules.Households.Household", null)
+                        .WithMany()
+                        .HasForeignKey("HouseholdId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("MedicationTracker.Api.Modules.Identity.Account", null)
+                        .WithMany()
+                        .HasForeignKey("LentByAccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("MedicationTracker.Api.Modules.People.Person", null)
+                        .WithMany()
+                        .HasForeignKey("OwnerPersonId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("MedicationTracker.Api.Modules.Inventory.MedicationPackage", null)
+                        .WithMany()
+                        .HasForeignKey("PackageId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("MedicationTracker.Api.Modules.Identity.Account", null)
+                        .WithMany()
+                        .HasForeignKey("ReturnedByAccountId")
+                        .OnDelete(DeleteBehavior.Restrict);
+                });
+
+            modelBuilder.Entity("MedicationTracker.Api.Modules.People.Person", b =>
+                {
+                    b.HasOne("MedicationTracker.Api.Modules.Households.Household", null)
+                        .WithMany()
+                        .HasForeignKey("HouseholdId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MedicationTracker.Api.Modules.Refill.MedicationRefillPolicy", b =>
+                {
+                    b.HasOne("MedicationTracker.Api.Modules.Households.Household", null)
+                        .WithMany()
+                        .HasForeignKey("HouseholdId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("MedicationTracker.Api.Modules.Catalog.MedicationDefinition", null)
+                        .WithMany()
+                        .HasForeignKey("MedicationDefinitionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("MedicationTracker.Api.Modules.Identity.Account", null)
+                        .WithMany()
+                        .HasForeignKey("UpdatedByAccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("MedicationTracker.Api.Modules.Subscriptions.Entitlement", b =>
                 {
                     b.HasOne("MedicationTracker.Api.Modules.Subscriptions.Subscription", null)
@@ -1388,6 +1927,78 @@ namespace MedicationTracker.Api.Persistence.Migrations
                         .WithMany()
                         .HasForeignKey("HouseholdId")
                         .OnDelete(DeleteBehavior.Restrict);
+                });
+
+            modelBuilder.Entity("MedicationTracker.Api.Modules.Sync.ProcessedAdministrationCommand", b =>
+                {
+                    b.HasOne("MedicationTracker.Api.Modules.Identity.Account", null)
+                        .WithMany()
+                        .HasForeignKey("AccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("MedicationTracker.Api.Modules.Administrations.AdministrationEvent", null)
+                        .WithMany()
+                        .HasForeignKey("AdministrationEventId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("MedicationTracker.Api.Modules.Households.Household", null)
+                        .WithMany()
+                        .HasForeignKey("HouseholdId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MedicationTracker.Api.Modules.Sync.SyncCommandReceipt", b =>
+                {
+                    b.HasOne("MedicationTracker.Api.Modules.Identity.Account", null)
+                        .WithMany()
+                        .HasForeignKey("AccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("MedicationTracker.Api.Modules.Households.Household", null)
+                        .WithMany()
+                        .HasForeignKey("HouseholdId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MedicationTracker.Api.Modules.Treatments.TreatmentPlan", b =>
+                {
+                    b.HasOne("MedicationTracker.Api.Modules.Households.Household", null)
+                        .WithMany()
+                        .HasForeignKey("HouseholdId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("MedicationTracker.Api.Modules.Catalog.MedicationDefinition", null)
+                        .WithMany()
+                        .HasForeignKey("MedicationDefinitionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("MedicationTracker.Api.Modules.People.Person", null)
+                        .WithMany()
+                        .HasForeignKey("PersonId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MedicationTracker.Api.Modules.Treatments.TreatmentPlanVersion", b =>
+                {
+                    b.HasOne("MedicationTracker.Api.Modules.Identity.Account", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedByAccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("MedicationTracker.Api.Modules.Treatments.TreatmentPlan", null)
+                        .WithMany()
+                        .HasForeignKey("TreatmentPlanId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 #pragma warning restore 612, 618
         }

@@ -20,10 +20,20 @@ for attempt in $(seq 1 30); do
 done
 "${compose[@]}" exec -T database pg_isready -U medication_tracker -d medication_tracker
 mkdir -p .deploy/backups
-"${compose[@]}" exec -T database pg_dump -U medication_tracker -d medication_tracker -Fc > ".deploy/backups/pre-migration-$(date -u +%Y%m%dT%H%M%SZ).dump"
+backup=".deploy/backups/pre-migration-$(date -u +%Y%m%dT%H%M%SZ).dump"
+"${compose[@]}" exec -T database pg_dump -U medication_tracker -d medication_tracker -Fc > "$backup"
+# A backup nobody has read is not a rollback plan. Listing its table of contents
+# proves the archive is well-formed and non-empty before anything is migrated.
+"${compose[@]}" exec -T database pg_restore -l /dev/stdin < "$backup" > .deploy/backup-contents.txt
+test -s .deploy/backup-contents.txt
 container=$(docker create medication-tracker-api:local)
 docker cp "$container:/app/migrations.sql" .deploy/migrations.sql
 docker rm "$container"
+# Stop only this project's application containers while the schema changes. A
+# migration that renames a table cannot run safely underneath the previous release
+# still serving requests against the old names. The database container stays up, and
+# no container belonging to another compose project is touched.
+"${compose[@]}" stop api web
 "${compose[@]}" exec -T database psql -v ON_ERROR_STOP=1 -U medication_tracker -d medication_tracker < .deploy/migrations.sql
 "${compose[@]}" up -d api web
 for attempt in $(seq 1 30); do

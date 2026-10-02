@@ -35,3 +35,6 @@ TestResults/
 *.db
 *.sqlite
 *.sqlite3
+
+# Cygwin/MSYS crash dumps
+*.stackdump

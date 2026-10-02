@@ -1,5 +1,5 @@
-import Tracker from './tracker';
+import { App } from '@/components/App';
 
 export default function Home() {
-  return <Tracker />;
+  return <App />;
 }

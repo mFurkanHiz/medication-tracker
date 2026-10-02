@@ -20,30 +20,58 @@ Medication Tracker is a public portfolio project for household medication invent
 
 ## Current decisions
 
-- Medication is a household catalog record and does not require a person. Optional
-  person relationships live on physical packages and usage plans.
-- Package dose text, active ingredient and notes are optional descriptions, never
-  inputs to dose advice or automatic unit conversion.
-- Full and opened tablet packages retain exact capacity and remaining quantities.
-  Existing loose stock can be allocated into packages with balanced ledger entries.
-- Whole-package lending preserves the owner while temporarily allocating the package
-  to another household person. Loan/return events are audited without changing stock.
-- Regular and as-needed instructions support optional date ranges, exact times,
-  named day periods, meal relation and minimum interval.
-- Medication edits cover all catalog details and deletions preserve the audit trail.
-  Usage-plan edits append a new effective version; deletion preserves past uses.
-- Taken administrations are rejected atomically when eligible exact stock is
-  insufficient, so new usage can never create a negative balance.
-- The user-facing activity view combines medication, plan, stock, package-assignment
-  and administration events without introducing a second source of truth.
-- Bulk inventory counts reconcile multiple medication totals atomically. An accepted
-  count correction appends a linked revision and new ledger entries; it never edits
-  an earlier accepted count or reconciliation.
+The domain was rebuilt on 2026-10-02 around the owner's package-first model. See
+ADR 0013 for the rebuild rationale, ADR 0014 for the inventory model, and
+`docs/domain-model.md` for the model as it stands. The decisions below supersede the
+earlier catalog/package wording.
 
-- Registration requires matching password confirmation in the clients and API.
-- New registrations retain the 12-character password minimum. Login verifies
-  existing account password hashes without applying registration length policy,
-  allowing explicitly provisioned test accounts. No credentials belong in Git.
+- A medication definition is household catalog data: what a medication *is*. It is
+  never owned by a person and never holds stock. The superseded person link is kept
+  as a clearly named legacy column rather than destroyed.
+- A package is exactly one physical container with its own identity. Adding two full
+  boxes creates two packages, not one doubled quantity.
+- A package's nominal capacity and unit are snapshots taken at creation, so changing
+  a catalog default can never resize a box that already exists.
+- A package stores no balance. Remaining amount is derived from the append-only
+  ledger, and emptiness with it, so the two cannot drift apart.
+- Package ownership and custody are separate fields. Lending moves custody, changes
+  no stock, and leaves an immutable loan history.
+- Which physical package paid for a dose is a first-class record. One dose may draw
+  from several packages, and the amounts sum exactly to what was administered.
+- A wrongly-charged package is corrected by appending a matched reversal and
+  re-charge under one correlation. The historical entry is never rewritten and the
+  medication total is unchanged by construction. The previous answer stays visible.
+- A correction onto a source that lacks the stock is refused: reality disagreeing
+  with the ledger is a counting problem, not a reason to allow negative stock.
+- The default dose-recording call names no package. The policy chooses. A specific
+  package, loose stock, or an untracked external source are optional fields behind
+  details.
+- A dose really taken from stock the household does not track is recorded with its
+  real amount and time, writes no ledger entry, and drives no package negative.
+- Package selection is a deterministic, unit-tested domain policy: pinned, then
+  opened before sealed, then earliest expiry, then oldest, with loose stock last.
+  Packages held by another person or retired are never drawn from implicitly.
+- Administration outcomes are taken, skipped, partial and extra. Lateness is derived
+  from planned versus actual time rather than stored as a status.
+- Physical depletion and official refill eligibility are separate facts. The gap
+  between them is what the product warns about.
+- Treatment plans point at a definition, never at a box, and editing one appends an
+  effective-dated immutable version. Recurrence covers daily, selected weekdays and
+  every-N-days, plus as-needed, with optional date range, exact time, named period,
+  meal relation and minimum interval.
+- Bulk counts reconcile atomically and an accepted correction appends a linked
+  revision rather than editing history. A count that matched is still recorded.
+- Insufficient stock is refused atomically: no partial administration, allocation or
+  ledger writes.
+- All stock-mutating work for a household is serialised by a per-household advisory
+  lock, so two concurrent doses cannot spend the same stock.
+- The activity view combines definition, plan, package, inventory, administration and
+  allocation-correction events without introducing a second source of truth.
+- Endpoints read the caller from the validated session principal. Identity does not
+  travel as a request header the middleware rewrites.
+- Registration requires matching password confirmation in the clients and API. New
+  registrations keep the 12-character minimum; login verifies existing hashes without
+  applying registration length policy. No credentials belong in Git.
 
 - Public monorepo
 - .NET 10 ASP.NET Core API
@@ -70,19 +98,28 @@ Medication Tracker is a public portfolio project for household medication invent
 
 ## Current milestone
 
-The `v1.0.0` release is live at the primary hostname and is a useful **technical production baseline**, but **owner-accepted V1 is not complete**. The authoritative completion criteria are in `docs/v1-acceptance.md`; resumable execution state is in `docs/v1-progress.md`.
+**Owner-accepted V1 is not complete.** The authoritative completion criteria are in
+`docs/v1-acceptance.md`; resumable execution state is in `docs/v1-progress.md`.
 
-The current baseline includes the authenticated web/API core, independent medication catalog, exact full/opened package stock, optional package-to-person assignment, category/tag/status filters, and regular/as-needed instructions described in ADR 0008. Mobile authenticated sync is implemented, but physical-device final acceptance and several original V1 requirements remain. No sprint, tag, CI run or deployment may redefine those requirements as later work without explicit owner approval.
+The `v1.0.0` tag and the live site remain a useful **technical production baseline**,
+not an acceptance point. Production currently runs main
+`0b463d3a3b4afb15ee5fc0873b89fb0d5f4d50a1`.
 
-The tested Sprint 1 vertical slice delivers:
+The package-first domain rebuild is on `claude/v1-domain-rebuild`, proposed in
+[PR #11](https://github.com/mFurkanHiz/medication-tracker/pull/11). It delivers the
+rebuilt domain, persistence, data-preserving migration and API — medication
+definitions, physical packages, consumption allocations, allocation corrections,
+untracked doses, manual source selection, partial and extra doses, low-stock
+warnings, official refill eligibility and the refill-gap warning.
 
-1. Create a person.
-2. Add a tablet medication and physical stock.
-3. Create a daily regimen.
-4. Show today's dose.
-5. Record it as taken while offline.
-6. Decrement stock through the ledger.
-7. Recalculate depletion and sync idempotently.
+**It is not deployable yet.** The web and mobile clients still call the superseded
+endpoints and are the next slice. Remaining V1 work, none of it narrowed or deferred:
+web rebuild, mobile offline rebuild, reliable local reminders, reports, export,
+accessibility, a reproducible synthetic demo seed, and the TR/EN sweep across the
+rebuilt surfaces.
+
+No sprint, tag, CI run or deployment may redefine a required V1 item as later work
+without explicit owner approval.
 
 ## Non-goals for the first release
 

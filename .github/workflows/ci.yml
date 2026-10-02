@@ -79,7 +79,11 @@ jobs:
           set -euo pipefail
           dotnet tool restore
           dotnet restore apps/api
-          dotnet ef migrations script 0 20260912215957_V1MedicationCatalogPackagesFlexibleRegimens --project apps/api --output migration-baseline.sql
+          # The upgrade test must start from the schema production actually runs, which
+          # is every migration before the package-first rebuild, not an earlier
+          # intermediate. Otherwise the rebuild's renames and value transforms are
+          # exercised against tables that did not yet exist.
+          dotnet ef migrations script 0 20260916103329_ScheduledWeekdaysAndIntervals --project apps/api --output migration-baseline.sql
           container=$(docker create medication-tracker-api:ci)
           docker cp "$container:/app/migrations.sql" image-migrations.sql
           docker rm "$container"
@@ -98,6 +102,17 @@ jobs:
           pg medication_tracker_migration_upgrade < image-migrations.sql
           pg medication_tracker_migration_upgrade < image-migrations.sql
           pg medication_tracker_migration_upgrade < tests/migrations/verify-upgrade.sql
+          # The live database runs TEN migrations, not eleven: the schedule migration was
+          # never deployed. So the real upgrade path applies both it and the rebuild in
+          # one pass. Exercise that exact path against production-shaped data, including
+          # the zero-quantity acquisition rows production actually holds.
+          printf '%s\n' 'CREATE DATABASE medication_tracker_production_shape;' | pg postgres
+          dotnet ef migrations script 0 20260916101828_PackageLendingAndReturns --project apps/api --output migration-production-baseline.sql
+          pg medication_tracker_production_shape < migration-production-baseline.sql
+          pg medication_tracker_production_shape < tests/migrations/production-shape-seed.sql
+          pg medication_tracker_production_shape < image-migrations.sql
+          pg medication_tracker_production_shape < image-migrations.sql
+          pg medication_tracker_production_shape < tests/migrations/verify-production-shape.sql
       - name: Package VPS web image
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: docker save medication-tracker-web:ci medication-tracker-api:ci | gzip -9 > medication-tracker-web.tar.gz

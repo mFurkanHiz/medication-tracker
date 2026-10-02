@@ -42,8 +42,8 @@ $password = 'synthetic-smoke-password-1'
 Write-Host "Smoke test against $BaseUrl"
 
 # --- the site itself serves ----------------------------------------------------------
-$home = Invoke-WebRequest -Uri $BaseUrl -UseBasicParsing
-Assert ($home.StatusCode -eq 200) 'The site did not return 200.'
+$landing = Invoke-WebRequest -Uri $BaseUrl -UseBasicParsing
+Assert ($landing.StatusCode -eq 200) 'The site did not return 200.'
 
 # --- registration and session --------------------------------------------------------
 $account = Send-Command '/auth/register' @{ email = $email; password = $password; confirmPassword = $password }

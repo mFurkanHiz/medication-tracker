@@ -8,11 +8,10 @@ reconstructing the product history from a long conversation.
 - Owner-accepted V1: **NOT COMPLETE**. See `docs/v1-acceptance.md` for the authority
   on scope and `docs/adr/0013-v1-domain-rebuild-strategy.md` for why the domain was
   rebuilt rather than extended.
-- Last verified production release: main `0b463d3a3b4afb15ee5fc0873b89fb0d5f4d50a1`,
-  deployed from CI run `35211378823`. **Production has not been deployed from the
-  rebuild branch.**
-- Active branch: `claude/v1-domain-rebuild`, proposed in PR #11, branched from PR #9's
-  head so the schedule work is preserved rather than merged separately.
+- Production runs main `371447da76f29e336ae3a00e1cc8864e5613d242`, deployed 2026-10-02
+  from CI run `37046495484`. The package-first rebuild is **live**.
+- PR #11 (the rebuild), #12 (deployment tooling) and #13 (backup verification) are
+  merged into main.
 - The API, the web client and the mobile client are all rebuilt against the new model.
 - PR #9 is **subsumed** by PR #11, not abandoned. Its recurrence rules are carried
   forward onto `TreatmentPlanVersion`. Do not merge PR #9 separately.
@@ -187,3 +186,22 @@ When the owner says **"continue" / "kaldığın yerden devam et"**:
   recording the same scheduled slot under a different idempotency key hit the unique
   index and produced a 500. It now replays when the outcome agrees and returns
   `slot_already_recorded` when it does not, with a PostgreSQL test for both.
+- 2026-10-02: **Released to production.** main `371447da76f29e336ae3a00e1cc8864e5613d242`
+  from CI run `37046495484`; image archive SHA-256
+  `ed242eb1318164112b3e02ba5b2cb03b49a81114c4f16ed34e18c9b9defb1ac9`, verified identical
+  after transfer. Both running images carry that commit as their revision label.
+  Migration result, against the counts read before deploying: 12 migrations applied,
+  11 medication definitions (2 archived), 30 packages (5 opened, 25 sealed), 55 ledger
+  entries with none left untyped, the 6 zero-quantity acquisitions intact, 15 plans,
+  15 plan versions, 10 administrations, and 10 historical consumptions promoted to
+  allocations. The five superseded tables are gone. The public smoke test passed,
+  covering three packages totalling 48, a one-tap dose drawing from the opened box, a
+  correction that restored the wrong box and left the total unchanged while retaining
+  the superseded allocation, an untracked dose, the refill gap, and the workspace and
+  activity reads. All 26 containers on the VPS were running at the final check; only
+  this project's three were touched.
+- 2026-10-02: The first deployment attempt halted at backup verification and changed
+  nothing — `pg_restore -l /dev/stdin` cannot read a custom-format archive from a pipe.
+  The backup it had already written was confirmed sound (188 entries) and the outgoing
+  images had been tagged `:previous`, so the rollback path was intact throughout. Fixed
+  in PR #13 by dumping and checking inside the container against a real file.

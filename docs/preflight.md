@@ -148,8 +148,11 @@ Bu adımları **siz** uygulamalısınız. Bu oturum uygulayamaz: ortamın ağ po
 hem VPS'in SSH portunu hem de `medicationtracker.rapidconfigs.com` adresini
 engelliyor, ve oturumda `.env.production`, SSH anahtarı veya imaj artefaktı yok.
 
-1. **PR'ı birleştirin.** `main-8ltlkf` → `main`. PR açıldı; CI PR üzerinde tam
-   kapıyı koşturur. Yeşil olduğunu görmeden birleştirmeyin.
+1. **PR'ı birleştirin.**
+   [PR #14](https://github.com/mFurkanHiz/medication-tracker/pull/14) —
+   `main-8ltlkf` → `main`. CI bu PR üzerinde tam kapıyı koşturur
+   (API testleri + web/mobil kontrolleri + her iki Docker derlemesi + paketlenmiş
+   göç geçidi). **Yeşil olduğunu görmeden birleştirmeyin.**
 
 2. **`main` CI koşusunun bitmesini bekleyin.** Artefakt adı:
    `medication-tracker-web-<sha>` → içinde `medication-tracker-web.tar.gz`.

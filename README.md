@@ -1,28 +1,106 @@
 # Medication Tracker
 
-An offline-first household medication inventory and adherence platform for web and mobile.
+An offline-first household medication inventory and adherence platform for web and
+mobile, built around a question most medication apps cannot answer: **which physical
+box did that tablet come from, and what happens when the answer was wrong?**
 
-Live web application: [medicationtracker.rapidconfigs.com](https://medicationtracker.rapidconfigs.com)
+Live web application:
+[medicationtracker.rapidconfigs.com](https://medicationtracker.rapidconfigs.com)
 
-Create an account and choose **İlaç ekle / Add medication**. A medication can be
-saved without a person. Enter its descriptive package dose, ingredient, category,
-tags and notes, then optionally record full and opened boxes. For example, one
-20-of-20 box plus one 8-of-20 box is displayed as two boxes and 28 tablets total.
-Boxes can later be assigned to or removed from a person.
+> **Status.** The live site runs the previous release. The package-first domain rebuild
+> described below is on `claude/v1-domain-rebuild` and is not deployed yet; the web and
+> mobile clients are being rebuilt against it. Owner-accepted V1 is not complete — see
+> [`docs/v1-acceptance.md`](docs/v1-acceptance.md).
 
-Usage plans belong to a person and may be regular or as-needed. Dates and exact time
-are optional; regular plans can use a named period such as morning, evening or
-immediately before bed, plus a meal relation. The app records instructions and
-actual use; it never recommends a dose.
+## The problem
 
-Medication details and complete usage plans can be updated or deleted without
-erasing history. The **İşlemler / Activity** screen combines catalog, plan, stock,
-package assignment and individual usage events. A use is rejected without writing
-any event when the eligible exact stock is insufficient.
+A household does not own "48 tablets of paracetamol". It owns three boxes: two sealed
+boxes of 20 and one opened box with 8 left. Someone takes a tablet out of one specific
+box. Later they realise they took it from a different box than the app assumed.
 
-Fallback preview: [medication-tracker.mf-speed96.chatgpt.site](https://medication-tracker.mf-speed96.chatgpt.site)
+Most trackers model this as a single mutable `quantity` field, which cannot represent
+any of it. This one models four separate realities and keeps them separate:
 
-The project tracks the difference between a treatment plan, physical household stock, actual administrations, and official refill eligibility. Its core use cases include fractional tablet doses, effective-dated regimen changes, inventory counts, low-stock forecasting, and auditable lending or returning medication between people.
+| Reality | Entity |
+| --- | --- |
+| What a medication *is* | `MedicationDefinition` — reusable household catalog, never person-owned |
+| Which containers exist | `MedicationPackage` — one row per physical box, with its own identity |
+| What is planned | `TreatmentPlan` + immutable effective-dated versions |
+| What happened, and which box paid | `AdministrationEvent` + `AdministrationAllocation` |
+
+## What makes it interesting
+
+**Package-first inventory.** Adding "2 full boxes of 20" creates two package rows, not
+one row of forty. Each snapshots its own nominal capacity, so changing the catalog's
+default box size from 20 to 30 can never retroactively resize a box that already
+exists. A package stores no balance at all — remaining amount, and emptiness with it,
+is derived from an append-only ledger, so the two cannot drift apart.
+
+**Corrections that preserve history.** The system auto-charged Box 1; the user says
+they actually used Box 2. Nothing is updated. A matched reversal and re-charge are
+appended under one correlation, the superseded allocation is retained but marked
+inactive, and the medication total is unchanged *by construction* rather than by
+arithmetic that could drift. The activity view shows "stock source corrected from
+Box 1 to Box 2". A correction onto a box that lacks the stock is refused, because
+reality disagreeing with the ledger is a counting problem, not a reason to permit
+negative stock.
+
+**Exact quantities.** A half tablet is `1/2`, never `0.5`. Every quantity is a
+normalised rational stored as an integer numerator/denominator pair; arithmetic widens
+to `Int128` and throws on overflow rather than wrapping. A test asserts that no
+floating-point column exists in any quantity, capacity, dose or threshold.
+
+**Simple by default, powerful when needed.** The everyday flow is one tap — medication,
+dose, Taken — and names no package, amount or ledger concept. Choosing a specific box,
+loose stock, an untracked external source, a partial dose or an extra dose are all
+optional fields on the same command, surfaced only under details.
+
+**A real answer for untracked doses.** Someone genuinely took a dose from a strip in
+their bag. The event is recorded with its real amount and time, no ledger entry is
+written, and no package goes negative — so the product never has to choose between
+losing a health record and corrupting its inventory.
+
+**Depletion versus eligibility.** Physical depletion and official prescription refill
+eligibility are separate facts, and the gap between them is what the product warns
+about. The forecast walks each plan's real due days rather than dividing by an average,
+because a Monday/Thursday plan does not consume a constant amount per day.
+
+**Offline-first with provable idempotency.** Mobile commands commit to SQLite first and
+sync through a durable outbox. A replayed command returns its original result instead
+of consuming stock twice, enforced by unique database indexes rather than application
+convention. All stock-mutating work for a household is serialised by a per-household
+advisory lock, so two concurrent doses cannot spend the same tablet — proven against
+real PostgreSQL, not an in-memory provider.
+
+## Architecture
+
+```text
+Next.js web ─┐
+             ├─► ASP.NET Core API (modular monolith) ─► PostgreSQL
+Expo mobile ─┘        │
+   └─ SQLite + outbox │
+                      ├─ Domain      pure, no persistence: exact quantities,
+                      │              consumption policy, correction planner,
+                      │              recurrence rule, refill forecast
+                      ├─ Application transactional services spanning modules
+                      └─ Modules     catalog · inventory · treatments ·
+                                     administrations · refill · people ·
+                                     identity · households · sync · audit
+```
+
+Each module owns its own PostgreSQL schema. The pure domain has no database
+references, so the selection policy, correction arithmetic and recurrence rules are
+directly testable. .NET 10, EF Core, PostgreSQL 18, Next.js, Expo React Native,
+Docker Compose behind nginx and Cloudflare, GitHub Actions.
+
+Deliberately **not** used without a measured need: microservices, Kubernetes, Kafka,
+event buses.
+
+Design decisions are recorded as ADRs in [`docs/adr`](docs/adr). The two that explain
+the current shape are
+[0013 — rebuild strategy](docs/adr/0013-v1-domain-rebuild-strategy.md) and
+[0014 — package-first inventory](docs/adr/0014-package-first-inventory-model.md).
+The model itself is described in [`docs/domain-model.md`](docs/domain-model.md).
 
 ## Repository layout
 

@@ -182,6 +182,92 @@ export type Forecast = {
   refillGapDays: number | null;
 };
 
+/**
+ * What happened to one person's doses of one medication over a period.
+ *
+ * Counts describe recorded behaviour and nothing more. `onScheduleRatio` is an exact
+ * pair rather than a percentage so the interface chooses the rounding, and it is null
+ * when nothing was scheduled — which is not the same as nought.
+ */
+export type AdherenceTally = {
+  scheduledDoses: number;
+  recordedSlots: number;
+  onScheduleDoses: number;
+  missedDoses: number;
+  taken: number;
+  skipped: number;
+  partialDoses: number;
+  extraDoses: number;
+  recordedDoses: number;
+  onScheduleRatio: { numerator: number; denominator: number } | null;
+};
+
+export type AdherenceReport = {
+  from: string;
+  to: string;
+  timeZoneId: string;
+  rows: {
+    personId: string;
+    medicationDefinitionId: string;
+    tally: AdherenceTally;
+  }[];
+  total: AdherenceTally;
+  /** Non-empty only when a plan's stored time zone is missing from the server. */
+  unknownTimeZoneIds: string[];
+};
+
+export type InventoryReport = {
+  asOf: string;
+  rows: {
+    medicationDefinitionId: string;
+    name: string;
+    strength: string | null;
+    unit: string;
+    isArchived: boolean;
+    total: Quantity;
+    packageCount: number;
+    isForecastable: boolean;
+    projectedDepletionOn: string | null;
+    daysOfStockRemaining: number | null;
+    isLowStock: boolean;
+    lowStockReason: 'None' | 'BelowThreshold' | 'WithinDayHorizon' | 'AlreadyDepleted';
+    nextEligibleRefillOn: string | null;
+    hasRefillGap: boolean;
+    refillGapDays: number | null;
+  }[];
+  lowStockCount: number;
+  refillGapCount: number;
+};
+
+/**
+ * One counted target inside an accepted count.
+ *
+ * `before` is what the ledger projected at the moment the count was accepted, so a
+ * revision measures against the balance the count it corrects left behind — not
+ * against the original.
+ */
+export type CountSessionLine = {
+  id: string;
+  medicationDefinitionId: string;
+  packageId: string | null;
+  /** The friendly ordinal, so the interface can say "Box 3". */
+  packageLabel: number | null;
+  before: Quantity;
+  observed: Quantity;
+  adjustment: Quantity;
+};
+
+export type CountSession = {
+  id: string;
+  revisionNumber: number;
+  previousBatchId: string | null;
+  acceptedAt: string;
+  accountId: string;
+  /** False once a later revision superseded it; the chain stays linear. */
+  isRevisable: boolean;
+  lines: CountSessionLine[];
+};
+
 export type Activity = {
   inventory: {
     id: string;

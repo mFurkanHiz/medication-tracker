@@ -1,0 +1,585 @@
+'use client';
+
+import { createContext, useContext } from 'react';
+
+/**
+ * Every user-visible string lives here, in both locales.
+ *
+ * `English` is typed as `Record<MessageKey, string>`, so adding a Turkish key without
+ * its English counterpart fails the build rather than shipping an untranslated screen.
+ */
+export const tr = {
+  appName: 'İlaç Takip',
+  appDescription: 'Ev ilaç düzeni, kutu bazlı stok ve denetlenebilir kullanım geçmişi',
+
+  // Authentication
+  signInTitle: 'Hesabınıza girin',
+  signUpTitle: 'Hesap oluşturun',
+  email: 'E-posta',
+  password: 'Şifre',
+  confirmPassword: 'Şifreyi doğrula',
+  signIn: 'Giriş yap',
+  signUp: 'Kayıt ol',
+  signOut: 'Çıkış yap',
+  needAccount: 'Hesabınız yok mu? Kayıt olun',
+  haveAccount: 'Hesabınız var mı? Giriş yapın',
+  passwordHint: 'En az 12 karakter.',
+  demoNotice: 'Bu herkese açık bir portföy uygulamasıdır. Yalnızca sentetik veri girin.',
+
+  // Navigation
+  today: 'Bugün',
+  inventory: 'İlaçlar',
+  plans: 'Planlar',
+  people: 'Kişiler',
+  history: 'Geçmiş',
+
+  // Today
+  todayEmpty: 'Bugün için planlanmış doz yok.',
+  todayEmptyHint: 'Bir plan ekleyin; bugünün dozları burada görünür.',
+  taken: 'Alındı',
+  skip: 'Atla',
+  recordedTaken: 'Alındı olarak kaydedildi',
+  recordedSkipped: 'Atlandı',
+  details: 'Ayrıntılar',
+  asNeeded: 'Gerektiğinde',
+  notEnoughStock: 'Stok yetersiz',
+  takenFrom: 'Şu kutudan alındı:',
+  looseStock: 'Kutusuz stok',
+  untrackedSource: 'Takip edilmeyen kaynak',
+
+  // Advanced dose options
+  advancedOptions: 'Gelişmiş seçenekler',
+  whichPackage: 'Hangi kutudan kullandınız?',
+  sourceAutomatic: 'Otomatik seç',
+  sourceAutomaticHint: 'Açılmış kutu, sonra son kullanma tarihi en yakın olan.',
+  sourceSpecific: 'Belirli bir kutu',
+  sourceLoose: 'Kutusuz stok',
+  sourceUntracked: 'Takip edilmeyen / dış kaynak',
+  sourceUntrackedHint: 'Kullanım kaydedilir, stok değişmez. Sayım gerekebilir.',
+  amountTaken: 'Alınan miktar',
+  amountTakenHint: 'Planlanandan farklıysa girin.',
+  partialDose: 'Eksik doz',
+  extraDose: 'Ek doz',
+  recordDose: 'Kullanımı kaydet',
+  recordExtraDose: 'Ek doz kaydet',
+
+  // Correction
+  correctSource: 'Stok kaynağını düzelt',
+  correctSourceHint:
+    'Sistem yanlış kutudan düşmüşse düzeltin. Toplam miktar değişmez; geçmiş silinmez.',
+  correctedFrom: 'Düzeltildi:',
+  correctionReason: 'Neden (opsiyonel)',
+  applyCorrection: 'Düzeltmeyi uygula',
+  correctionApplied: 'Stok kaynağı düzeltildi',
+  supersededAllocation: 'Geçersiz kılındı',
+
+  // Inventory
+  addMedication: 'İlaç tanımla',
+  editMedication: 'İlaç tanımını düzenle',
+  addStock: 'Stok ekle',
+  inventoryEmpty: 'Henüz ilaç tanımlanmadı.',
+  inventoryEmptyHint: 'Önce bir ilaç tanımlayın, sonra fiziksel kutularını ekleyin.',
+  packagesLabel: 'kutu',
+  packageOrdinal: 'Kutu',
+  full: 'Tam',
+  opened: 'Açılmış',
+  empty: 'Boş',
+  disposed: 'Atıldı',
+  lost: 'Kayıp',
+  archived: 'Arşivlendi',
+  pinned: 'Etkin kutu',
+  pin: 'Etkin kutu yap',
+  unpin: 'Etkin kutudan çıkar',
+  retire: 'Kullanımdan çıkar',
+  retireDisposed: 'Atıldı olarak işaretle',
+  retireLost: 'Kayıp olarak işaretle',
+  onLoan: 'Ödünç verildi',
+  lend: 'Ödünç ver',
+  returnLoan: 'Geri alındı',
+  owner: 'Sahibi',
+  holder: 'Şu an kimde',
+  unassigned: 'Atanmamış',
+  expiresOn: 'Son kullanma',
+  acquiredOn: 'Edinme tarihi',
+  lotNumber: 'Lot numarası',
+  storageLocation: 'Saklama yeri',
+  note: 'Not',
+  showPackages: 'Kutuları göster',
+  hidePackages: 'Kutuları gizle',
+  archiveMedication: 'İlacı arşivle',
+  restoreMedication: 'Arşivden çıkar',
+
+  // Definition form
+  medicationName: 'İlaç adı',
+  strength: 'Doz bilgisi',
+  strengthPlaceholder: 'örn. 500 mg',
+  brand: 'Marka',
+  manufacturer: 'Üretici',
+  form: 'Form',
+  unit: 'Birim',
+  activeIngredients: 'Etken maddeler',
+  activeIngredientsHint: 'Virgülle ayırın.',
+  defaultPackageSize: 'Varsayılan kutu kapasitesi',
+  defaultPackageSizeHint:
+    'Yeni kutular için ön değer. Bunu değiştirmek mevcut kutuları değiştirmez.',
+  category: 'Kategori',
+  tags: 'Etiketler',
+  notes: 'Notlar',
+
+  // Add stock form
+  fullPackageCount: 'Tam kutu sayısı',
+  packageCapacity: 'Kutu kapasitesi',
+  openedPackage: 'Açılmış kutu',
+  addOpenedPackage: '+ Açılmış kutu ekle',
+  remainingInPackage: 'Kalan miktar',
+  removeRow: 'Kaldır',
+  looseAmount: 'Kutusuz miktar',
+  assignTo: 'Kişiye ata',
+  stockPreview: 'Eklenecek:',
+  stockPreviewPackages: 'kutu',
+
+  // Plans
+  addPlan: 'Plan ekle',
+  editPlan: 'Planı düzenle',
+  plansEmpty: 'Henüz kullanım planı yok.',
+  plansEmptyHint: 'Kimin hangi ilacı nasıl kullandığını buradan tanımlayın.',
+  person: 'Kişi',
+  medication: 'İlaç',
+  dose: 'Doz',
+  schedule: 'Zamanlama',
+  scheduleDaily: 'Her gün',
+  scheduleWeekdays: 'Seçili günler',
+  scheduleInterval: 'Her N günde',
+  scheduleAsNeeded: 'Gerektiğinde',
+  intervalDays: 'Gün aralığı',
+  exactTime: 'Saat',
+  dayPeriod: 'Gün dilimi',
+  mealRelation: 'Yemek ilişkisi',
+  minimumInterval: 'En az ara (dakika)',
+  effectiveFrom: 'Başlangıç',
+  effectiveTo: 'Bitiş',
+  instructions: 'Talimat notu',
+  planVersionNote: 'Düzenleme yeni bir sürüm oluşturur; geçmiş kayıtlar değişmez.',
+  deletePlan: 'Planı sonlandır',
+
+  monday: 'Pzt',
+  tuesday: 'Sal',
+  wednesday: 'Çar',
+  thursday: 'Per',
+  friday: 'Cum',
+  saturday: 'Cmt',
+  sunday: 'Paz',
+
+  morning: 'Sabah',
+  noon: 'Öğle',
+  afternoon: 'İkindi',
+  evening: 'Akşam',
+  night: 'Gece',
+  bedtime: 'Yatmadan önce',
+
+  fasting: 'Aç karnına',
+  beforeFood: 'Yemekten önce',
+  withFood: 'Yemekle',
+  afterFood: 'Yemekten sonra',
+
+  // People
+  addPerson: 'Kişi ekle',
+  personName: 'Ad',
+  peopleEmpty: 'Henüz kişi eklenmedi.',
+  peopleEmptyHint: 'İlaç kullanan kişileri ekleyin.',
+  archivePerson: 'Kişiyi arşivle',
+  rename: 'Adı değiştir',
+
+  // Refill
+  refill: 'Temin',
+  refillSettings: 'Temin ayarları',
+  lowStockThreshold: 'Az stok eşiği',
+  lowStockDays: 'Az stok uyarısı (gün)',
+  nextEligibleRefill: 'Resmî temin tarihi',
+  nextEligibleRefillHint: 'Reçetenin yenilenebileceği en erken tarih. Stoktan bağımsızdır.',
+  lowStockWarning: 'Stok azalıyor',
+  depletionOn: 'Tahmini bitiş',
+  daysRemaining: 'gün kaldı',
+  refillGapWarning: 'Temin açığı',
+  refillGapDetail: 'gün ilaçsız kalma riski',
+  alreadyDepleted: 'Stok bitti',
+  notForecastable: 'Tahmin için planlı kullanım gerekir',
+
+  // History
+  historyEmpty: 'Henüz kayıt yok.',
+  historyInventory: 'Stok hareketleri',
+  historyAdministrations: 'Kullanım kayıtları',
+  historyCorrections: 'Düzeltmeler',
+  entryAcquire: 'Stok eklendi',
+  entryConsume: 'Kullanıldı',
+  entryCorrectionReversal: 'Düzeltme iadesi',
+  entryCorrectionConsume: 'Düzeltme ile düşüldü',
+  entryFound: 'Bulundu',
+  entryLoss: 'Kayıp',
+  entryDispose: 'Atıldı',
+  entryCountAdjustment: 'Sayım düzeltmesi',
+  entryPackageTransfer: 'Kutu aktarımı',
+  entryManualAdjustment: 'Elle düzeltme',
+  lateBy: 'dakika gecikmeli',
+  earlyBy: 'dakika erken',
+
+  // Generic
+  save: 'Kaydet',
+  cancel: 'Vazgeç',
+  close: 'Kapat',
+  optional: 'opsiyonel',
+  loading: 'Yükleniyor…',
+  retry: 'Tekrar dene',
+  none: 'Yok',
+  total: 'Toplam',
+  remaining: 'Kalan',
+
+  // Errors, keyed by the server's stable refusal codes
+  errorGeneric: 'Bir şeyler ters gitti. Tekrar deneyin.',
+  errorNetwork: 'Sunucuya ulaşılamadı.',
+  errorUnauthenticated: 'Oturum sona erdi. Yeniden giriş yapın.',
+  errorForbidden: 'Bu ev için yetkiniz yok.',
+  errorInsufficientStock: 'Stok bu doz için yetersiz. Gelişmiş seçeneklerden kaynak seçin.',
+  errorChosenSourceInsufficient: 'Seçtiğiniz kaynakta bu doz için yeterli miktar yok.',
+  errorPackageNotEligible: 'Bu kutu kullanıma uygun değil.',
+  errorPackageNotFound: 'Kutu bulunamadı.',
+  errorTargetInsufficientStock:
+    'Hedef kutuda yeterli miktar yok. Bu bir sayım konusu; düzeltme eksi stok oluşturamaz.',
+  errorTargetNotEligible: 'Hedef kutu kullanıma uygun değil.',
+  errorSameSource: 'Kaynak aynı; düzeltecek bir şey yok.',
+  errorAllocationNotActive: 'Bu kayıt daha önce düzeltilmiş.',
+  errorAdministrationUntracked: 'Bu kullanım stoktan düşmedi; düzeltilecek bir kaynak yok.',
+  errorAccountExists: 'Bu e-posta ile hesap var.',
+  errorPasswordMismatch: 'Şifreler eşleşmiyor.',
+  errorInvalidCredentials: 'E-posta veya şifre hatalı.',
+  errorStaleRevision: 'Daha yeni bir sayım var. Önce onu görüntüleyin.',
+  errorPackageOnLoan: 'Kutu ödünç verilmiş durumda.',
+
+  // Safety
+  safetyNotice:
+    'Bu uygulama ilaç düzenlemesi ve takibi içindir. Teşhis koymaz, doz önermez ve ilaç etkileşimi değerlendirmez.',
+} as const;
+
+export type MessageKey = keyof typeof tr;
+
+export const en: Record<MessageKey, string> = {
+  appName: 'Medication Tracker',
+  appDescription: 'Household medication organisation, package-level stock, and an auditable history',
+
+  signInTitle: 'Sign in to your account',
+  signUpTitle: 'Create an account',
+  email: 'Email',
+  password: 'Password',
+  confirmPassword: 'Confirm password',
+  signIn: 'Sign in',
+  signUp: 'Sign up',
+  signOut: 'Sign out',
+  needAccount: 'No account? Sign up',
+  haveAccount: 'Already have an account? Sign in',
+  passwordHint: 'At least 12 characters.',
+  demoNotice: 'This is a public portfolio application. Enter synthetic data only.',
+
+  today: 'Today',
+  inventory: 'Medications',
+  plans: 'Plans',
+  people: 'People',
+  history: 'History',
+
+  todayEmpty: 'Nothing is due today.',
+  todayEmptyHint: 'Add a plan and today’s doses will appear here.',
+  taken: 'Taken',
+  skip: 'Skip',
+  recordedTaken: 'Recorded as taken',
+  recordedSkipped: 'Skipped',
+  details: 'Details',
+  asNeeded: 'As needed',
+  notEnoughStock: 'Not enough stock',
+  takenFrom: 'Taken from',
+  looseStock: 'Loose stock',
+  untrackedSource: 'Untracked source',
+
+  advancedOptions: 'Advanced options',
+  whichPackage: 'Which package did you use?',
+  sourceAutomatic: 'Choose automatically',
+  sourceAutomaticHint: 'An opened package first, then the earliest expiry.',
+  sourceSpecific: 'A specific package',
+  sourceLoose: 'Loose stock',
+  sourceUntracked: 'Untracked / external',
+  sourceUntrackedHint: 'The dose is recorded and stock is untouched. A count may be needed.',
+  amountTaken: 'Amount taken',
+  amountTakenHint: 'Enter it if it differed from the plan.',
+  partialDose: 'Partial dose',
+  extraDose: 'Extra dose',
+  recordDose: 'Record dose',
+  recordExtraDose: 'Record an extra dose',
+
+  correctSource: 'Correct the stock source',
+  correctSourceHint:
+    'Fix it if the wrong package was charged. The total stays the same and nothing is erased.',
+  correctedFrom: 'Corrected',
+  correctionReason: 'Reason (optional)',
+  applyCorrection: 'Apply correction',
+  correctionApplied: 'Stock source corrected',
+  supersededAllocation: 'Superseded',
+
+  addMedication: 'Add a medication',
+  editMedication: 'Edit medication',
+  addStock: 'Add stock',
+  inventoryEmpty: 'No medications defined yet.',
+  inventoryEmptyHint: 'Define a medication first, then add its physical packages.',
+  packagesLabel: 'packages',
+  packageOrdinal: 'Box',
+  full: 'Full',
+  opened: 'Opened',
+  empty: 'Empty',
+  disposed: 'Disposed',
+  lost: 'Lost',
+  archived: 'Archived',
+  pinned: 'Active package',
+  pin: 'Make the active package',
+  unpin: 'Clear active package',
+  retire: 'Retire',
+  retireDisposed: 'Mark as disposed',
+  retireLost: 'Mark as lost',
+  onLoan: 'On loan',
+  lend: 'Lend',
+  returnLoan: 'Mark returned',
+  owner: 'Owner',
+  holder: 'Currently held by',
+  unassigned: 'Unassigned',
+  expiresOn: 'Expires',
+  acquiredOn: 'Acquired',
+  lotNumber: 'Lot number',
+  storageLocation: 'Stored in',
+  note: 'Note',
+  showPackages: 'Show packages',
+  hidePackages: 'Hide packages',
+  archiveMedication: 'Archive medication',
+  restoreMedication: 'Restore medication',
+
+  medicationName: 'Medication name',
+  strength: 'Strength',
+  strengthPlaceholder: 'e.g. 500 mg',
+  brand: 'Brand',
+  manufacturer: 'Manufacturer',
+  form: 'Form',
+  unit: 'Unit',
+  activeIngredients: 'Active ingredients',
+  activeIngredientsHint: 'Separate with commas.',
+  defaultPackageSize: 'Default package capacity',
+  defaultPackageSizeHint:
+    'Pre-fills new packages. Changing it never alters a package that already exists.',
+  category: 'Category',
+  tags: 'Tags',
+  notes: 'Notes',
+
+  fullPackageCount: 'Full packages',
+  packageCapacity: 'Package capacity',
+  openedPackage: 'Opened package',
+  addOpenedPackage: '+ Add an opened package',
+  remainingInPackage: 'Amount remaining',
+  removeRow: 'Remove',
+  looseAmount: 'Loose amount',
+  assignTo: 'Assign to',
+  stockPreview: 'Will add',
+  stockPreviewPackages: 'packages',
+
+  addPlan: 'Add a plan',
+  editPlan: 'Edit plan',
+  plansEmpty: 'No plans yet.',
+  plansEmptyHint: 'Define who takes which medication, and how.',
+  person: 'Person',
+  medication: 'Medication',
+  dose: 'Dose',
+  schedule: 'Schedule',
+  scheduleDaily: 'Every day',
+  scheduleWeekdays: 'Selected days',
+  scheduleInterval: 'Every N days',
+  scheduleAsNeeded: 'As needed',
+  intervalDays: 'Day interval',
+  exactTime: 'Time',
+  dayPeriod: 'Time of day',
+  mealRelation: 'Food timing',
+  minimumInterval: 'Minimum gap (minutes)',
+  effectiveFrom: 'From',
+  effectiveTo: 'Until',
+  instructions: 'Instruction note',
+  planVersionNote: 'Editing creates a new version; past records are unchanged.',
+  deletePlan: 'End plan',
+
+  monday: 'Mon',
+  tuesday: 'Tue',
+  wednesday: 'Wed',
+  thursday: 'Thu',
+  friday: 'Fri',
+  saturday: 'Sat',
+  sunday: 'Sun',
+
+  morning: 'Morning',
+  noon: 'Noon',
+  afternoon: 'Afternoon',
+  evening: 'Evening',
+  night: 'Night',
+  bedtime: 'Bedtime',
+
+  fasting: 'Fasting',
+  beforeFood: 'Before food',
+  withFood: 'With food',
+  afterFood: 'After food',
+
+  addPerson: 'Add a person',
+  personName: 'Name',
+  peopleEmpty: 'No people added yet.',
+  peopleEmptyHint: 'Add the people whose medication you are organising.',
+  archivePerson: 'Archive person',
+  rename: 'Rename',
+
+  refill: 'Refill',
+  refillSettings: 'Refill settings',
+  lowStockThreshold: 'Low-stock threshold',
+  lowStockDays: 'Low-stock warning (days)',
+  nextEligibleRefill: 'Official refill date',
+  nextEligibleRefillHint:
+    'The earliest date the prescription may be filled again. Independent of stock.',
+  lowStockWarning: 'Running low',
+  depletionOn: 'Projected to run out',
+  daysRemaining: 'days left',
+  refillGapWarning: 'Refill gap',
+  refillGapDetail: 'days at risk of having none',
+  alreadyDepleted: 'Out of stock',
+  notForecastable: 'A scheduled plan is needed to forecast',
+
+  historyEmpty: 'Nothing recorded yet.',
+  historyInventory: 'Stock movements',
+  historyAdministrations: 'Recorded doses',
+  historyCorrections: 'Corrections',
+  entryAcquire: 'Stock added',
+  entryConsume: 'Used',
+  entryCorrectionReversal: 'Correction credit',
+  entryCorrectionConsume: 'Charged by correction',
+  entryFound: 'Found',
+  entryLoss: 'Lost',
+  entryDispose: 'Disposed',
+  entryCountAdjustment: 'Count adjustment',
+  entryPackageTransfer: 'Package transfer',
+  entryManualAdjustment: 'Manual adjustment',
+  lateBy: 'minutes late',
+  earlyBy: 'minutes early',
+
+  save: 'Save',
+  cancel: 'Cancel',
+  close: 'Close',
+  optional: 'optional',
+  loading: 'Loading…',
+  retry: 'Try again',
+  none: 'None',
+  total: 'Total',
+  remaining: 'Remaining',
+
+  errorGeneric: 'Something went wrong. Please try again.',
+  errorNetwork: 'Could not reach the server.',
+  errorUnauthenticated: 'Your session ended. Please sign in again.',
+  errorForbidden: 'You do not have access to this household.',
+  errorInsufficientStock: 'There is not enough stock for this dose. Choose a source under advanced options.',
+  errorChosenSourceInsufficient: 'The source you chose does not hold enough for this dose.',
+  errorPackageNotEligible: 'That package cannot be used.',
+  errorPackageNotFound: 'Package not found.',
+  errorTargetInsufficientStock:
+    'The target package does not hold enough. That is a counting problem; a correction cannot create negative stock.',
+  errorTargetNotEligible: 'The target package cannot be used.',
+  errorSameSource: 'That is already the source; there is nothing to correct.',
+  errorAllocationNotActive: 'This record has already been corrected.',
+  errorAdministrationUntracked: 'This dose did not draw on stock, so there is no source to correct.',
+  errorAccountExists: 'An account already exists for this email.',
+  errorPasswordMismatch: 'The passwords do not match.',
+  errorInvalidCredentials: 'That email or password is not correct.',
+  errorStaleRevision: 'A newer count exists. Review that one first.',
+  errorPackageOnLoan: 'The package is currently on loan.',
+
+  safetyNotice:
+    'This application organises and tracks medication. It does not diagnose, recommend a dose, or assess drug interactions.',
+};
+
+export const dictionaries = { tr, en } as const;
+
+export type Locale = keyof typeof dictionaries;
+
+export const LOCALES: readonly Locale[] = ['tr', 'en'];
+
+export const LOCALE_STORAGE_KEY = 'medication-locale';
+
+export type Translate = (key: MessageKey) => string;
+
+const LocaleContext = createContext<{ locale: Locale; t: Translate; setLocale: (l: Locale) => void }>({
+  locale: 'tr',
+  t: (key) => tr[key],
+  setLocale: () => {},
+});
+
+export const LocaleProvider = LocaleContext.Provider;
+
+export function useLocale() {
+  return useContext(LocaleContext);
+}
+
+/** Maps a server refusal code onto a translated message. */
+export function errorKey(code: string): MessageKey {
+  const map: Record<string, MessageKey> = {
+    unauthenticated: 'errorUnauthenticated',
+    forbidden: 'errorForbidden',
+    insufficient_stock: 'errorInsufficientStock',
+    chosen_source_insufficient: 'errorChosenSourceInsufficient',
+    package_not_eligible: 'errorPackageNotEligible',
+    package_not_found: 'errorPackageNotFound',
+    package_not_specified: 'errorPackageNotFound',
+    target_insufficient_stock: 'errorTargetInsufficientStock',
+    target_not_eligible: 'errorTargetNotEligible',
+    same_source: 'errorSameSource',
+    allocation_not_active: 'errorAllocationNotActive',
+    administration_untracked: 'errorAdministrationUntracked',
+    account_exists: 'errorAccountExists',
+    password_mismatch: 'errorPasswordMismatch',
+    invalid_credentials: 'errorInvalidCredentials',
+    stale_revision: 'errorStaleRevision',
+    package_on_loan: 'errorPackageOnLoan',
+  };
+
+  return map[code] ?? 'errorGeneric';
+}
+
+/** Translation keys for the enum names the API returns. */
+export function enumKey(value: string | null | undefined): MessageKey | null {
+  if (!value) {
+    return null;
+  }
+
+  const map: Record<string, MessageKey> = {
+    Morning: 'morning',
+    Noon: 'noon',
+    Afternoon: 'afternoon',
+    Evening: 'evening',
+    Night: 'night',
+    Bedtime: 'bedtime',
+    Fasting: 'fasting',
+    BeforeFood: 'beforeFood',
+    WithFood: 'withFood',
+    AfterFood: 'afterFood',
+    Sealed: 'full',
+    Opened: 'opened',
+    Disposed: 'disposed',
+    Lost: 'lost',
+    Archived: 'archived',
+    Acquire: 'entryAcquire',
+    Consume: 'entryConsume',
+    CorrectionReversal: 'entryCorrectionReversal',
+    CorrectionConsume: 'entryCorrectionConsume',
+    Found: 'entryFound',
+    Loss: 'entryLoss',
+    Dispose: 'entryDispose',
+    CountAdjustment: 'entryCountAdjustment',
+    PackageTransfer: 'entryPackageTransfer',
+    ManualAdjustment: 'entryManualAdjustment',
+  };
+
+  return map[value] ?? null;
+}

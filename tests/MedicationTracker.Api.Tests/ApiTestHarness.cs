@@ -150,7 +150,7 @@ public static class ApiTestExtensions
     {
         var response = await client.PostAsJsonAsync(path, body ?? new { });
         await response.EnsureSuccessOrThrow(path);
-        return await response.Content.ReadFromJsonAsync<JsonElement>();
+        return await response.ReadJsonOrEmpty();
     }
 
     public static async Task<Guid> PostId(this HttpClient client, string path, object body, string property = "id")
@@ -163,16 +163,33 @@ public static class ApiTestExtensions
     {
         var response = await client.GetAsync(path);
         await response.EnsureSuccessOrThrow(path);
-        return await response.Content.ReadFromJsonAsync<JsonElement>();
+        return await response.ReadJsonOrEmpty();
     }
 
     public static async Task<JsonElement> PutOk(this HttpClient client, string path, object body)
     {
         var response = await client.PutAsJsonAsync(path, body);
         await response.EnsureSuccessOrThrow(path);
-        return response.Content.Headers.ContentLength > 0
-            ? await response.Content.ReadFromJsonAsync<JsonElement>()
-            : default;
+        return await response.ReadJsonOrEmpty();
+    }
+
+    /// <summary>
+    /// Reads a JSON body, tolerating the empty one a 204 carries.
+    /// </summary>
+    /// <remarks>
+    /// Commands whose result is just "it worked" — pin, unpin, retire, archive — return
+    /// No Content rather than an invented body, so a helper that always deserialises
+    /// would fail on a correct response.
+    /// </remarks>
+    private static async Task<JsonElement> ReadJsonOrEmpty(this HttpResponseMessage response)
+    {
+        if (response.StatusCode == System.Net.HttpStatusCode.NoContent)
+        {
+            return default;
+        }
+
+        var payload = await response.Content.ReadAsStringAsync();
+        return string.IsNullOrWhiteSpace(payload) ? default : JsonDocument.Parse(payload).RootElement.Clone();
     }
 
     /// <summary>The <c>code</c> from a refusal body, so tests assert on a stable reason.</summary>

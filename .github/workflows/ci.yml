@@ -5,6 +5,19 @@ on:
     branches: [main]
   pull_request:
 
+  # Deploying the commit that is already on main should not need an empty commit to
+  # push. A manual run rebuilds and re-verifies from scratch, so it ships exactly what
+  # a merge would have shipped.
+  workflow_dispatch:
+    inputs:
+      run_smoke_test:
+        description: >-
+          Run deploy/smoke-test.ps1 against the live site after deploying. It registers
+          one synthetic household, so it is off by default and worth turning on for a
+          release whose behaviour changed.
+        type: boolean
+        default: false
+
 permissions:
   contents: read
 
@@ -113,11 +126,18 @@ jobs:
           pg medication_tracker_production_shape < image-migrations.sql
           pg medication_tracker_production_shape < image-migrations.sql
           pg medication_tracker_production_shape < tests/migrations/verify-production-shape.sql
+      # A releasable main build: a merge, or a manual run asking for the same thing.
+      # This condition, the upload below and the deploy job's own must stay in step —
+      # a run that builds no artifact leaves the deploy with nothing to download.
       - name: Package VPS web image
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: >-
+          (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+          && github.ref == 'refs/heads/main'
         run: docker save medication-tracker-web:ci medication-tracker-api:ci | gzip -9 > medication-tracker-web.tar.gz
       - name: Upload VPS web image
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: >-
+          (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+          && github.ref == 'refs/heads/main'
         uses: actions/upload-artifact@v7
         with:
           name: medication-tracker-web-${{ github.sha }}
@@ -130,12 +150,13 @@ jobs:
     name: Deploy to the VPS
     needs: [api, clients]
 
-    # Three gates, all of which must hold. Both test jobs passed, this is a merged
-    # main rather than a pull request, and the owner has armed deployment by setting
-    # the DEPLOY_ENABLED repository variable to "true". Until that variable exists the
-    # job is skipped, so a merge is never red for a deployment nobody configured.
+    # Three gates, all of which must hold. Both test jobs passed, this is a releasable
+    # main build rather than a pull request, and the owner has armed deployment by
+    # setting the DEPLOY_ENABLED repository variable to "true". Until that variable
+    # exists the job is skipped, so a merge is never red for a deployment nobody
+    # configured.
     if: >-
-      github.event_name == 'push'
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
       && github.ref == 'refs/heads/main'
       && vars.DEPLOY_ENABLED == 'true'
     runs-on: ubuntu-latest
@@ -231,6 +252,37 @@ jobs:
           # project's api and web containers, applies the packaged migrations, brings
           # them back and then proves no other project's containers went down with it.
           ssh "${ssh_opts[@]}" "$target" 'bash /opt/medication-tracker/deploy/deploy-production.sh'
+
+      # The deploy script proves the site answers on the host's own loopback port. This
+      # proves it answers through nginx and the public name, which is the only part a
+      # reader of this log cannot otherwise check. It writes nothing.
+      - name: Prove the public site answers
+        env:
+          PUBLIC_URL: ${{ vars.PUBLIC_URL || 'https://medicationtracker.rapidconfigs.com' }}
+        run: |
+          set -euo pipefail
+
+          landing="$(curl --silent --show-error --location --max-time 30 \
+            --output /dev/null --write-out '%{http_code}' "$PUBLIC_URL/")"
+          echo "GET / -> $landing"
+          test "$landing" = "200" || { echo 'The site did not serve.' >&2; exit 1; }
+
+          # 401 is the right answer for an anonymous session read: anything else means
+          # the request never reached the API, or reached it and was let through.
+          session="$(curl --silent --show-error --max-time 30 \
+            --output /dev/null --write-out '%{http_code}' "$PUBLIC_URL/api/auth/session")"
+          echo "GET /api/auth/session -> $session"
+          test "$session" = "401" || {
+            echo "Expected 401 from the API through nginx, got $session." >&2
+            exit 1
+          }
+
+      - name: Run the public smoke test
+        if: inputs.run_smoke_test
+        env:
+          PUBLIC_URL: ${{ vars.PUBLIC_URL || 'https://medicationtracker.rapidconfigs.com' }}
+        shell: pwsh
+        run: ./deploy/smoke-test.ps1 -BaseUrl $env:PUBLIC_URL
 
       - name: Forget the key
         if: always()

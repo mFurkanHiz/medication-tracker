@@ -5,6 +5,19 @@ test "$(pwd -P)" = /opt/medication-tracker
 test -f compose.production.yml
 test -f .deploy/medication-tracker-web.tar.gz
 umask 077
+
+# This host runs other people's projects: more than twenty containers and several
+# sites behind one nginx. Every Docker command below is scoped to this compose
+# project by name, and none of them prunes anything — but "we were careful" is not
+# evidence. Record what is running that is not ours, so the end of this script can
+# prove it is still running. A container of ours that is missing is expected; one of
+# theirs is damage, and it should surface here rather than as somebody else's outage
+# hours later.
+outsiders() {
+  docker ps --format '{{.Names}}' 2>/dev/null | grep -v '^medication-tracker-' | sort || true
+}
+
+outsiders_before="$(outsiders)"
 if [ ! -f .env.production ]; then
   printf 'DATABASE_PASSWORD=%s\n' "$(openssl rand -hex 32)" > .env.production
 fi
@@ -68,3 +81,18 @@ done
 "${compose[@]}" exec -T web wget --quiet --spider http://api:8080/health/ready
 "${compose[@]}" ps
 curl --fail --silent --show-error http://127.0.0.1:3022/ > /dev/null
+
+# Our own deploy is healthy. Now prove we did not take anything else down with it.
+# Only a disappearance is treated as damage: another project starting or restarting
+# on its own schedule is none of our business and must not fail this deploy.
+outsiders_after="$(outsiders)"
+missing="$(comm -23 <(printf '%s\n' "$outsiders_before") <(printf '%s\n' "$outsiders_after"))"
+
+if [ -n "$missing" ]; then
+  echo 'DEPLOY FAILED: containers belonging to other projects are no longer running.' >&2
+  printf '%s\n' "$missing" >&2
+  echo 'This deploy touched only medication-tracker services, so investigate the host before retrying.' >&2
+  exit 1
+fi
+
+echo "Deploy complete. ${0##*/} left $(printf '%s\n' "$outsiders_after" | grep -c . || true) container(s) from other projects untouched."

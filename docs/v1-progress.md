@@ -52,17 +52,21 @@ narrowed or moved out of V1:
 4. **Mobile has no reports, export or counting surface.** These slices added all three
    to the web client only. Rows 18, 31 and 32 are satisfied — a user can reach every
    behaviour — but the mobile client does not yet show them.
-5. **The branch is not deployed.** Production still runs `371447da`, which has no
-   reports, no export and no counting screen.
+5. **Not deployed.** Reports, export and counting are merged to `main` (`fe4b29a`,
+   CI `37071473724` green) but production still runs `371447da`, which has none of
+   them. Deployment is automated now but not yet armed — see the next action.
 
 ## Next exact action
 
-Deploy the branch, then the synthetic demo seed.
+Arm the deploy, then the synthetic demo seed.
 
-- **Deploy** is the immediate one and it needs the owner: see `docs/preflight.md` for
-  the prepared report and the exact steps. The agent session that wrote this could not
-  perform it — the environment's network policy denies both the VPS's SSH port and the
-  public hostname, and the session holds no deployment credentials.
+- **Arming the deploy** needs the owner, and only the owner: two GitHub secrets and
+  three variables, plus the public half of a key on the VPS. `docs/preflight.md`
+  section 6a has the five steps. The agent session that wired it could not perform
+  them — the environment's network policy denies both the VPS's SSH port and the
+  public hostname, and the session cannot create GitHub secrets.
+- Once armed, a merge to `main` deploys by itself. The first one should be watched:
+  add a required reviewer to the `production` environment and approve it live.
 - **Synthetic demo seed** (row 35) is the last non-device, non-mobile item. It should
   reuse the shape the browser checks already seed: a household, two people, a scheduled
   and an as-needed medication, three packages, three weeks of mixed outcomes.
@@ -253,6 +257,29 @@ When the owner says **"continue" / "kaldığın yerden devam et"**:
   no `.env.production`, no image artifact and no SSH key. The preflight is prepared in
   `docs/preflight.md` for the owner to execute; nothing was deployed and nothing on the
   VPS was touched.
+- 2026-10-02: **Deployment automated.** A merge to `main` now runs CI's `deploy` job,
+  which ships the artifact it just built together with the deploy script and compose
+  file from that same commit — so an older script can never run against a newer image,
+  and nothing depends on the state of a checkout on the host. The host key comes from a
+  secret and an unknown one aborts rather than prompting; the archive's SHA-256 is
+  compared on both sides and a mismatch deploys nothing; only one deploy runs at a
+  time and a running one is never cancelled.
+- 2026-10-02: The owner's constraint — this VPS carries other people's containers and
+  sites behind one nginx — was treated as a thing to prove, not to assert. The script
+  was rehearsed end to end twice with Docker mocked, and every call it makes was
+  audited: each `docker compose` is scoped by `--project-name`, the only stop is
+  `stop api web`, every other `docker` call names a `medication-tracker-*` resource or
+  a container the script itself created, and there is no `prune`, no `system`, no
+  network or volume removal, and no mention of nginx. The script now also snapshots
+  the containers that are not ours before it starts and fails, naming the container,
+  if one of them is gone by the end; a new container appearing is not damage. Seven
+  cases of that guard were unit-tested, and the two full rehearsals — healthy and
+  collateral — both behaved correctly.
+- 2026-10-02: The deploy job is inert until the owner sets `DEPLOY_ENABLED`, so a
+  merge is never red for a deployment nobody configured. The SSH steps have been
+  syntax-checked but **never run against the real host**, which is the largest
+  remaining unknown and the reason the first deploy should be approved live through
+  the `production` environment.
 - 2026-10-02: The first deployment attempt halted at backup verification and changed
   nothing — `pg_restore -l /dev/stdin` cannot read a custom-format archive from a pipe.
   The backup it had already written was confirmed sound (188 entries) and the outgoing

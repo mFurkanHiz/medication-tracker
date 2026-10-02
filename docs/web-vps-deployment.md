@@ -50,9 +50,33 @@ TXT records if they were added; they are not needed for VPS hosting.
 
 ## Deploy
 
-The release image is built and validated in GitHub Actions. Download the image
-artifact, verify its SHA-256 checksum, transfer it to the VPS, and load it before
-running Compose. Do not build on the VPS while its swap is under pressure.
+A merge to `main` deploys by itself once the owner has armed it. CI's `deploy` job
+runs after both test jobs pass, downloads the image artifact it just built, verifies
+its SHA-256 on both sides of the transfer, ships the deploy script and
+`compose.production.yml` from the same commit, and runs the script over SSH. It is
+skipped entirely unless the repository variable `DEPLOY_ENABLED` is `true`, so the
+automation stays inert until it is configured. `docs/preflight.md` section 6a lists
+the two secrets and three variables to set, in Turkish.
+
+The job declares `environment: production`, so adding a required reviewer there makes
+every deploy wait for an explicit approval — which is how the acceptance contract's
+preflight gate survives automation.
+
+### What protects the rest of the host
+
+This VPS runs other projects: more than twenty containers and several sites behind
+one nginx. Every Compose command in `deploy/deploy-production.sh` is scoped with
+`--project-name medication-tracker`, the only stop is `stop api web`, and the script
+prunes nothing and never touches nginx. Since 2026-10-02 it also records the
+containers that are **not** ours before it starts and compares them at the end: if
+one of them is no longer running the deploy fails and names it. Another project
+starting a new container is not treated as damage.
+
+### Manual fallback
+
+Download the image artifact, verify its SHA-256 checksum, transfer it to the VPS, and
+load it before running Compose. Do not build on the VPS while its swap is under
+pressure.
 
 For a source-build fallback, clone or update only this repository in its dedicated
 application directory, then run:

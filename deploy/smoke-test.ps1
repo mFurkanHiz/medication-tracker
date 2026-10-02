@@ -177,7 +177,94 @@ $activity = Read-Data "/households/$household/activity"
 Assert ($activity.allocationCorrections.Count -eq 1) 'The correction is missing from the activity surface.'
 Assert ($activity.administrations.Count -eq 2) 'The activity surface lost an administration.'
 
+# --- counting: the default count, then a correction as a revision --------------------
+# Counted 45 where the ledger projects 47, so the adjustment must be exactly -2 and the
+# count must be readable back afterwards.
+$countKey = [guid]::NewGuid().ToString('N')
+$count = Send-Command "/households/$household/inventory/count-sessions" @{
+    idempotencyKey = $countKey
+    lines          = @(@{ medicationDefinitionId = $definition.id; observedNumerator = 45 })
+    note           = 'smoke test count'
+}
+
+Assert ($count.revisionNumber -eq 1) 'The first count is not revision one.'
+
+$inventory = Read-Data "/households/$household/inventory/$($definition.id)"
+Assert ($inventory.total.display -eq '45') "The count did not reconcile the total, got $($inventory.total.display)."
+
+$sessions = Read-Data "/households/$household/inventory/count-sessions"
+Assert ($sessions.sessions.Count -eq 1) 'The accepted count did not read back.'
+Assert ($sessions.sessions[0].isRevisable) 'A count with nothing after it should still be correctable.'
+Assert ($sessions.sessions[0].lines[0].before.display -eq '47') 'The count did not record what was expected.'
+Assert ($sessions.sessions[0].lines[0].adjustment.display -eq '-2') 'The count adjustment is not -2.'
+
+# A correction never edits the accepted count; it appends a revision pointing at it.
+$revision = Send-Command "/households/$household/inventory/count-sessions/$($count.batchId)/revisions" @{
+    idempotencyKey = [guid]::NewGuid().ToString('N')
+    lines          = @(@{ medicationDefinitionId = $definition.id; observedNumerator = 46 })
+}
+
+Assert ($revision.revisionNumber -eq 2) 'The correction did not create revision two.'
+
+$sessions = Read-Data "/households/$household/inventory/count-sessions"
+Assert ($sessions.sessions.Count -eq 2) 'The revision did not read back alongside the original.'
+
+$original = $sessions.sessions | Where-Object { $_.id -eq $count.batchId } | Select-Object -First 1
+Assert (-not $original.isRevisable) 'A superseded count still offers a correction.'
+Assert ($original.lines[0].adjustment.display -eq '-2') 'The superseded count was rewritten.'
+
+$inventory = Read-Data "/households/$household/inventory/$($definition.id)"
+Assert ($inventory.total.display -eq '46') 'The revision did not reconcile the total.'
+
+# A replayed command must record one count, not two.
+$replay = Send-Command "/households/$household/inventory/count-sessions" @{
+    idempotencyKey = $countKey
+    lines          = @(@{ medicationDefinitionId = $definition.id; observedNumerator = 45 })
+}
+
+Assert ($replay.batchId -eq $count.batchId) 'A replayed count did not return the original batch.'
+
+$inventory = Read-Data "/households/$household/inventory/$($definition.id)"
+Assert ($inventory.total.display -eq '46') 'A replayed count moved the stock a second time.'
+
+# --- reports: planned against recorded, and what is left -----------------------------
+$from = (Get-Date).ToUniversalTime().AddDays(-7).ToString('yyyy-MM-dd')
+$to = (Get-Date).ToUniversalTime().ToString('yyyy-MM-dd')
+
+$adherence = Read-Data "/households/$household/reports/adherence?from=$from&to=$to&timeZoneId=UTC"
+Assert ($adherence.rows.Count -ge 1) 'The adherence report returned no rows.'
+Assert ($adherence.unknownTimeZoneIds.Count -eq 0) 'A plan carries a time zone the server does not know.'
+
+$scheduled = $adherence.rows | Where-Object { $_.tally.scheduledDoses -gt 0 } | Select-Object -First 1
+Assert ($null -ne $scheduled) 'The daily plan produced no scheduled doses in the report.'
+Assert ($scheduled.tally.onScheduleDoses -ge 1) 'The recorded dose is missing from the report.'
+Assert ($null -ne $scheduled.tally.onScheduleRatio) 'A scheduled medication reported no ratio.'
+
+$stockReport = Read-Data "/households/$household/reports/inventory"
+$reported = $stockReport.rows | Where-Object { $_.medicationDefinitionId -eq $definition.id } | Select-Object -First 1
+Assert ($null -ne $reported) 'The inventory report lost the medication.'
+Assert ($reported.total.display -eq '46') 'The inventory report disagrees with the ledger.'
+Assert ($reported.hasRefillGap) 'The inventory report lost the refill gap.'
+
+# --- export: the household's own data, and nothing else ------------------------------
+$exportResponse = Invoke-WebRequest -Uri "$BaseUrl/api/households/$household/export" -WebSession $session -UseBasicParsing
+Assert ($exportResponse.StatusCode -eq 200) 'The export did not return 200.'
+Assert ($exportResponse.Headers['Content-Disposition'] -match 'attachment') 'The export is not served as a download.'
+
+$exportText = [System.Text.Encoding]::UTF8.GetString($exportResponse.Content)
+$export = $exportText | ConvertFrom-Json
+
+Assert ($export.householdId -eq $household) 'The export names a different household.'
+Assert ($export.administrations.Count -eq 2) 'The export lost an administration.'
+Assert ($export.packages.Count -eq 3) 'The export lost a package.'
+Assert ($export.inventoryCounts.Count -ge 2) 'The export lost a count.'
+Assert ($export.truncatedCollections.Count -eq 0) 'The export truncated a collection.'
+
+# No account identity may leave in the file.
+Assert (-not ($exportText -match 'example\.invalid')) 'The export leaked an e-mail address.'
+Assert (-not ($exportText -match '(?i)passwordhash|tokenhash')) 'The export leaked a credential.'
+
 # --- sign out ------------------------------------------------------------------------
 Send-Command '/auth/logout' @{} | Out-Null
 
-Write-Host 'SMOKE PASSED: packages, allocation, correction, untracked source, refill gap and activity all verified.'
+Write-Host 'SMOKE PASSED: packages, allocation, correction, untracked source, refill gap, activity, counting with revision and replay, both reports and the export all verified.'

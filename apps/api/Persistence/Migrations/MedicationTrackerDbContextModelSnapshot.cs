@@ -792,7 +792,7 @@ namespace MedicationTracker.Api.Persistence.Migrations
                         {
                             t.HasCheckConstraint("ck_ledger_entries_denominator", "quantity_denominator > 0");
 
-                            t.HasCheckConstraint("ck_ledger_entries_non_zero", "quantity_numerator <> 0 OR entry_type = 'CountAdjustment'");
+                            t.HasCheckConstraint("ck_ledger_entries_non_zero", "quantity_numerator <> 0 OR entry_type IN ('Acquire', 'CountAdjustment')");
                         });
                 });
 

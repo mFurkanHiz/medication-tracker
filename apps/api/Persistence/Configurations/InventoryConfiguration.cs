@@ -101,11 +101,13 @@ public sealed class InventoryLedgerEntryConfiguration : IEntityTypeConfiguration
         {
             table.HasCheckConstraint("ck_ledger_entries_denominator", "quantity_denominator > 0");
 
-            // A zero delta is meaningful only for a count that confirmed the balance;
-            // for any other type it would be a stock change that changed nothing.
+            // A zero delta is only meaningful for a count that confirmed the balance, or
+            // for a medication added with no stock yet — production holds six of the
+            // latter. For a consumption, loss or disposal it would be a stock change that
+            // changed nothing, which is a bug worth refusing at the database.
             table.HasCheckConstraint(
                 "ck_ledger_entries_non_zero",
-                "quantity_numerator <> 0 OR entry_type = 'CountAdjustment'");
+                "quantity_numerator <> 0 OR entry_type IN ('Acquire', 'CountAdjustment')");
         });
 
         b.HasKey(x => x.Id);

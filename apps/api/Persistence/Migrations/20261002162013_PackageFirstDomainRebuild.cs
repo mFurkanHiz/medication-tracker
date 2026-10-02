@@ -1224,7 +1224,7 @@ namespace MedicationTracker.Api.Persistence.Migrations
                 name: "ck_ledger_entries_non_zero",
                 schema: "inventory",
                 table: "ledger_entries",
-                sql: "quantity_numerator <> 0 OR entry_type = 'CountAdjustment'");
+                sql: "quantity_numerator <> 0 OR entry_type IN ('Acquire', 'CountAdjustment')");
 
             migrationBuilder.CreateIndex(
                 name: "IX_count_sessions_package_id",

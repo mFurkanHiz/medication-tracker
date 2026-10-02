@@ -39,10 +39,17 @@ public sealed class InventoryLedgerEntry
         DateTimeOffset occurredAt,
         DateTimeOffset recordedAt)
     {
-        // A count that confirms the balance is a real event with a zero delta: it
-        // records that the household looked and found no discrepancy. Every other
-        // entry type must actually move stock, or it is hiding a bug.
-        if (signedQuantity.IsZero && entryType != LedgerEntryType.CountAdjustment)
+        // Two entry types can legitimately carry a zero delta: a count that found no
+        // discrepancy, and an acquisition that added nothing — the superseded model let a
+        // medication be created with zero stock, and production holds such rows. For a
+        // consumption, loss or disposal a zero delta is a stock change that changed
+        // nothing, which hides a bug.
+        //
+        // The factory methods below are stricter than this: no new code can write a zero
+        // acquisition. This constructor describes what is representable, including
+        // history.
+        if (signedQuantity.IsZero
+            && entryType is not (LedgerEntryType.CountAdjustment or LedgerEntryType.Acquire))
         {
             throw new ArgumentOutOfRangeException(
                 nameof(signedQuantity),

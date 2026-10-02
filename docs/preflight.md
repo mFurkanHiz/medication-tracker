@@ -149,13 +149,19 @@ Dürüst liste. Hiçbiri dağıtımı engellemiyor, ama bilerek onaylayın.
 ### 6a. Otomatik dağıtım — bir kereye mahsus kurulum
 
 `main`'e birleştirilince dağıtım artık CI'ın içindeki `deploy` işi tarafından
-yapılır. İş üç kapıdan geçmeden çalışmaz: her iki test işi yeşil olacak, olay
-`main`'e push olacak, ve **siz** `DEPLOY_ENABLED` değişkenini kurmuş olacaksınız.
-O değişken yokken iş atlanır, yani birleştirmeler asla kurulmamış bir dağıtım
-yüzünden kırmızı görünmez.
+yapılır. İş üç kapıdan geçmeden çalışmaz: her iki test işi yeşil olacak, yayınlanabilir
+bir `main` derlemesi olacak (birleştirme ya da elle tetikleme), ve **siz**
+`DEPLOY_ENABLED` değişkenini kurmuş olacaksınız. O değişken yokken iş atlanır, yani
+birleştirmeler asla kurulmamış bir dağıtım yüzünden kırmızı görünmez.
 
-Bu kurulumu ben yapamam: oturum VPS'e erişemiyor ve GitHub sırrı oluşturamıyor.
-Beş adım, bir kere:
+Kurulumun **tamamı bundan ibaret**. Sonrasını ben yapıyorum: dağıtımı
+`workflow_dispatch` ile tetikliyorum (gereksiz commit atmadan), koşuyu izliyorum,
+başarısız olursa düzeltip tekrar deniyorum, ve kanıtı `docs/v1-progress.md`'ye
+yazıyorum.
+
+Bu beş adımı ben yapamam: oturumun ağ politikası VPS'i engelliyor ve GitHub sırrı
+oluşturan bir araç yok. Anahtarın iki yarısı da erişemediğim yerlere gidiyor —
+özel yarısı GitHub sırlarına, açık yarısı sunucuya.
 
 ```bash
 # 1. Yalnızca dağıtım için bir anahtar çifti üretin (kendi makinenizde)
@@ -199,10 +205,21 @@ soketine erişim istiyor.
    hiç bağımlılık kalmaz.
 4. SHA-256'yı aktarımdan önce ve sonra karşılaştırır; tutmazsa hiçbir şey dağıtılmaz.
 5. `deploy/deploy-production.sh` çalıştırır.
-6. Özel anahtarı runner'dan siler.
+6. **Genel adresin cevap verdiğini kanıtlar** — hiçbir şey yazmadan: `GET /` → 200 ve
+   `GET /api/auth/session` → **401**. İkincisi kritik, çünkü 401 isteğin nginx
+   üzerinden gerçekten API'ye ulaştığını gösterir; 200 ya da 502 başka bir sorun
+   demektir. Betik yalnızca sunucunun kendi loopback portunu sınıyor, bu adım ise
+   dışarıdan görünen hâli.
+7. İstenirse tam smoke testini çalıştırır (aşağıya bakın).
+8. Özel anahtarı runner'dan siler.
 
 Aynı anda iki dağıtım çalışamaz (`concurrency: production-deploy`) ve çalışan bir
 dağıtım yarıda iptal edilmez.
+
+**Elle tetikleme.** Actions → CI → *Run workflow* → `main`. `run_smoke_test` kutusu
+işaretlenirse dağıtımdan sonra `deploy/smoke-test.ps1` canlı siteye karşı çalışır.
+Varsayılan kapalı, çünkü betik her koşuda canlıda bir sentetik hane oluşturuyor —
+davranışı değişen bir sürümde açmaya değer, rutin birleştirmelerde değmez.
 
 ### 6c. Diğer sistemlere dokunulmadığının garantisi
 

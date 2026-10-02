@@ -58,6 +58,20 @@ skipped entirely unless the repository variable `DEPLOY_ENABLED` is `true`, so t
 automation stays inert until it is configured. `docs/preflight.md` section 6a lists
 the two secrets and three variables to set, in Turkish.
 
+The same job can be run on demand — Actions → CI → *Run workflow* on `main` — so
+deploying the commit that is already on `main` does not need an empty commit to push.
+A manual run rebuilds and re-verifies from scratch, so it ships exactly what a merge
+would have shipped. Its one input, `run_smoke_test`, additionally runs
+`deploy/smoke-test.ps1` against the live site; it is off by default because that
+script registers a synthetic household on every run.
+
+### Proving the deploy worked
+
+The script checks the site on the host's own loopback port. The job then checks it
+from outside, writing nothing: `GET /` must return 200, and `GET /api/auth/session`
+must return **401**. The second is the useful one — 401 proves the request reached the
+API through nginx, where 200 or 502 would mean it did not.
+
 The job declares `environment: production`, so adding a required reviewer there makes
 every deploy wait for an explicit approval — which is how the acceptance contract's
 preflight gate survives automation.

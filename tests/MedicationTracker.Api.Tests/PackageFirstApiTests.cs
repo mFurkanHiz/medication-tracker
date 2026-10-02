@@ -375,6 +375,61 @@ public sealed class PackageFirstApiTests
     }
 
     [PostgreSqlFact]
+    public async Task A_second_device_recording_the_same_slot_is_told_rather_than_overwriting_it()
+    {
+        await using var harness = new ApiTestHarness();
+        var (client, household) = await harness.NewHouseholdAsync();
+        var definition = await CreateParolAsync(client, household);
+        await AddAcceptanceStockAsync(client, household, definition);
+        var (_, planVersion) = await CreateDailyPlanAsync(client, household, definition);
+
+        var slot = DueInstant(DateOnly.FromDateTime(DateTime.UtcNow));
+
+        // The first phone records the dose while the second is offline.
+        var first = await client.PostOk($"/api/households/{household}/administrations", new
+        {
+            planVersionId = planVersion,
+            scheduledFor = slot,
+            outcome = "Taken",
+            idempotencyKey = "first-device",
+        });
+
+        // The second phone syncs later with its own key and the same outcome: it should
+        // learn the slot is already recorded rather than create a duplicate.
+        var agreeing = await client.PostOk($"/api/households/{household}/administrations", new
+        {
+            planVersionId = planVersion,
+            scheduledFor = slot,
+            outcome = "Taken",
+            idempotencyKey = "second-device-agreeing",
+        });
+
+        Assert.True(agreeing.GetProperty("replayed").GetBoolean());
+        Assert.Equal(
+            first.GetProperty("administrationEventId").GetGuid(),
+            agreeing.GetProperty("administrationEventId").GetGuid());
+
+        // A different outcome is a genuine disagreement about a health record. It is
+        // refused with a code the client can act on, never silently applied.
+        var disagreeing = await client.PostAsJsonAsync($"/api/households/{household}/administrations", new
+        {
+            planVersionId = planVersion,
+            scheduledFor = slot,
+            outcome = "Skipped",
+            idempotencyKey = "second-device-disagreeing",
+        });
+
+        Assert.Equal(HttpStatusCode.Conflict, disagreeing.StatusCode);
+        Assert.Equal("slot_already_recorded", await disagreeing.RefusalCode());
+
+        // Exactly one dose, consuming exactly one tablet.
+        await using var db = harness.NewDbContext();
+        Assert.Single(await db.AdministrationEvents.AsNoTracking()
+            .Where(e => e.HouseholdId == household).ToListAsync());
+        Assert.Equal("47", await TotalAsync(client, household, definition));
+    }
+
+    [PostgreSqlFact]
     public async Task An_untracked_dose_is_recorded_without_touching_inventory_or_going_negative()
     {
         await using var harness = new ApiTestHarness();

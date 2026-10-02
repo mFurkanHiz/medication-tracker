@@ -49,6 +49,12 @@ public enum RecordDoseRefusal
 
     /// <summary>The named package is retired, or is held by someone else.</summary>
     PackageNotEligible = 5,
+
+    /// <summary>
+    /// Another device already recorded this scheduled slot with a different outcome.
+    /// Surfaced rather than overwritten, because a health record is not last-write-wins.
+    /// </summary>
+    SlotAlreadyRecorded = 6,
 }
 
 public sealed record RecordDoseCommand(
@@ -135,6 +141,31 @@ public static class AdministrationService
             if (prior is not null)
             {
                 return (RecordDoseRefusal.None, await ReplayAsync(db, command.HouseholdId, prior.AdministrationEventId, ct));
+            }
+        }
+
+        // Two devices can record the same scheduled slot under different idempotency
+        // keys — the second phone was offline when the first one synced. The unique slot
+        // index would raise a constraint violation, so the collision is detected here and
+        // answered with a decision the client can act on: the same outcome replays the
+        // original event, a different one is refused rather than silently overwriting a
+        // health record.
+        if (command.TreatmentPlanVersionId is { } slotVersion
+            && command.ScheduledFor is { } slot
+            && command.Outcome != AdministrationOutcome.ExtraDose)
+        {
+            var existing = await db.AdministrationEvents.AsNoTracking().SingleOrDefaultAsync(
+                e => e.HouseholdId == command.HouseholdId
+                     && e.TreatmentPlanVersionId == slotVersion
+                     && e.ScheduledFor == slot
+                     && e.Outcome != AdministrationOutcome.ExtraDose,
+                ct);
+
+            if (existing is not null)
+            {
+                return existing.Outcome == command.Outcome
+                    ? (RecordDoseRefusal.None, await ReplayAsync(db, command.HouseholdId, existing.Id, ct))
+                    : (RecordDoseRefusal.SlotAlreadyRecorded, null);
             }
         }
 

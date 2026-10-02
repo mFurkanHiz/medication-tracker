@@ -432,6 +432,7 @@ public static class AdministrationEndpoints
         RecordDoseRefusal.ChosenSourceInsufficient => "chosen_source_insufficient",
         RecordDoseRefusal.PackageNotSpecified => "package_not_specified",
         RecordDoseRefusal.PackageNotEligible => "package_not_eligible",
+        RecordDoseRefusal.SlotAlreadyRecorded => "slot_already_recorded",
         _ => "refused",
     };
 

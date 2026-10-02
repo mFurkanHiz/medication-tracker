@@ -126,5 +126,36 @@ When the owner says **"continue" / "kaldığın yerden devam et"**:
   before applying migrations, because a table rename cannot run safely underneath the
   previous release, and verifies the backup is readable before anything changes. No
   other compose project is touched.
-- 2026-10-02: PR #11 opened. CI evidence to be recorded against the run on its head
-  commit.
+- 2026-10-02: PR #11 CI run **`37036017899`** passed with **124 tests, 0 failed, 0
+  skipped** — the first run in which every PostgreSQL integration test executed rather
+  than being skipped. Both jobs green. That run covers:
+  - the mandatory acceptance scenario end to end (48 total across three packages, the
+    opened box chosen automatically, an explicit box for the next dose, the correction
+    restoring Box C and leaving the total unchanged, and the next package opening when
+    Box C empties);
+  - allocation correction refused onto a source without the stock;
+  - two concurrent doses contending for one tablet, exactly one succeeding, balance
+    never negative;
+  - a replayed idempotency key recording one dose and consuming stock once;
+  - an untracked external dose writing no ledger entry and no negative stock;
+  - cross-household authorisation on every rebuilt read and write;
+  - a catalog capacity edit leaving existing packages at their snapshotted capacity;
+  - a dose split across packages summing exactly to the amount administered;
+  - retiring a package removing its stock through a typed ledger entry;
+  - the refill-gap warning (depletion day 5, eligibility day 14, nine-day gap);
+  - a count that matched still being recorded, and a correction creating a revision
+    while the original stays untouched;
+  - weekday/interval schedules including DST boundaries, and off-schedule doses refused;
+  - plan edits appending a version with historical administrations unchanged;
+  - web lint, mobile typecheck, web production build, both Docker builds with matching
+    revision labels;
+  - the packaged `migrations.sql` applied twice to a blank PostgreSQL 18 database, and
+    twice to a production-shaped baseline of all eleven pre-rebuild migrations seeded
+    with synthetic rows, followed by `verify-upgrade.sql` asserting row by row that
+    definitions, plans, plan versions, packages, ledger entries, counts, audit history,
+    the promoted allocations and the medication total all survived.
+- 2026-10-02: Two defects found and fixed only because the PostgreSQL suite actually
+  ran: the migration inserted historical allocations before their table existed, and
+  the rebuilt harness never applied migrations so every integration test had been
+  failing with a 500. A third, smaller one followed — the POST test helper could not
+  accept the empty body a 204 correctly carries.

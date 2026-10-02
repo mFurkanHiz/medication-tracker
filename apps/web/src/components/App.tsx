@@ -9,6 +9,7 @@ import { History } from './History';
 import { Inventory } from './Inventory';
 import { People } from './People';
 import { Plans } from './Plans';
+import { Reports } from './Reports';
 import { SignIn } from './SignIn';
 import { Today } from './Today';
 import { Button, Notice, Spinner } from './ui';
@@ -19,6 +20,7 @@ const TABS: { id: string; label: MessageKey }[] = [
   { id: 'plans', label: 'plans' },
   { id: 'people', label: 'people' },
   { id: 'history', label: 'history' },
+  { id: 'reports', label: 'reports' },
 ];
 
 /**
@@ -174,6 +176,8 @@ export function App() {
                 <Plans household={household} workspace={workspace} onChanged={() => loadWorkspace()} />
               ) : tab === 'people' ? (
                 <People household={household} workspace={workspace} onChanged={() => loadWorkspace()} />
+              ) : tab === 'reports' ? (
+                <Reports household={household} workspace={workspace} />
               ) : (
                 <History household={household} workspace={workspace} onChanged={() => loadWorkspace()} />
               )}

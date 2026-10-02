@@ -182,6 +182,63 @@ export type Forecast = {
   refillGapDays: number | null;
 };
 
+/**
+ * What happened to one person's doses of one medication over a period.
+ *
+ * Counts describe recorded behaviour and nothing more. `onScheduleRatio` is an exact
+ * pair rather than a percentage so the interface chooses the rounding, and it is null
+ * when nothing was scheduled — which is not the same as nought.
+ */
+export type AdherenceTally = {
+  scheduledDoses: number;
+  recordedSlots: number;
+  onScheduleDoses: number;
+  missedDoses: number;
+  taken: number;
+  skipped: number;
+  partialDoses: number;
+  extraDoses: number;
+  recordedDoses: number;
+  onScheduleRatio: { numerator: number; denominator: number } | null;
+};
+
+export type AdherenceReport = {
+  from: string;
+  to: string;
+  timeZoneId: string;
+  rows: {
+    personId: string;
+    medicationDefinitionId: string;
+    tally: AdherenceTally;
+  }[];
+  total: AdherenceTally;
+  /** Non-empty only when a plan's stored time zone is missing from the server. */
+  unknownTimeZoneIds: string[];
+};
+
+export type InventoryReport = {
+  asOf: string;
+  rows: {
+    medicationDefinitionId: string;
+    name: string;
+    strength: string | null;
+    unit: string;
+    isArchived: boolean;
+    total: Quantity;
+    packageCount: number;
+    isForecastable: boolean;
+    projectedDepletionOn: string | null;
+    daysOfStockRemaining: number | null;
+    isLowStock: boolean;
+    lowStockReason: 'None' | 'BelowThreshold' | 'WithinDayHorizon' | 'AlreadyDepleted';
+    nextEligibleRefillOn: string | null;
+    hasRefillGap: boolean;
+    refillGapDays: number | null;
+  }[];
+  lowStockCount: number;
+  refillGapCount: number;
+};
+
 export type Activity = {
   inventory: {
     id: string;

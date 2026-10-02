@@ -1,8 +1,10 @@
 import type {
   Activity,
+  AdherenceReport,
   AllocationDetail,
   DoseSource,
   Forecast,
+  InventoryReport,
   RecordedDose,
   Session,
   Today,
@@ -85,6 +87,21 @@ async function toError(response: Response): Promise<ApiError> {
   }
 
   return new ApiError(response.status, code, field);
+}
+
+/**
+ * The name the server gave the download, falling back to a sensible one.
+ *
+ * Only an unquoted or double-quoted `filename` is read, and anything with a path
+ * separator is rejected: a filename is a hint from the server, and a download must not
+ * be able to suggest a path to the user's browser.
+ */
+function filenameFrom(disposition: string | null): string {
+  const fallback = 'medication-tracker-export.json';
+  const match = disposition?.match(/filename\*?=(?:"([^"]+)"|([^;]+))/i);
+  const name = (match?.[1] ?? match?.[2])?.trim();
+
+  return name && !name.includes('/') && !name.includes('\\') ? name : fallback;
 }
 
 const post = <T>(path: string, body?: unknown) =>
@@ -269,6 +286,36 @@ export const api = {
     },
   ) =>
     put<void>(`/households/${household}/medication-definitions/${definition}/refill-policy`, input),
+
+  adherenceReport: (household: string, from: string, to: string, timeZoneId: string) =>
+    request<AdherenceReport>(
+      `/households/${household}/reports/adherence?from=${from}&to=${to}&timeZoneId=${encodeURIComponent(timeZoneId)}`,
+    ),
+
+  inventoryReport: (household: string) =>
+    request<InventoryReport>(`/households/${household}/reports/inventory`),
+
+  /**
+   * Fetches the export and hands it to the browser as a download.
+   *
+   * Fetched rather than linked so a refusal arrives as an {@link ApiError} the interface
+   * can translate, instead of navigating the user to a JSON error page.
+   */
+  exportHousehold: async (household: string) => {
+    const response = await fetch(`/api/households/${household}/export`, {
+      credentials: 'same-origin',
+      headers: CLIENT_HEADER,
+    });
+
+    if (!response.ok) {
+      throw await toError(response);
+    }
+
+    return {
+      blob: await response.blob(),
+      filename: filenameFrom(response.headers.get('Content-Disposition')),
+    };
+  },
 
   countStock: (
     household: string,

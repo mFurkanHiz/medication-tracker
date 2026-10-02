@@ -7,6 +7,7 @@ using MedicationTracker.Api.Modules.Households;
 using MedicationTracker.Api.Modules.Identity;
 using MedicationTracker.Api.Modules.Inventory;
 using MedicationTracker.Api.Modules.Refill;
+using MedicationTracker.Api.Modules.Reports;
 using MedicationTracker.Api.Modules.Treatments;
 using MedicationTracker.Api.Modules.Workspace;
 using Microsoft.AspNetCore.RateLimiting;
@@ -53,6 +54,8 @@ app.MapTreatmentEndpoints();
 app.MapAdministrationEndpoints();
 app.MapRefillEndpoints();
 app.MapWorkspaceEndpoints();
+app.MapReportEndpoints();
+app.MapExportEndpoints();
 
 app.Run();
 

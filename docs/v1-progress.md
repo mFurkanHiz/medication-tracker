@@ -13,6 +13,8 @@ reconstructing the product history from a long conversation.
 - PR #11 (the rebuild), #12 (deployment tooling) and #13 (backup verification) are
   merged into main.
 - The API, the web client and the mobile client are all rebuilt against the new model.
+- Reports and export (rows 31 and 32) are **implemented and merged into the branch**,
+  but are **not yet deployed**: production still runs `371447da`, which has neither.
 - PR #9 is **subsumed** by PR #11, not abandoned. Its recurrence rules are carried
   forward onto `TreatmentPlanVersion`. Do not merge PR #9 separately.
 - PR #10 (packaged migration SQL fix) is already on main.
@@ -45,28 +47,28 @@ narrowed or moved out of V1:
 1. **Physical-device acceptance.** Offline mobile and local reminders are implemented
    and type-checked, but reboot, permission revocation, time-zone change, DST and Doze
    behaviour can only be proven on a real Android phone. Nothing here has run on one.
-2. **Reports** and **export**, neither of which exists.
-3. **Inventory counting has no client surface.** The API and its revisioning are proven;
+2. **Inventory counting has no client surface.** The API and its revisioning are proven;
    nothing in either client calls them.
-4. **Accessibility** has no formal audit and no screen-reader pass on a device.
-5. **Synthetic demo seed** for safe public demonstration.
-6. Package-level count reconciliation is modelled (`count_sessions.package_id`) but has
+3. **Accessibility** has no formal audit and no screen-reader pass on a device.
+4. **Synthetic demo seed** for safe public demonstration.
+5. Package-level count reconciliation is modelled (`count_sessions.package_id`) but has
    no client surface.
+6. **Mobile has no reports, export or counting surface.** This slice added all of
+   reports and export to the web client only. Rows 31 and 32 are satisfied — a user can
+   reach both behaviours — but the mobile client does not yet show them.
 
 ## Next exact action
 
-Reports and export, then the inventory counting surface.
+The inventory counting client surface.
 
-- **Reports**: a household-scoped adherence view (taken / skipped / partial / extra over
-  a period, per person and per medication) and an inventory view (current totals,
-  projected depletion, refill gaps). Both read from data the API already exposes;
-  neither needs a new write path.
-- **Export**: the agreed basic V1 data as a file the user can keep. It must be
-  household-scoped and must be covered by a cross-household test when it lands, which is
-  acceptance row 32's explicit requirement.
-- **Counting**: the API is complete and proven, including revisioning and
-  stale-revision rejection. It needs a client surface — medication-level for the default
-  user, package-level under advanced.
+- The API is complete and proven, including revisioning and stale-revision rejection
+  (`POST /inventory/count-sessions` and its `/revisions`). It needs a client surface:
+  medication-level for the default user, package-level under advanced, on the web
+  client first. `api.countStock` already exists and is unused.
+- Counting is the last missing piece of acceptance row 30, and the client half of
+  row 18. Both say so explicitly.
+- After that, the remaining non-device work is the synthetic demo seed (row 35) and
+  mirroring reports/export/counting onto mobile.
 
 Physical-device acceptance for rows 28 and 29 needs the owner's Android phone and
 cannot be produced here.
@@ -200,6 +202,36 @@ When the owner says **"continue" / "kaldığın yerden devam et"**:
   the superseded allocation, an untracked dose, the refill gap, and the workspace and
   activity reads. All 26 containers on the VPS were running at the final check; only
   this project's three were touched.
+- 2026-10-02: **Reports and export (rows 31 and 32) delivered**, with the API, the web
+  screen and the tests in one slice. Adherence is not a count of administration rows: the
+  schedule is replayed over the period from the effective-dated plan versions, so a
+  missed dose is distinguishable from a day the plan never asked for. Three decisions
+  came out of that and are each pinned by a test — the version in force on a day governs
+  that day rather than the newest one; a plan stopped mid-period keeps the slots it
+  placed before it stopped, so archiving a medication cannot rewrite last week; and an
+  as-needed plan places no slots at all, so it can never be reported as missed. A dose
+  and the slot it answers are placed in the period separately, because a dose recorded
+  after midnight answers the previous day's slot — counting it in today's totals is
+  right, calling yesterday's slot missed is not.
+- 2026-10-02: This workstation had **neither a .NET SDK nor PostgreSQL** at the start of
+  the session, and the .NET download host is blocked by the environment's egress policy.
+  Both came from Ubuntu's own repositories instead (`dotnet-sdk-10.0`, `postgresql`), so
+  for the first time the whole suite ran locally rather than only in CI: **153 tests, 0
+  failed, 0 skipped**, including every PostgreSQL integration test. Local PostgreSQL is
+  16 where CI is 18, so CI remains the authority on the packaged-migration gate.
+- 2026-10-02: Two defects were caught by compiling and running rather than by reading.
+  The export serialises by hand instead of through the usual result, so it did not
+  inherit the web defaults and was emitting `Id` where every other endpoint emits `id`;
+  it now uses `JsonSerializerDefaults.Web`. And a test asserted twelve slots where the
+  schedule really places eleven — the test was wrong, not the walker.
+- 2026-10-02: The reports screen was **driven in a real browser against a live API**,
+  which the previous session could not do for any authenticated screen for want of a
+  database. Signed in, switched locales, and read the rendered numbers back: 21 planned,
+  12 on schedule, 5 not recorded, 4 skipped, 4 partial, 57% (12/21) — matching the seeded
+  history exactly — the as-needed medication showing "nothing scheduled" and no invented
+  misses, the refill-gap badge, and a real 39 KB file downloaded from the export button.
+  Checked at 1280px and at 375px, in Turkish and English, with no untranslated string
+  left behind and no console error beyond the expected pre-sign-in 401.
 - 2026-10-02: The first deployment attempt halted at backup verification and changed
   nothing — `pg_restore -l /dev/stdin` cannot read a custom-format archive from a pipe.
   The backup it had already written was confirmed sound (188 entries) and the outgoing

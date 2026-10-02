@@ -125,3 +125,113 @@ jobs:
           compression-level: 0
           retention-days: 2
           if-no-files-found: error
+
+  deploy:
+    name: Deploy to the VPS
+    needs: [api, clients]
+
+    # Three gates, all of which must hold. Both test jobs passed, this is a merged
+    # main rather than a pull request, and the owner has armed deployment by setting
+    # the DEPLOY_ENABLED repository variable to "true". Until that variable exists the
+    # job is skipped, so a merge is never red for a deployment nobody configured.
+    if: >-
+      github.event_name == 'push'
+      && github.ref == 'refs/heads/main'
+      && vars.DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-latest
+
+    # One deploy at a time, and never cancelled half-way: two overlapping runs would
+    # race on the same compose project, and a cancellation between the schema step and
+    # the restart would leave the site down.
+    concurrency:
+      group: production-deploy
+      cancel-in-progress: false
+
+    # Declaring the environment lets the owner require a reviewer before any deploy
+    # runs, which is how the acceptance contract's preflight gate survives automation.
+    environment: production
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v7
+        with:
+          name: medication-tracker-web-${{ github.sha }}
+
+      - name: Authorise the SSH session
+        env:
+          DEPLOY_KEY: ${{ secrets.VPS_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          test -n "$DEPLOY_KEY" || { echo 'Secret VPS_SSH_KEY is not set.' >&2; exit 1; }
+          test -n "$KNOWN_HOSTS" || { echo 'Secret VPS_KNOWN_HOSTS is not set.' >&2; exit 1; }
+          mkdir -m 700 -p ~/.ssh
+          printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/id_deploy
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/id_deploy ~/.ssh/known_hosts
+
+      - name: Transfer the release, verifying it survived the wire
+        env:
+          VPS_HOST: ${{ vars.VPS_HOST }}
+          VPS_USER: ${{ vars.VPS_USER }}
+        run: |
+          set -euo pipefail
+          test -n "$VPS_HOST" || { echo 'Variable VPS_HOST is not set.' >&2; exit 1; }
+          target="${VPS_USER:-root}@${VPS_HOST}"
+
+          # The host key comes from a secret and is never accepted on trust: an
+          # unknown key aborts rather than prompting.
+          ssh_opts=(-i "$HOME/.ssh/id_deploy" -o IdentitiesOnly=yes
+                    -o StrictHostKeyChecking=yes
+                    -o UserKnownHostsFile="$HOME/.ssh/known_hosts"
+                    -o BatchMode=yes -o ConnectTimeout=20)
+
+          ssh "${ssh_opts[@]}" "$target" \
+            'install -d -m 700 /opt/medication-tracker/.deploy && install -d -m 755 /opt/medication-tracker/deploy'
+
+          # The script and the compose file travel with the image, from this exact
+          # commit, so the deploy can never run an older script against a newer image
+          # and nothing depends on the state of a checkout on the host. They land on
+          # the same paths the manual runbook uses, so there is only ever one script.
+          scp "${ssh_opts[@]}" \
+            medication-tracker-web.tar.gz \
+            "$target:/opt/medication-tracker/.deploy/medication-tracker-web.tar.gz"
+          scp "${ssh_opts[@]}" \
+            deploy/deploy-production.sh \
+            "$target:/opt/medication-tracker/deploy/deploy-production.sh"
+          scp "${ssh_opts[@]}" \
+            compose.production.yml \
+            "$target:/opt/medication-tracker/compose.production.yml"
+
+          local_sum="$(sha256sum medication-tracker-web.tar.gz | cut -d' ' -f1)"
+          remote_sum="$(ssh "${ssh_opts[@]}" "$target" \
+            'sha256sum /opt/medication-tracker/.deploy/medication-tracker-web.tar.gz' | cut -d' ' -f1)"
+
+          echo "local  $local_sum"
+          echo "remote $remote_sum"
+          test "$local_sum" = "$remote_sum" || {
+            echo 'The archive changed in transit. Nothing was deployed.' >&2
+            exit 1
+          }
+
+      - name: Run the deployment
+        env:
+          VPS_HOST: ${{ vars.VPS_HOST }}
+          VPS_USER: ${{ vars.VPS_USER }}
+        run: |
+          set -euo pipefail
+          target="${VPS_USER:-root}@${VPS_HOST}"
+          ssh_opts=(-i "$HOME/.ssh/id_deploy" -o IdentitiesOnly=yes
+                    -o StrictHostKeyChecking=yes
+                    -o UserKnownHostsFile="$HOME/.ssh/known_hosts"
+                    -o BatchMode=yes -o ConnectTimeout=20)
+
+          # The script takes the backup, verifies it is readable, stops only this
+          # project's api and web containers, applies the packaged migrations, brings
+          # them back and then proves no other project's containers went down with it.
+          ssh "${ssh_opts[@]}" "$target" 'bash /opt/medication-tracker/deploy/deploy-production.sh'
+
+      - name: Forget the key
+        if: always()
+        run: shred --remove --force ~/.ssh/id_deploy 2>/dev/null || rm -f ~/.ssh/id_deploy

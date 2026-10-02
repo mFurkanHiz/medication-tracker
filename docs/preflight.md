@@ -1,11 +1,12 @@
 # Dağıtım öncesi kontrol raporu (preflight)
 
 Hazırlandığı tarih: 2026-10-02
-Dal: `main-8ltlkf`
-Önerilen sürüm: raporlar + dışa aktarma + sayım ekranı
+Sürüm: raporlar + dışa aktarma + sayım ekranı
+Durum: **`main`'e birleştirildi** (`fe4b29a`, CI koşusu `37071473724` yeşil).
+Üretimde **henüz canlı değil** — dağıtım kurulumu 6a'da.
 
 Bu belge, kabul sözleşmesinin 39. satırının istediği **sahip onaylı preflight**tir.
-Onay vermeden önce okunacak tek belge budur; aşağıdaki adımlar onaysız uygulanmaz.
+Onay vermeden önce okunacak tek belge budur.
 
 ---
 
@@ -116,7 +117,8 @@ Dürüst liste. Hiçbiri dağıtımı engellemiyor, ama bilerek onaylayın.
 
 | Risk | Değerlendirme |
 | --- | --- |
-| **CI bu dalda hiç koşmadı.** | CI yalnızca `main` push'unda ve PR'da tetikleniyor. Dağıtılabilir imaj artefaktı da **sadece `main` push'unda** üretiliyor. Yani merge etmeden dağıtılacak imaj yok. Aşağıdaki adımlar bunu çözüyor. |
+| **Dağıtım işi gerçek sunucuya karşı hiç çalışmadı.** | En büyük bilinmeyen bu. Betik mock'lanmış Docker ile baştan sona iki kez prova edildi ve guard'ı izole test edildi, ama SSH/scp adımları yalnızca sözdizimi düzeyinde doğrulandı — bu oturum VPS'e erişemiyor. Bu yüzden `production` ortamına kendinizi *required reviewer* ekleyip **ilk dağıtımı izleyerek onaylamanız** önerilir. Başarısız olursa hiçbir şey dağıtılmaz: aktarım adımı sağlama tutmazsa durur, betik de yedeği doğrulamadan şemaya dokunmaz. |
+| Dağıtım anahtarı VPS'e root erişimi verir. | Paylaşımlı sunucuda bu geniş bir yetki. 6a'daki güvenlik notu, `docker` grubunda ayrı bir `deploy` kullanıcısı alternatifini anlatıyor. |
 | Yerel PostgreSQL **16**, CI ve üretim **18**. | Tüm testler 16'da koştu. Sürüme özgü bir şey kullanılmıyor, ama paketlenmiş göç kapısında yetki yine CI'dadır. |
 | Export dosya boyutu | Her koleksiyon 20.000 satırla sınırlı; aşılırsa `truncatedCollections` içinde adı geçer. Üretimde en büyük tablo 55 satır, yani mesafe çok. |
 | Rapor sorgu maliyeti | Stok raporu ilaç başına bir tahmin sorgusu yapıyor. Üretimde 11 ilaç var; sorun değil. Yüzlerce ilaçta toplu hale getirilmeli. |
@@ -142,64 +144,122 @@ Dürüst liste. Hiçbiri dağıtımı engellemiyor, ama bilerek onaylayın.
 
 ---
 
-## 6. Dağıtım adımları
+## 6. Dağıtım
 
-Bu adımları **siz** uygulamalısınız. Bu oturum uygulayamaz: ortamın ağ politikası
-hem VPS'in SSH portunu hem de `medicationtracker.rapidconfigs.com` adresini
-engelliyor, ve oturumda `.env.production`, SSH anahtarı veya imaj artefaktı yok.
+### 6a. Otomatik dağıtım — bir kereye mahsus kurulum
 
-1. **PR'ı birleştirin.**
-   [PR #14](https://github.com/mFurkanHiz/medication-tracker/pull/14) —
-   `main-8ltlkf` → `main`. CI bu PR üzerinde tam kapıyı koşturur
-   (API testleri + web/mobil kontrolleri + her iki Docker derlemesi + paketlenmiş
-   göç geçidi). **Yeşil olduğunu görmeden birleştirmeyin.**
+`main`'e birleştirilince dağıtım artık CI'ın içindeki `deploy` işi tarafından
+yapılır. İş üç kapıdan geçmeden çalışmaz: her iki test işi yeşil olacak, olay
+`main`'e push olacak, ve **siz** `DEPLOY_ENABLED` değişkenini kurmuş olacaksınız.
+O değişken yokken iş atlanır, yani birleştirmeler asla kurulmamış bir dağıtım
+yüzünden kırmızı görünmez.
 
-2. **`main` CI koşusunun bitmesini bekleyin.** Artefakt adı:
-   `medication-tracker-web-<sha>` → içinde `medication-tracker-web.tar.gz`.
-   Saklama süresi **2 gün**, geciktirmeyin.
+Bu kurulumu ben yapamam: oturum VPS'e erişemiyor ve GitHub sırrı oluşturamıyor.
+Beş adım, bir kere:
 
-3. **Artefaktı indirin ve sağlamasını alın.**
-   ```bash
-   # indirildikten sonra
-   sha256sum medication-tracker-web.tar.gz
-   ```
+```bash
+# 1. Yalnızca dağıtım için bir anahtar çifti üretin (kendi makinenizde)
+ssh-keygen -t ed25519 -C "github-actions-deploy" -f medication-tracker-deploy -N ""
 
-4. **VPS'e aktarın ve sağlamayı karşılaştırın.**
+# 2. Açık anahtarı VPS'e kurun
+ssh-copy-id -i medication-tracker-deploy.pub root@31.97.53.159
+
+# 3. Sunucunun host anahtarını alın (sahte sunucuya bağlanmayı imkânsız kılar)
+ssh-keyscan -t ed25519 31.97.53.159
+```
+
+4. GitHub → **Settings → Secrets and variables → Actions**:
+
+| Tür | Ad | Değer |
+| --- | --- | --- |
+| Secret | `VPS_SSH_KEY` | `medication-tracker-deploy` dosyasının tamamı (özel anahtar) |
+| Secret | `VPS_KNOWN_HOSTS` | 3. adımdaki `ssh-keyscan` çıktısı |
+| Variable | `VPS_HOST` | `31.97.53.159` |
+| Variable | `VPS_USER` | `root` |
+| Variable | `DEPLOY_ENABLED` | `true` |
+
+5. İsteğe bağlı ama önerilir: **Settings → Environments → production** altına
+   kendinizi *required reviewer* olarak ekleyin. O zaman her dağıtım sizin
+   onayınızı bekler — kabul sözleşmesinin 39. satırındaki preflight kapısı
+   otomasyona rağmen korunmuş olur.
+
+**Güvenlik notu.** Bu anahtar VPS'e root erişimi verir. Paylaşımlı bir sunucu
+olduğu için daha sıkı bir alternatif: `docker` grubunda, yalnızca
+`/opt/medication-tracker` sahibi olan ayrı bir `deploy` kullanıcısı açıp
+`VPS_USER` değişkenine onu yazmak. Betik root gerektirmiyor, yalnızca Docker
+soketine erişim istiyor.
+
+### 6b. Dağıtım işinin yaptıkları
+
+1. Artefaktı indirir (`medication-tracker-web-<sha>`).
+2. Host anahtarını doğrulayarak SSH açar — bilinmeyen anahtar **kabul edilmez**,
+   bağlantı iptal edilir.
+3. Arşivi, dağıtım betiğini ve `compose.production.yml`'ı tam o commit'ten gönderir.
+   Böylece eski bir betik yeni bir imajla çalışamaz ve VPS'teki checkout durumuna
+   hiç bağımlılık kalmaz.
+4. SHA-256'yı aktarımdan önce ve sonra karşılaştırır; tutmazsa hiçbir şey dağıtılmaz.
+5. `deploy/deploy-production.sh` çalıştırır.
+6. Özel anahtarı runner'dan siler.
+
+Aynı anda iki dağıtım çalışamaz (`concurrency: production-deploy`) ve çalışan bir
+dağıtım yarıda iptal edilmez.
+
+### 6c. Diğer sistemlere dokunulmadığının garantisi
+
+VPS'te yirmiden fazla konteyner ve tek nginx arkasında birkaç site var. Betiğin
+tamamı Docker mock'lanarak prova edildi ve **tüm** çağrıları denetlendi:
+
+- Her `docker compose` çağrısı `--project-name medication-tracker` ile kapsamlı.
+- Tek durdurma komutu `stop api web` — yalnızca bu projenin iki servisi.
+- Compose dışındaki her `docker` çağrısı ya `medication-tracker-*` kaynağını ya da
+  betiğin kendi oluşturduğu geçici konteyneri adlandırıyor.
+- `prune`, `system`, `network rm`, `volume rm`, `restart`: **hiçbiri yok**.
+- nginx'e hiç dokunulmuyor.
+
+Buna ek olarak betik artık, kendisine ait olmayan konteynerleri **başlamadan önce
+kaydediyor ve bitince karşılaştırıyor**. Başka bir projenin konteyneri kaybolmuşsa
+dağıtım adını vererek hata veriyor. Yeni konteyner başlaması sorun sayılmıyor —
+başka bir projenin kendi işini yapması bizi ilgilendirmez. Guard'ın yedi senaryosu
+izole olarak test edildi, ve betiğin tamamı iki uçtan uca provada (sağlıklı ve
+zarar görmüş) doğru davrandı.
+
+### 6d. Elle dağıtım (otomatik olanı kullanmak istemezseniz)
+
+1. `main` CI koşusunun artefaktını indirin (**2 gün** saklanıyor).
+2. Sağlamasını alın: `sha256sum medication-tracker-web.tar.gz`
+3. Aktarın ve karşılaştırın:
    ```bash
    scp medication-tracker-web.tar.gz \
      root@31.97.53.159:/opt/medication-tracker/.deploy/medication-tracker-web.tar.gz
    ssh root@31.97.53.159 'sha256sum /opt/medication-tracker/.deploy/medication-tracker-web.tar.gz'
    ```
-   İki sağlama **aynı değilse durun**.
-
-5. **Dağıtın.**
+   İki sağlama aynı değilse **durun**.
+4. Çalıştırın:
    ```bash
    ssh root@31.97.53.159 'bash /opt/medication-tracker/deploy/deploy-production.sh'
    ```
-   Betik sırasıyla: eski imajları `:previous` etiketler, veritabanını açar, yedek
-   alır ve yedeğin okunabilirliğini doğrular, yalnızca bu projenin api/web
-   konteynerlerini durdurur, `migrations.sql` uygular (bu sürümde no-op), konteynerleri
-   geri açar, API hazırlık kontrolünü bekler ve siteyi `127.0.0.1:3022` üzerinden sınar.
 
-6. **Dağıtım sonrası doğrulama.**
-   ```powershell
-   pwsh deploy/smoke-test.ps1
-   ```
-   `SMOKE PASSED: ... counting with revision and replay, both reports and the export
-   all verified.` görmelisiniz.
+### 6e. Dağıtım sonrası doğrulama
 
-7. **Kendi gözünüzle bakın.** https://medicationtracker.rapidconfigs.com/
-   - **Sayım** sekmesi: bir ilaca saydığınız miktarı girin, kaydedin, geçmişte görün.
-   - Aynı sayımı **Düzelt** ile değiştirin; orijinalin değişmediğini ve
-     "daha yeni bir revizyon var" olarak işaretlendiğini doğrulayın.
-   - **Raporlar** sekmesi: sayıların kendi geçmişinizle tutarlı olduğunu görün.
-   - **JSON dosyası indir** düğmesiyle dosyayı indirin, içinde e-posta adresinizin
-     **geçmediğini** doğrulayın.
+```powershell
+pwsh deploy/smoke-test.ps1
+```
 
-8. **Kaydedin.** Dağıtılan commit SHA'sını, CI koşu numarasını, imaj arşivinin
-   SHA-256'sını ve smoke sonucunu `docs/v1-progress.md` kanıt bölümüne ekleyin.
+`SMOKE PASSED: ... counting with revision and replay, both reports and the export
+all verified.` görmelisiniz. Bu test canlı sitede bir sentetik hane oluşturur;
+bu yüzden her dağıtımda otomatik çalıştırılmıyor, kararı size bırakılıyor.
 
----
+Sonra https://medicationtracker.rapidconfigs.com/ üzerinde kendiniz bakın:
+
+- **Sayım** sekmesi: bir ilaca saydığınız miktarı girin, kaydedin, geçmişte görün.
+- Aynı sayımı **Düzelt** ile değiştirin; orijinalin değişmediğini ve "daha yeni bir
+  revizyon var" olarak işaretlendiğini doğrulayın.
+- **Raporlar** sekmesi: sayıların kendi geçmişinizle tutarlı olduğunu görün.
+- **JSON dosyası indir** ile dosyayı indirin, içinde e-posta adresinizin
+  **geçmediğini** doğrulayın.
+
+Son olarak dağıtılan commit SHA'sını, CI koşu numarasını ve smoke sonucunu
+`docs/v1-progress.md` kanıt bölümüne ekleyin.
 
 ## 7. Onay
 

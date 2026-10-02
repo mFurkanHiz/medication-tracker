@@ -11,6 +11,7 @@ namespace MedicationTracker.Api.Persistence.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
+
             migrationBuilder.EnsureSchema(
                 name: "catalog");
 
@@ -819,158 +820,6 @@ namespace MedicationTracker.Api.Persistence.Migrations
                 nullable: false,
                 defaultValue: "");
 
-            // Packages addressed stock through the one-per-medication inventory item.
-            // They now point at the medication definition directly; the item foreign key is
-            // kept so historical ledger and count rows stay valid.
-            migrationBuilder.Sql(@"
-                UPDATE inventory.packages p
-                               SET medication_definition_id = i.medication_id
-                              FROM inventory.inventory_items i
-                             WHERE i.id = p.inventory_item_id;
-            ");
-
-            // Legacy medications were tablets by schema constraint.
-            migrationBuilder.Sql(@"
-                UPDATE inventory.packages SET unit = 'Tablet' WHERE unit = '';
-            ");
-
-            // A package that has never been drawn from is still sealed; one that has is
-            // open. The superseded schema stored no opened timestamp, so an opened package
-            // is dated from its creation rather than given an invented time.
-            migrationBuilder.Sql(@"
-                UPDATE inventory.packages p
-                               SET state = CASE WHEN drawn.package_id IS NULL THEN 'Sealed' ELSE 'Opened' END,
-                                   opened_at = CASE WHEN drawn.package_id IS NULL THEN NULL ELSE p.created_at END
-                              FROM (SELECT DISTINCT package_id
-                                      FROM inventory.ledger_entries
-                                     WHERE package_id IS NOT NULL
-                                       AND quantity_numerator < 0) drawn
-                             WHERE drawn.package_id = p.id;
-                
-                            UPDATE inventory.packages SET state = 'Sealed' WHERE state = '';
-            ");
-
-            // The friendly "Box N" label is assigned by acquisition order, so the
-            // numbering a household already sees in its list stays recognisable.
-            migrationBuilder.Sql(@"
-                UPDATE inventory.packages p
-                               SET ordinal = numbered.position
-                              FROM (SELECT id,
-                                           ROW_NUMBER() OVER (PARTITION BY medication_definition_id
-                                                              ORDER BY created_at, id) AS position
-                                      FROM inventory.packages) numbered
-                             WHERE numbered.id = p.id;
-            ");
-
-            // Legacy packages recorded no creator; attribute them to the household owner.
-            migrationBuilder.Sql(@"
-                UPDATE inventory.packages p
-                               SET created_by_account_id = (SELECT m.account_id
-                               FROM households.household_memberships m
-                              WHERE m.household_id = p.household_id
-                                AND m.role = 'owner'
-                              ORDER BY m.valid_from
-                              LIMIT 1)
-                             WHERE created_by_account_id = '00000000-0000-0000-0000-000000000000'::uuid;
-            ");
-
-            migrationBuilder.Sql(@"
-                UPDATE inventory.ledger_entries e
-                               SET medication_definition_id = i.medication_id
-                              FROM inventory.inventory_items i
-                             WHERE i.id = e.inventory_item_id;
-            ");
-
-            // The free-text reason becomes a typed entry kind. Count reconciliations map
-            // to CountAdjustment, which is also the only type permitted to carry a zero
-            // delta — the superseded count flow wrote a zero entry whenever a count matched,
-            // and those rows must keep passing the non-zero check constraint.
-            migrationBuilder.Sql(@"
-                UPDATE inventory.ledger_entries
-                               SET entry_type = CASE reason
-                                       WHEN 'acquisition' THEN 'Acquire'
-                                       WHEN 'package_acquisition' THEN 'Acquire'
-                                       WHEN 'refill' THEN 'Acquire'
-                                       WHEN 'administration' THEN 'Consume'
-                                       WHEN 'count' THEN 'CountAdjustment'
-                                       WHEN 'count_reconciliation' THEN 'CountAdjustment'
-                                       WHEN 'package_allocation_in' THEN 'PackageTransfer'
-                                       WHEN 'package_allocation_out' THEN 'PackageTransfer'
-                                       ELSE 'ManualAdjustment'
-                                   END
-                             WHERE entry_type = '';
-            ");
-
-            // Legacy entries were not grouped. Each becomes its own correlation rather
-            // than being merged into a group it never belonged to.
-            migrationBuilder.Sql(@"
-                UPDATE inventory.ledger_entries SET correlation_id = id
-                             WHERE correlation_id = '00000000-0000-0000-0000-000000000000'::uuid;
-            ");
-
-            migrationBuilder.Sql(@"
-                UPDATE administrations.administration_events
-                               SET outcome = CASE outcome WHEN 'skipped' THEN 'Skipped' ELSE 'Taken' END
-                             WHERE outcome IN ('taken', 'skipped');
-            ");
-
-            // Every legacy dose that consumed anything drew on tracked inventory; the
-            // untracked-source path did not exist, so no historical row can claim it.
-            migrationBuilder.Sql(@"
-                UPDATE administrations.administration_events
-                               SET stock_source = CASE WHEN outcome = 'Skipped'
-                                                       THEN 'NotApplicable'
-                                                       ELSE 'TrackedInventory' END
-                             WHERE stock_source = '';
-            ");
-
-            // The superseded model recorded no administered amount: a dose was always
-            // exactly the plan's dose, because partial and extra doses could not be
-            // expressed. Historical rows therefore take the amount from their plan version,
-            // which is what actually happened.
-            migrationBuilder.Sql(@"
-                UPDATE administrations.administration_events a
-                               SET planned_quantity_numerator = v.dose_numerator,
-                                   planned_quantity_denominator = v.dose_denominator,
-                                   actual_quantity_numerator = CASE WHEN a.outcome = 'Skipped'
-                                                                    THEN NULL ELSE v.dose_numerator END,
-                                   actual_quantity_denominator = CASE WHEN a.outcome = 'Skipped'
-                                                                      THEN NULL ELSE v.dose_denominator END
-                              FROM treatments.plan_versions v
-                             WHERE v.id = a.plan_version_id;
-            ");
-
-            // Legacy doses recorded no actor; attribute them to the household owner.
-            migrationBuilder.Sql(@"
-                UPDATE administrations.administration_events a
-                               SET actor_account_id = (SELECT m.account_id
-                               FROM households.household_memberships m
-                              WHERE m.household_id = a.household_id
-                                AND m.role = 'owner'
-                              ORDER BY m.valid_from
-                              LIMIT 1)
-                             WHERE actor_account_id = '00000000-0000-0000-0000-000000000000'::uuid;
-            ");
-
-            // Historical consumption was recorded only as ledger entries that happened to
-            // share an administration identifier. Promoting each to an allocation makes the
-            // question "which package paid for this dose" answerable for existing history,
-            // and makes that history correctable by the same path as new doses. The sign is
-            // flipped because a ledger entry is a signed delta while an allocation is the
-            // positive amount drawn from one source.
-            migrationBuilder.Sql(@"
-                INSERT INTO administrations.allocations (
-                                id, household_id, administration_event_id, package_id,
-                                quantity_numerator, quantity_denominator, ledger_entry_id,
-                                correlation_id, is_active, created_at)
-                            SELECT gen_random_uuid(), e.household_id, e.administration_event_id, e.package_id,
-                                   -e.quantity_numerator, e.quantity_denominator, e.id, e.correlation_id,
-                                   true, e.recorded_at
-                              FROM inventory.ledger_entries e
-                             WHERE e.administration_event_id IS NOT NULL
-                               AND e.quantity_numerator < 0;
-            ");
-
             migrationBuilder.CreateTable(
                 name: "allocations",
                 schema: "administrations",
@@ -1143,6 +992,158 @@ namespace MedicationTracker.Api.Persistence.Migrations
                         principalColumn: "id",
                         onDelete: ReferentialAction.Restrict);
                 });
+
+            // Packages addressed stock through the one-per-medication inventory item.
+            // They now point at the medication definition directly; the item foreign key is
+            // kept so historical ledger and count rows stay valid.
+            migrationBuilder.Sql(@"
+                UPDATE inventory.packages p
+                               SET medication_definition_id = i.medication_id
+                              FROM inventory.inventory_items i
+                             WHERE i.id = p.inventory_item_id;
+            ");
+
+            // Legacy medications were tablets by schema constraint.
+            migrationBuilder.Sql(@"
+                UPDATE inventory.packages SET unit = 'Tablet' WHERE unit = '';
+            ");
+
+            // A package that has never been drawn from is still sealed; one that has is
+            // open. The superseded schema stored no opened timestamp, so an opened package
+            // is dated from its creation rather than given an invented time.
+            migrationBuilder.Sql(@"
+                UPDATE inventory.packages p
+                               SET state = CASE WHEN drawn.package_id IS NULL THEN 'Sealed' ELSE 'Opened' END,
+                                   opened_at = CASE WHEN drawn.package_id IS NULL THEN NULL ELSE p.created_at END
+                              FROM (SELECT DISTINCT package_id
+                                      FROM inventory.ledger_entries
+                                     WHERE package_id IS NOT NULL
+                                       AND quantity_numerator < 0) drawn
+                             WHERE drawn.package_id = p.id;
+                
+                            UPDATE inventory.packages SET state = 'Sealed' WHERE state = '';
+            ");
+
+            // The friendly "Box N" label is assigned by acquisition order, so the
+            // numbering a household already sees in its list stays recognisable.
+            migrationBuilder.Sql(@"
+                UPDATE inventory.packages p
+                               SET ordinal = numbered.position
+                              FROM (SELECT id,
+                                           ROW_NUMBER() OVER (PARTITION BY medication_definition_id
+                                                              ORDER BY created_at, id) AS position
+                                      FROM inventory.packages) numbered
+                             WHERE numbered.id = p.id;
+            ");
+
+            // Legacy packages recorded no creator; attribute them to the household owner.
+            migrationBuilder.Sql(@"
+                UPDATE inventory.packages p
+                               SET created_by_account_id = (SELECT m.account_id
+                               FROM households.household_memberships m
+                              WHERE m.household_id = p.household_id
+                                AND m.role = 'owner'
+                              ORDER BY m.valid_from
+                              LIMIT 1)
+                             WHERE created_by_account_id = '00000000-0000-0000-0000-000000000000'::uuid;
+            ");
+
+            migrationBuilder.Sql(@"
+                UPDATE inventory.ledger_entries e
+                               SET medication_definition_id = i.medication_id
+                              FROM inventory.inventory_items i
+                             WHERE i.id = e.inventory_item_id;
+            ");
+
+            // The free-text reason becomes a typed entry kind. Count reconciliations map
+            // to CountAdjustment, which is also the only type permitted to carry a zero
+            // delta — the superseded count flow wrote a zero entry whenever a count matched,
+            // and those rows must keep passing the non-zero check constraint.
+            migrationBuilder.Sql(@"
+                UPDATE inventory.ledger_entries
+                               SET entry_type = CASE reason
+                                       WHEN 'acquisition' THEN 'Acquire'
+                                       WHEN 'package_acquisition' THEN 'Acquire'
+                                       WHEN 'refill' THEN 'Acquire'
+                                       WHEN 'administration' THEN 'Consume'
+                                       WHEN 'count' THEN 'CountAdjustment'
+                                       WHEN 'count_reconciliation' THEN 'CountAdjustment'
+                                       WHEN 'package_allocation_in' THEN 'PackageTransfer'
+                                       WHEN 'package_allocation_out' THEN 'PackageTransfer'
+                                       ELSE 'ManualAdjustment'
+                                   END
+                             WHERE entry_type = '';
+            ");
+
+            // Legacy entries were not grouped. Each becomes its own correlation rather
+            // than being merged into a group it never belonged to.
+            migrationBuilder.Sql(@"
+                UPDATE inventory.ledger_entries SET correlation_id = id
+                             WHERE correlation_id = '00000000-0000-0000-0000-000000000000'::uuid;
+            ");
+
+            migrationBuilder.Sql(@"
+                UPDATE administrations.administration_events
+                               SET outcome = CASE outcome WHEN 'skipped' THEN 'Skipped' ELSE 'Taken' END
+                             WHERE outcome IN ('taken', 'skipped');
+            ");
+
+            // Every legacy dose that consumed anything drew on tracked inventory; the
+            // untracked-source path did not exist, so no historical row can claim it.
+            migrationBuilder.Sql(@"
+                UPDATE administrations.administration_events
+                               SET stock_source = CASE WHEN outcome = 'Skipped'
+                                                       THEN 'NotApplicable'
+                                                       ELSE 'TrackedInventory' END
+                             WHERE stock_source = '';
+            ");
+
+            // The superseded model recorded no administered amount: a dose was always
+            // exactly the plan's dose, because partial and extra doses could not be
+            // expressed. Historical rows therefore take the amount from their plan version,
+            // which is what actually happened.
+            migrationBuilder.Sql(@"
+                UPDATE administrations.administration_events a
+                               SET planned_quantity_numerator = v.dose_numerator,
+                                   planned_quantity_denominator = v.dose_denominator,
+                                   actual_quantity_numerator = CASE WHEN a.outcome = 'Skipped'
+                                                                    THEN NULL ELSE v.dose_numerator END,
+                                   actual_quantity_denominator = CASE WHEN a.outcome = 'Skipped'
+                                                                      THEN NULL ELSE v.dose_denominator END
+                              FROM treatments.plan_versions v
+                             WHERE v.id = a.plan_version_id;
+            ");
+
+            // Legacy doses recorded no actor; attribute them to the household owner.
+            migrationBuilder.Sql(@"
+                UPDATE administrations.administration_events a
+                               SET actor_account_id = (SELECT m.account_id
+                               FROM households.household_memberships m
+                              WHERE m.household_id = a.household_id
+                                AND m.role = 'owner'
+                              ORDER BY m.valid_from
+                              LIMIT 1)
+                             WHERE actor_account_id = '00000000-0000-0000-0000-000000000000'::uuid;
+            ");
+
+            // Historical consumption was recorded only as ledger entries that happened to
+            // share an administration identifier. Promoting each to an allocation makes the
+            // question "which package paid for this dose" answerable for existing history,
+            // and makes that history correctable by the same path as new doses. The sign is
+            // flipped because a ledger entry is a signed delta while an allocation is the
+            // positive amount drawn from one source.
+            migrationBuilder.Sql(@"
+                INSERT INTO administrations.allocations (
+                                id, household_id, administration_event_id, package_id,
+                                quantity_numerator, quantity_denominator, ledger_entry_id,
+                                correlation_id, is_active, created_at)
+                            SELECT gen_random_uuid(), e.household_id, e.administration_event_id, e.package_id,
+                                   -e.quantity_numerator, e.quantity_denominator, e.id, e.correlation_id,
+                                   true, e.recorded_at
+                              FROM inventory.ledger_entries e
+                             WHERE e.administration_event_id IS NOT NULL
+                               AND e.quantity_numerator < 0;
+            ");
 
             migrationBuilder.CreateIndex(
                 name: "IX_packages_created_by_account_id",

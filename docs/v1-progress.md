@@ -1,47 +1,130 @@
 # V1 execution checkpoint
 
-This file is intentionally short. It exists so a new Codex session can continue the V1 program without reconstructing the full product history from a long chat.
+Short by design. It exists so a new session can continue the V1 programme without
+reconstructing the product history from a long conversation.
 
 ## Current state
 
-- Owner-accepted V1: **NOT COMPLETE**.
-- Last verified production release: main `0b463d3a3b4afb15ee5fc0873b89fb0d5f4d50a1`, deployed from CI run `35211378823`.
-- The production baseline is not the final V1 acceptance point; see `docs/v1-acceptance.md`.
-- P0 medication CRUD/soft-delete, regimen versioning, atomic insufficient-stock rejection and unified activity/history were merged in PR #2.
-- Revisioned bulk inventory counts were merged in PR #5; whole-package lending/returns were merged in PR #6 (`dc878cb`). **Do not attempt to merge PR #6 again.**
-- Selected-weekday and N-day interval treatment schedules are complete on `codex/v1-schedule-patterns` and proposed in PR #9. The branch now includes main `0b463d3a`, and the `Treatment schedules` row is `DONE` when this PR is integrated.
-- PR #10 fixed the malformed package-loan migration SQL and added a PostgreSQL gate for the migration script packaged in the API image; the corrected release is live.
-- Final V1 still has additional acceptance gaps; do not stop or declare V1 complete because a subset is merged.
+- Owner-accepted V1: **NOT COMPLETE**. See `docs/v1-acceptance.md` for the authority
+  on scope and `docs/adr/0013-v1-domain-rebuild-strategy.md` for why the domain was
+  rebuilt rather than extended.
+- Last verified production release: main `0b463d3a3b4afb15ee5fc0873b89fb0d5f4d50a1`,
+  deployed from CI run `35211378823`. **Production has not been deployed from the
+  rebuild branch.**
+- Active branch: `claude/v1-domain-rebuild`, proposed in PR #11, branched from PR #9's
+  head so the schedule work is preserved rather than merged separately.
+- PR #9 is **subsumed** by PR #11, not abandoned. Its recurrence rules are carried
+  forward onto `TreatmentPlanVersion`. Do not merge PR #9 separately.
+- PR #10 (packaged migration SQL fix) is already on main.
+
+## What the rebuild has delivered
+
+Domain, application, persistence and API layers for the package-first model:
+
+- `MedicationDefinition` — catalog only, never person-owned, no longer tablet-only.
+- `MedicationPackage` — one row per physical container, with snapshotted capacity and
+  unit, a real lifecycle, expiry/lot/barcode/location, separate owner and holder, and
+  emptiness derived from the ledger.
+- `AdministrationAllocation` — which package paid for a dose, as a queryable fact.
+- `AdministrationAllocationCorrection` — the owner-critical "I actually used Box 2"
+  path, as an appended reversal plus re-charge that conserves the total.
+- Untracked/external administrations, manual source selection, partial and extra doses.
+- `PackageConsumptionPolicy` — the deterministic, unit-tested selection order.
+- `MedicationRefillPolicy` and `RefillForecast` — low stock, official refill
+  eligibility and the refill-gap warning, with depletion walked over real due days.
+- Module boundaries replacing `SprintOneEntities.cs`.
+- Identity read from the validated principal rather than a rewritten request header.
+- A hand-assembled, data-preserving migration plus a CI gate that asserts row by row
+  that the production-shaped baseline survived it.
+
+## What is still open
+
+These are `OPEN` or `PARTIAL` in the acceptance contract and have **not** been
+narrowed or moved out of V1:
+
+1. **Web rebuild.** The client still calls the superseded endpoints, so it is
+   currently broken against the new API. This is the next slice and it blocks
+   deployment.
+2. **Mobile offline rebuild** — durable SQLite/outbox, offline Today flow, idempotent
+   sync, plus physical-device acceptance.
+3. **Local reminders** — reliability across reboot, permission, time-zone, DST and app
+   update, with physical-device evidence.
+4. Reports, export, accessibility, reproducible demo seed, TR/EN sweep across the
+   rebuilt surfaces.
+5. Package-level count reconciliation is modelled (`count_sessions.package_id`) but has
+   no client surface yet.
+
+## Next exact action
+
+Rebuild `apps/web` against the new API. The surface it needs:
+
+- `GET /api/households/{id}/workspace` — people, definitions with totals, package
+  counts and package detail, plans, refill policies.
+- `GET /api/households/{id}/today` — due doses with `planVersionId`, dose and
+  `hasEnoughStock`.
+- `POST /api/households/{id}/administrations` — one-tap default is
+  `{ planVersionId, scheduledFor }`; `source` and `packageId` are the advanced path.
+- `POST .../administrations/{id}/allocations/{allocationId}/correction` — the
+  change-which-box flow.
+- `POST /api/households/{id}/inventory/{definitionId}/stock` — `capacityNumerator`,
+  `fullPackages`, `openedPackages[]`.
+- `GET /api/households/{id}/activity` — unified history including allocation
+  corrections.
+- `PUT .../medication-definitions/{id}/refill-policy` and `GET .../forecast`.
+
+Keep the default surface simple: a medication row shows `48 tablets • 3 packages`, and
+package detail, ledger, allocation and correction live under details/advanced. Every
+string goes through a translation key in TR and EN.
+
+Do not deploy to production until the web client works against the new API, and then
+only after an owner-approved preflight.
 
 ## Resume protocol
 
 When the owner says **"continue" / "kaldığın yerden devam et"**:
 
 1. Read `AGENTS.md`, `docs/v1-acceptance.md`, and this file.
-2. Inspect `git status` and the last few commits. Preserve any existing work; do not restart from scratch.
-3. Resume the current incomplete V1 slice. Do not re-plan or re-audit the whole repository unless evidence shows the checkpoint is stale.
-4. Read only the code/docs needed for the current slice. Avoid broad repository scans and repeated architecture research.
-5. Run targeted tests during implementation; run full quality gates for a coherent slice before merge/release, not after every tiny edit.
-6. Create a safe, coherent commit when a slice reaches a working checkpoint.
-7. Update this file with evidence and an exact next action, then **stop the current Codex turn** as instructed in `AGENTS.md`. The overall project remains full V1 and continues on separately authorized turns.
-8. Never redefine a required V1 item as "later" without explicit owner approval. V1 is complete only after every required acceptance row is `DONE` and the owner explicitly accepts it.
-
-## Next exact action
-
-- Obtain explicit owner authorization to merge PR #9 into the default `main` branch, then merge the already-green PR and record its main commit. The prior deployment instruction explicitly excluded PR #9, so the merge must not be inferred from a general continuation request.
-- In the next separately authorized implementation turn after that merge, resume with the `Inventory ledger` acceptance row: enumerate every stock-mutating V1 workflow against ledger events, add the missing event coverage and PostgreSQL conservation/audit regression test, then update its acceptance evidence. Do not start alerts or refill eligibility in the same bounded turn.
+2. Inspect `git status` and recent commits. Preserve existing work; never restart from
+   scratch.
+3. Resume the next `OPEN`/`PARTIAL` acceptance row, starting from *Next exact action*.
+4. Read only the code and docs the current slice needs.
+5. Run targeted tests while editing; run the full gate before a checkpoint or merge.
+6. Commit coherently, update this file with evidence and the next exact action, then
+   report.
+7. Never redefine a required V1 item as "later" without explicit owner approval.
 
 ## Evidence checkpoint
 
-- 2026-09-15: Original owner-approved V1 scope restored; earlier `v1.0.0` remains only a technical baseline.
-- 2026-09-15: PR #2 merged after PostgreSQL CI run `34984202695` (16 API tests), web/mobile checks and Docker builds; deterministic follow-ups #3/#4 merged. Main CI `35019127489` passed.
-- 2026-09-15: PR #5 revisioned bulk inventory counts merged; PostgreSQL CI `35020426322` passed 17 API tests and web/mobile/Docker checks.
-- 2026-09-16: PR #6 whole-package lending/returns merged (`dc878cb`); PostgreSQL API and web/mobile/Docker CI `35084942604` passed on the PR. Consult its exact CI evidence for new merge commit if necessary.
-- 2026-09-16: Corrected an outdated instruction to merge PR #6 and added an explicit bounded-turn handoff. The original V1 scope and required acceptance criteria are unchanged.
-- 2026-09-17: Schedule checkpoint `afb7d02` adds daily/weekday/interval recurrence, effective-date and administration validation, recurrence-aware forecast, TR/EN web management, EF migration, and synthetic tests. Main's newer instructions/checkpoint were integrated without discarding local work in merge `f9862fc`. Local gate: `.NET` 16 passed, 10 PostgreSQL-dependent skipped; web ESLint, mobile TypeScript, and web webpack production build passed. PR #9 CI run `35151804861` passed PostgreSQL API tests, standard web/mobile checks and both Docker builds. No VPS deploy was attempted; PR remains open and V1 remains incomplete.
-- 2026-09-17: Production preflight for main `33056dd` verified CI artifact ZIP SHA-256 `5da9591c...` separately from image tar.gz SHA-256 `d2e850af...`. The packaged `migrations.sql` was malformed at the package-ownership backfill; deployment stopped before loading images or applying migrations. A fresh backup `.deploy/backups/pre-deploy-33056dd-20260916T221017Z.dump` passed `pg_restore -l`. Production checkout/images and seven applied migrations remained unchanged; other projects' container states were unchanged apart from elapsed time on an already-restarting container.
-- 2026-09-17: PR #10 corrects the migration source SQL terminator and adds CI coverage that executes the exact SQL extracted from the built API image twice on blank PostgreSQL 18 and twice over a synthetic seven-migration baseline, checking package ownership, count sessions, and ledger preservation. PR CI run `35210867794` passed API, web/mobile, Docker, and packaged-SQL PostgreSQL checks. No production migration or deployment was attempted.
-- 2026-09-17: Schedule checkpoint `afb7d02` adds daily/weekday/interval recurrence, effective-date and administration validation, recurrence-aware forecast, TR/EN web management, EF migration, and synthetic tests. Main's newer instructions/checkpoint were integrated without discarding local work in merge `f9862fc`. Local gate: `.NET` 16 passed, 10 PostgreSQL-dependent skipped; web ESLint, mobile TypeScript, and web webpack production build passed. PR #9 CI run `35151804861` passed PostgreSQL API tests, standard web/mobile checks and both Docker builds. PR remains open and V1 remains incomplete.
-- 2026-09-19: Main `0b463d3a3b4afb15ee5fc0873b89fb0d5f4d50a1` was deployed from verified CI artifact `35211378823`. Backup `.deploy/backups/pre-deploy-0b463d3a-20260917T105200Z.dump` passed `pg_restore -l`; the existing database container and `.env.production` were preserved. All 10 migrations are applied, web returns HTTP 200, API readiness passes, and both running image revision labels match `0b463d3a`. The owner/user explicitly verified live medication create, edit, and delete successfully. All 23 non-Medication-Tracker containers were running at the final health check.
-- 2026-09-19: PR #9 was reviewed after merging main `0b463d3a` into its branch without discarding schedule work. Local gate after integration: 16 .NET tests passed and 10 PostgreSQL tests were correctly skipped without a local DB; web lint, mobile TypeScript, and web production build passed. The schedule acceptance row records the branch's weekday/interval/DST and PostgreSQL evidence; V1 remains incomplete.
-- 2026-09-19: PR #9 CI run `35454048578` passed PostgreSQL API tests, web/mobile checks, both Docker builds, and the packaged migration SQL upgrade test after the fixture was updated to require the new schedule migration. PR #9 is mergeable but remains open because the protected main-branch mutation requires explicit owner approval after the earlier instruction that excluded PR #9 from the production deployment.
+- 2026-10-02: Takeover audit of `a1c761a`. Measured the product at roughly 1,500 lines
+  of C# plus 650 of client code outside migration scaffolding; identified CI's packaged
+  migration gate, the production deploy path, session identity, `ExactQuantity`,
+  advisory-lock serialisation, revisioned counts and PR #9's recurrence rules as worth
+  keeping, and the single ambiguous `Medication` entity, the balance-pair package, the
+  absent allocation record and the absent correction path as the core defects. Recorded
+  in ADR 0013 and ADR 0014; acceptance contract reconciled with the owner's redefined
+  scope and rows whose evidence depended on the superseded model re-opened.
+- 2026-10-02: Verified the `X-Account-Id` header is **not** an authentication bypass —
+  the middleware strips the client's copy before re-deriving it from the session, and
+  `AuthenticationBoundaryTests` covers it. It was fragile design, not a live hole, and
+  endpoints now read the principal directly instead.
+- 2026-10-02: Domain core committed (`3f4d0cc`) with the consumption policy, allocation
+  correction planner and extended exact-quantity type. 72 tests passing locally.
+- 2026-10-02: Rebuild committed (`a18b8e1`). 99 tests pass locally; 25 PostgreSQL tests
+  skipped because this workstation has neither Docker nor a PostgreSQL server, so all
+  database, concurrency and migration evidence comes from CI. Web lint, mobile
+  typecheck and web production build pass.
+- 2026-10-02: Found that the scaffolded migration would have **dropped five populated
+  tables** and mis-assigned two `administration_events` column renames by position,
+  writing plan-version identifiers into a medication column. Replaced with a
+  hand-assembled create-copy-drop plus thirteen backfills; `tests/migrations/`
+  now seeds a production-shaped baseline (all pre-rebuild migrations) and asserts
+  preservation of every affected table and of the medication total.
+- 2026-10-02: Found that the superseded count flow wrote a zero-delta ledger entry
+  whenever a count matched. A zero delta is now legal for count adjustments only, and
+  the rebuilt count flow still records "counted and matched" rather than discarding it.
+- 2026-10-02: `deploy-production.sh` now stops this project's api and web containers
+  before applying migrations, because a table rename cannot run safely underneath the
+  previous release, and verifies the backup is readable before anything changes. No
+  other compose project is touched.
+- 2026-10-02: PR #11 opened. CI evidence to be recorded against the run on its head
+  commit.

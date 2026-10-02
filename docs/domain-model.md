@@ -1,80 +1,194 @@
 # Domain model
 
-## Treatment and time
+The authority on *why* this shape was chosen is ADR 0013 (rebuild decision) and
+ADR 0014 (package-first inventory). This document describes the model as it stands.
 
-A `Regimen` identifies an ongoing treatment instruction. Its `RegimenVersion` records effective start/end dates, dose quantity, route, meal relation, timing rules, and instructions. A new version closes the previous effective period instead of changing history.
+## The four realities the model keeps separate
 
-Timing supports:
+A household does not own "48 tablets of Parol". It owns a *kind of medication*, some
+*physical boxes*, a *plan* for who takes what, and a *history* of what actually
+happened and which box paid for it. Collapsing any two of those is what made the
+previous model unable to answer "which box did this dose come from, and was that
+right?".
 
-- Exact local time, such as `08:00` and `20:00`
-- Named day periods: morning, noon, evening, night
-- Exact intervals, weekdays, monthly patterns, cycles, and as-needed use
-- Meal relation: fasting, with food, after food, before food, or irrelevant
-- Optional acceptable time window and minimum interval between administrations
+```
+MedicationDefinition ──┬── MedicationPackage ──┐
+   (catalog)           │      (one box)        │
+                       │                       ├── InventoryLedgerEntry
+                       │                       │      (append-only truth)
+                       └── TreatmentPlan       │
+                             └── TreatmentPlanVersion
+                                   └── AdministrationEvent
+                                         └── AdministrationAllocation ──┘
+                                               └── AllocationCorrection
+```
 
-The implemented scheduled recurrence rules are daily, a Monday-first selected
-weekday mask, and an N-day interval anchored to the effective start date. The
-same local-date rule is used for today's plan, administration validation, and
-depletion projection; DST is resolved only when the local occurrence is mapped
-to an instant. As-needed use remains outside recurring generation.
+## Catalog — `catalog.medication_definitions`
 
-Named day periods are household/user preferences mapped to local time windows. They are not stored as hard-coded universal hours. Until preference windows and reminders are implemented, V1 stores the named period and uses local midnight only as an internal occurrence key; the UI never presents that key as the instruction time.
+What a medication *is*: `Parol 500 mg Tablet`. Reusable, household-scoped, never tied
+to a person and never holding stock.
 
-## Exact quantities
+Carries name, brand, manufacturer, strength text, pharmaceutical form, counting unit,
+active ingredients, an optional default package capacity, category, tags, notes, an
+extensible `external_codes` JSON document reserved for future barcode/GTIN/ATC
+identifiers, and archive state.
 
-Medication quantities use a value plus a unit. Fractional tablets use exact rational values so `1/2 + 1/4` remains exactly `3/4`. General forms use domain units such as tablet, capsule, millilitre, drop, actuation, gram, application, or minute. Conversion is allowed only when an explicit conversion definition exists.
+Every field is a label the user typed. None of it is interpreted clinically and none of
+it drives dose arithmetic or unit conversion.
 
-## Inventory ledger
+`legacy_person_id` holds the person link the superseded model carried. It is retained
+so the information is not destroyed; nothing reads it.
 
-Current stock is a projection of immutable ledger entries:
+## Inventory — `inventory.packages` and `inventory.ledger_entries`
 
-- acquire or refill
-- administration consumption
-- loss, disposal, found stock, or manual adjustment
-- lend, borrow, return, or ownership transfer
-- count reconciliation
-- correction/reversal
+A **package is exactly one physical container**. Adding "2 full boxes of 20" creates
+two rows with two identifiers, not one row of forty.
 
-A household `Medication` is independent of a person. An `InventoryItem` aggregates
-its stock, while each optional `InventoryPackage` records exact full capacity and
-an optional person assignment. Package balance is projected from package-linked
-ledger entries, so a sealed 20-of-20 box and opened 8-of-20 box remain distinct while
-the medication total is exactly 28. Loose stock remains valid when box details are
-unknown. Allocation from loose stock to a package creates balanced ledger entries;
-it does not rewrite history. Package assignment changes create actor-attributed
-events. Ownership/allocation is separate from physical location.
+| Field | Why it exists |
+| --- | --- |
+| `nominal_capacity_*`, `unit` | **Snapshots.** Changing the catalog default from 20 to 30 must not turn an existing 20-tablet box into a 30-tablet box. |
+| `ordinal` | A stable per-medication number so the interface can say "Box 3" and never show a UUID. |
+| `state` | `Sealed`, `Opened`, `Disposed`, `Lost`, `Archived`. There is deliberately **no `Empty`** — emptiness is derived from a zero ledger balance, so it cannot drift or go stale after a correction puts stock back. |
+| `opened_at` | When the seal was broken. Set once; a replayed command does not move it. |
+| `expires_on`, `lot_number`, `barcode`, `acquired_on`, `source`, `storage_location`, `note` | Real attributes of a real box. All optional, all absent from the default form. |
+| `owner_person_id` vs `holder_person_id` | **Separate.** Lending moves custody and leaves ownership alone, which is what makes a loan auditable. |
+| `is_pinned` | The box the user chose to use next. At most one per medication, enforced by a filtered unique index. |
 
-Whole-package lending keeps `OwnerPersonId` unchanged and temporarily moves the
-current `PersonId` allocation to a household borrower. An `InventoryLoan` records
-the actor and time of lending and return, while assignment events record both
-transitions. An active loan blocks owner reassignment and medication deletion.
-Lending and return do not change the exact stock ledger because no tablets are
-created or removed; use by the borrower still creates normal consumption entries.
+A package stores **no balance**. Its remaining amount is the sum of its ledger entries.
 
-## Inventory count and bulk update
+The **ledger is the only source of truth for quantity**. Entries are append-only signed
+deltas, typed by `entry_type`: `Acquire`, `Consume`, `CorrectionReversal`,
+`CorrectionConsume`, `Found`, `Loss`, `Dispose`, `CountAdjustment`, `PackageTransfer`,
+`ManualAdjustment`. A null `package_id` means package-independent (loose) stock.
 
-An `InventoryCountBatch` records the household, accepting account, acceptance time,
-revision number, and optional previous batch. Its `InventoryCount` lines store each
-inventory item's exact calculated quantity before counting, observed quantity, and
-the linked reconciliation ledger entry.
+`correlation_id` groups entries written as one logical act — the several packages one
+dose spanned, or the reversal and re-charge of one correction. `reverses_entry_id`
+points at the entry a reversal undoes.
 
-Accepting a bulk count creates one reconciliation ledger entry per counted medication
-inside the same transaction. Correcting the latest accepted batch creates a new batch
-whose lines reconcile the current ledger projection to the corrected observations.
-Earlier batches, lines, and ledger entries remain immutable; stale revisions are
-rejected rather than branched or overwritten.
+A zero delta is legal **only** for `CountAdjustment`, because "we counted this and it
+matched" is a real event worth recording. Every other type must actually move stock.
 
-## Administrations and forecasting
+## Treatments — `treatments.plans` and `treatments.plan_versions`
 
-A `DoseOccurrence` is an expected dose. An `AdministrationEvent` records what actually happened: taken, skipped, late, partial, extra, unknown, or corrected. Forecasting derives expected consumption from active regimen versions and adjusts projected stock with actual administration and inventory ledger events.
+A plan points at a **definition, never a box**, so it survives every package being
+replaced. Which box a dose comes from is decided at the moment of use.
 
-The tablet slice persists exact quantities as normalized integer numerator and denominator pairs. Recording an administration appends an `AdministrationEvent` and one or more linked negative `InventoryLedgerEntry` rows; multiple rows allow an exact dose to span package boundaries without losing the single administration identity. Neither record overwrites earlier history. A `ProcessedAdministrationCommand` stores the household-scoped idempotency receipt separately from the clinical and inventory events.
+Versions are immutable and effective-dated. Editing a plan appends a version; every
+administration stays linked to the version in force when it happened, so changing
+today's dose cannot retroactively make last month's adherence look wrong. A new
+version may not start before the one it replaces.
 
-The inventory mutation lock also enforces a stock floor. A taken administration is
-accepted only when loose stock plus packages eligible for that person cover the
-entire exact dose. Rejection appends neither an administration nor a ledger entry.
-Medication and regimen deletion are soft deletes, while regimen edits append a new
-`RegimenVersion`. Actor-attributed change events and the immutable domain records
-form one chronological activity projection for the UI.
+Recurrence supports `Daily`, `SelectedWeekdays` (Monday-first seven-bit mask) and
+`EveryNDays` (anchored on the effective start), plus `AsNeeded`. All arithmetic is
+`DateOnly` arithmetic: adding 24-hour spans would drift across a daylight-saving
+transition and eventually move a plan onto the wrong local day.
 
-Refill eligibility belongs to prescription/insurance data and is not inferred from physical stock. The application compares projected depletion with eligibility to expose a potential coverage gap.
+Exact local time, named day period, meal relation and minimum interval are recorded as
+the user entered them. A named period has no invented hour; local midnight is used only
+as an internal occurrence key and is never shown as a reminder time.
+
+## Administrations — events, allocations and corrections
+
+An `AdministrationEvent` records what a person actually did. `plan_version_id` is
+**optional**, because an extra or unplanned dose is a real event with no scheduled slot
+and refusing to record it would lose health information.
+
+Outcomes are `Taken`, `Skipped`, `PartialDose`, `ExtraDose`. There is no `Late`
+outcome: lateness is the difference between planned and actual time, so storing it
+would create a second, drifting source of truth and would force the product to pick a
+threshold that is really a clinical judgement.
+
+`stock_source` is `TrackedInventory`, `UntrackedExternal` or `NotApplicable`. An
+untracked dose keeps its real amount and time, writes no ledger entry, creates no
+allocation and drives no package negative — so the product never has to choose between
+losing a real health record and corrupting its inventory.
+
+An `AdministrationAllocation` is the first-class answer to **which box paid for this
+dose**. One dose may have several when it spans packages, and a tracked dose's active
+allocations always sum to exactly the amount administered.
+
+A correction never updates history. It appends, under one correlation: a reversal
+crediting the wrongly-charged package, an equal consumption debiting the correct one,
+and an `AdministrationAllocationCorrection` naming from, to, quantity, actor, reason and
+time. The superseded allocation is marked inactive rather than deleted, so the previous
+answer stays visible. Because the two amounts are equal and opposite, the medication's
+total is unchanged by construction rather than by arithmetic that could drift.
+
+A correction onto a source that lacks the stock is **refused**: reality disagreeing with
+the ledger is a counting problem, not something to paper over with negative stock.
+
+## Which package the system picks
+
+`PackageConsumptionPolicy` is a pure function, so the choice is testable and reviewable
+instead of emerging from an endpoint:
+
+1. the package the user pinned, if it still holds stock;
+2. already-opened packages before sealed ones, so a household finishes what it started;
+3. earliest expiry first;
+4. earliest acquisition, then earliest creation, then ordinal, as deterministic
+   tie-breaks;
+5. package-independent (loose) stock last, because the product is package-first.
+
+A package that is disposed, lost, archived, empty, or **held by another person** is
+never drawn from implicitly. A dose splits across packages when one cannot cover it,
+and either the whole amount is covered or the caller is told the shortfall — never a
+partial plan.
+
+The default dose-recording call names no package at all. Manual selection — a specific
+package, loose stock, or untracked/external — is an optional field on the same command.
+
+This policy organises stock. It never decides whether a medication should be taken and
+never alters a dose.
+
+## Refill — `refill.medication_refill_policies`
+
+Physical depletion and official refill eligibility are **separate fields**, because
+having twelve tablets left says nothing about whether the pharmacy will dispense more
+today. The gap between them is exactly what the product warns about.
+
+`RefillForecast` walks forward over each plan's real due days rather than dividing by
+an average daily rate: a Monday/Thursday plan does not consume a constant amount per
+day. As-needed plans contribute nothing, and a medication with only as-needed plans is
+reported as not forecastable rather than given a fabricated date.
+
+## Quantities
+
+`ExactQuantity` is a normalised rational. A half tablet is `1/2`, never `0.5`.
+Arithmetic widens to `Int128` internally and throws on overflow rather than wrapping,
+because a wrapped medication amount is worse than a failed request. Ordering is exact
+cross-multiplication. Every quantity column in the database is an integer
+numerator/denominator pair, and a test asserts that no floating-point column exists in
+any quantity, capacity, dose or threshold.
+
+## Concurrency and idempotency
+
+All stock-mutating work for a household runs inside one transaction holding
+`pg_advisory_xact_lock` keyed on the household, so two concurrent doses cannot each read
+the same balance and both decide there is enough. The lock is per household, so
+unrelated households never block each other.
+
+A replayed command — the case a mobile client hits when it loses the network after the
+server committed — returns the original result instead of consuming stock again,
+enforced by unique indexes on `(household_id, idempotency_key)` rather than by
+application convention alone.
+
+## Identity and access
+
+Account, household, membership, person and subscription/entitlement remain five separate
+concepts. Membership is effective-dated, so revoking access does not delete its history.
+Endpoints read the caller from the validated principal; identity no longer travels as a
+request header the middleware rewrites.
+
+## Relationship to FHIR
+
+Named so a future mapping stays possible, without adopting FHIR as the internal model:
+`MedicationDefinition` ≈ R5 `Medication`, `TreatmentPlanVersion` ≈ `MedicationRequest`,
+`AdministrationEvent` ≈ `MedicationAdministration`. Physical package instances have no
+direct R5 equivalent and are intentionally ours. No dependency is taken on unpublished
+R6 drafts.
+
+## Product boundary
+
+This is a medication organisation and adherence product. It records what the user or
+their clinician decided. It never diagnoses, never recommends or calculates a dose,
+never invents a drug interaction, and never tells anyone what to take.

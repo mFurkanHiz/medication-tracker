@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Hosting;
 
 namespace MedicationTracker.Api.Tests;
 
@@ -34,6 +35,9 @@ public sealed class PostgreSqlFactAttribute : FactAttribute
 /// </summary>
 public sealed class ApiTestHarness : WebApplicationFactory<Program>
 {
+    private static readonly SemaphoreSlim SchemaGate = new(1, 1);
+    private static bool _schemaApplied;
+
     public static string? ConnectionString =>
         Environment.GetEnvironmentVariable("MEDICATION_TRACKER_TEST_POSTGRES");
 
@@ -44,6 +48,49 @@ public sealed class ApiTestHarness : WebApplicationFactory<Program>
             {
                 ["ConnectionStrings:Database"] = ConnectionString,
             }));
+    }
+
+    /// <summary>
+    /// Applies migrations once per test process, before the first request reaches the
+    /// application.
+    /// </summary>
+    /// <remarks>
+    /// The application deliberately does not migrate at startup — production applies the
+    /// packaged SQL from a controlled deployment step instead. Doing it here, rather than
+    /// at the top of each test, means no test can accidentally run against an unmigrated
+    /// database, and the gate keeps test classes running in parallel from migrating at
+    /// the same time.
+    /// </remarks>
+    protected override IHost CreateHost(IHostBuilder builder)
+    {
+        var host = base.CreateHost(builder);
+        EnsureSchema();
+        return host;
+    }
+
+    private void EnsureSchema()
+    {
+        if (_schemaApplied)
+        {
+            return;
+        }
+
+        SchemaGate.Wait();
+        try
+        {
+            if (_schemaApplied)
+            {
+                return;
+            }
+
+            using var db = NewDbContext();
+            db.Database.Migrate();
+            _schemaApplied = true;
+        }
+        finally
+        {
+            SchemaGate.Release();
+        }
     }
 
     /// <summary>

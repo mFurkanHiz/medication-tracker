@@ -67,15 +67,15 @@ Status values below reflect reality as of 2026-10-02.
 | 3 | Database / migration strategy | **Done** | Hand-assembled migration. EF scaffolded drop-and-create for five populated tables and mis-guessed two `administration_events` renames by position. Replaced with create-copy-drop plus 13 backfills; historical consumption promoted to allocations. `Down` refused; rollback is the verified backup. Commits `a18b8e1`, `d7c0a60`. |
 | 4 | API implementation | **Done** | Catalog, inventory/packages, plans, today, dose recording (automatic / specific package / loose / untracked), allocation correction, refill policy and forecast, counts, workspace and activity reads. Identity now read from the validated principal. |
 | 5 | Domain and API test coverage | **Done** | 99 local tests. PostgreSQL suite covers the mandatory acceptance scenario end to end, allocation correction conserving the total, concurrency, idempotency, untracked source, cross-household authorisation, capacity snapshotting, retire-through-ledger, refill gap, and count revisioning. |
-| 6 | **Web UX rebuild** | **Next** | The web client still calls the superseded endpoints and is currently broken against the new API. This blocks deployment. Endpoint list and UX rules are in `docs/v1-progress.md` under *Next exact action*. |
-| 7 | Mobile / offline rebuild | Open | Durable SQLite + outbox, offline Today flow, idempotent sync, no silent last-write-wins on health or inventory records. Needs physical-device acceptance. |
+| 6 | Web UX rebuild | **Done** | Typed API client, exact-quantity module, complete TR/EN dictionaries typed so a missing translation fails the build, and screens per concern: Today (one-tap default, advanced source selection, allocation correction), medications with package detail, plans with versioning, people, history, refill settings, lending. Verified in a browser at desktop and 375px. Still missing from the web surface: counting, reports and export. |
+| 7 | **Mobile / offline rebuild** | **Next** | Durable SQLite + outbox, offline Today flow, idempotent sync, no silent last-write-wins on health or inventory records. Needs physical-device acceptance. |
 | 8 | Local reminders | Open | Reliability across reboot, notification and exact-alarm permissions, time-zone change, DST, and app update. Physical-device evidence required. Push is not a substitute. |
 | 9 | Reports and export | Open | Basic medication / adherence / inventory reporting plus export with no secret or cross-household leakage. |
 | 10 | Accessibility | Open | Large text, touch targets, screen-reader labels on core workflows. |
 | 11 | Synthetic demo seed | Open | Reproducible seed for safe public demonstration. Invented people and medications only. |
 | 12 | TR/EN completion | Open | Every user-facing string through a translation key across the rebuilt surfaces. |
 | 13 | Security hardening review | Open | Re-cover every rebuilt endpoint: household authorisation, export authorisation, rate limiting, log redaction, cross-household regression. |
-| 14 | Production migration and deploy | **Blocked** | Requires task 6 first, then an owner-approved preflight report. Do not deploy from this branch while the web client is broken. |
+| 14 | Production migration and deploy | **Blocked** | Requires an owner-approved preflight report. The web client is rebuilt, so the branch is self-consistent; the mobile client is still broken against the new API, which the owner must accept before any deploy. |
 | 15 | Final owner acceptance | Open | Owner runs the acceptance flow and explicitly approves. |
 
 ## 5. Per-task fields to keep current
@@ -102,8 +102,9 @@ that changes architecture should link to its ADR rather than restating it.
 
 ## 6. Open risks to record
 
-1. **The web client is broken against the new API.** Deploying this branch before the
-   web rebuild would take the production site down. Deployment is blocked on task 6.
+1. **The mobile client is broken against the new API.** The web client is rebuilt, so
+   deploying would not take the site down, but mobile would stop working until task 7
+   lands. The owner must decide whether to deploy before then.
 2. **The rebuild migration is not reversible.** `Down` deliberately throws. The rollback
    path is the pre-deployment PostgreSQL backup, which `deploy-production.sh` now takes
    and verifies with `pg_restore -l` before changing anything.
@@ -128,4 +129,7 @@ that changes architecture should link to its ADR rather than restating it.
   `docs/adr/0014-package-first-inventory-model.md`
 - Acceptance contract: `docs/v1-acceptance.md`
 - Checkpoint: `docs/v1-progress.md`
-- CI run IDs: record the run on PR #11's head commit once green.
+- CI run `37036017899`: 124 tests, 0 failed, 0 skipped, both jobs green, including the
+  packaged migration SQL applied twice to a blank database and twice to a seeded
+  production-shaped baseline with row-by-row preservation assertions.
+- Acceptance standing after the web rebuild: 26 DONE, 9 PARTIAL, 5 OPEN of 40 rows.

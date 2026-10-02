@@ -13,6 +13,8 @@ reconstructing the product history from a long conversation.
   rebuild branch.**
 - Active branch: `claude/v1-domain-rebuild`, proposed in PR #11, branched from PR #9's
   head so the schedule work is preserved rather than merged separately.
+- The API and the web client are rebuilt. The **mobile client is not** and still calls
+  the superseded endpoints.
 - PR #9 is **subsumed** by PR #11, not abandoned. Its recurrence rules are carried
   forward onto `TreatmentPlanVersion`. Do not merge PR #9 separately.
 - PR #10 (packaged migration SQL fix) is already on main.
@@ -42,42 +44,48 @@ Domain, application, persistence and API layers for the package-first model:
 These are `OPEN` or `PARTIAL` in the acceptance contract and have **not** been
 narrowed or moved out of V1:
 
-1. **Web rebuild.** The client still calls the superseded endpoints, so it is
-   currently broken against the new API. This is the next slice and it blocks
-   deployment.
-2. **Mobile offline rebuild** — durable SQLite/outbox, offline Today flow, idempotent
-   sync, plus physical-device acceptance.
-3. **Local reminders** — reliability across reboot, permission, time-zone, DST and app
+1. **Mobile offline rebuild** — durable SQLite/outbox, offline Today flow, idempotent
+   sync, plus physical-device acceptance. The mobile client still calls the superseded
+   endpoints.
+2. **Local reminders** — reliability across reboot, permission, time-zone, DST and app
    update, with physical-device evidence.
-4. Reports, export, accessibility, reproducible demo seed, TR/EN sweep across the
-   rebuilt surfaces.
-5. Package-level count reconciliation is modelled (`count_sessions.package_id`) but has
-   no client surface yet.
+3. **Reports** and **export**, neither of which exists.
+4. **Inventory counting has no client surface.** The API and its revisioning are proven;
+   nothing in the web client calls them yet.
+5. **Accessibility** has no formal audit, and **TR/EN** is complete for web but not for
+   mobile.
+6. Package-level count reconciliation is modelled (`count_sessions.package_id`) but has
+   no client surface.
 
 ## Next exact action
 
-Rebuild `apps/web` against the new API. The surface it needs:
+Rebuild `apps/mobile` against the new API, offline-first.
 
-- `GET /api/households/{id}/workspace` — people, definitions with totals, package
-  counts and package detail, plans, refill policies.
-- `GET /api/households/{id}/today` — due doses with `planVersionId`, dose and
-  `hasEnoughStock`.
-- `POST /api/households/{id}/administrations` — one-tap default is
-  `{ planVersionId, scheduledFor }`; `source` and `packageId` are the advanced path.
-- `POST .../administrations/{id}/allocations/{allocationId}/correction` — the
-  change-which-box flow.
-- `POST /api/households/{id}/inventory/{definitionId}/stock` — `capacityNumerator`,
-  `fullPackages`, `openedPackages[]`.
-- `GET /api/households/{id}/activity` — unified history including allocation
-  corrections.
-- `PUT .../medication-definitions/{id}/refill-policy` and `GET .../forecast`.
+The core daily workflow must work with no network: see what is due, record a dose, and
+sync later without double-consuming stock. The server side of that is already proven —
+a replayed idempotency key returns the original event and consumes once — so the work is
+the client's durable queue, not the protocol.
 
-Keep the default surface simple: a medication row shows `48 tablets • 3 packages`, and
-package detail, ledger, allocation and correction live under details/advanced. Every
-string goes through a translation key in TR and EN.
+Shape it as:
 
-Do not deploy to production until the web client works against the new API, and then
-only after an owner-approved preflight.
+- A SQLite snapshot of `GET /api/households/{id}/workspace` and
+  `GET /api/households/{id}/today`, refreshed when online.
+- A durable outbox row per command, written before the request is attempted and cleared
+  only on a successful response, so a crash or a lost connection safely retries the same
+  `idempotencyKey`.
+- `POST /api/households/{id}/administrations` with `{ planVersionId, scheduledFor,
+  idempotencyKey }` for the one-tap path.
+- Session credentials in Expo SecureStore; a separate SQLite cache per household.
+- Conflicts surfaced, never resolved silently as last-write-wins on a health or
+  inventory record.
+
+Then local reminders, which need physical-device evidence across reboot, notification
+and exact-alarm permissions, time-zone change, DST and app update.
+
+The web client is rebuilt and the API is green, so the branch is no longer
+self-inconsistent. Production deployment still requires an owner-approved preflight, and
+should not happen while the mobile client is broken against the new API unless the owner
+accepts that mobile is temporarily non-functional.
 
 ## Resume protocol
 
@@ -159,3 +167,15 @@ When the owner says **"continue" / "kaldığın yerden devam et"**:
   the rebuilt harness never applied migrations so every integration test had been
   failing with a 500. A third, smaller one followed — the POST test helper could not
   accept the empty body a 204 correctly carries.
+- 2026-10-02: Web client rebuilt against the new API. The 153-line single-component
+  tracker is replaced by a typed API client, an exact-quantity module that never
+  converts an amount to a float, complete TR/EN dictionaries typed so a missing
+  translation fails the build, and screens per concern. Verified in a browser at desktop
+  and 375px: sign-in renders, the TR/EN toggle switches the whole interface, touch
+  targets and focus rings hold up. Three defects found by running it rather than
+  assuming — an unlayered `button { color: inherit }` reset that beat Tailwind's layered
+  utilities and left dark-on-dark button labels, three fetch effects that set state
+  synchronously, and a locale read copied out of localStorage by an effect instead of
+  through `useSyncExternalStore`. The authenticated screens are typed against the API
+  client but were not exercised in a browser, because this workstation has no PostgreSQL
+  to run the API against.

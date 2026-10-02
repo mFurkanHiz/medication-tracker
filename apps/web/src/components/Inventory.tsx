@@ -313,6 +313,14 @@ function PackageRow({ household, pkg, activeLoanId, people, onChanged, onError }
             <Button variant="quiet" disabled={busy} onClick={() => void run(() => api.returnLoan(household, activeLoanId))}>
               {t('returnLoan')}
             </Button>
+          ) : pkg.ownerPersonId ? (
+            // Lending moves custody only, so it is offered on a package that someone
+            // owns and nobody else is currently holding.
+            <LendControl
+              people={people.filter((person) => !person.isArchived && person.id !== pkg.ownerPersonId)}
+              busy={busy}
+              onLend={(borrower) => void run(() => api.lendPackage(household, pkg.id, borrower))}
+            />
           ) : null}
 
           <Button
@@ -332,6 +340,44 @@ function PackageRow({ household, pkg, activeLoanId, people, onChanged, onError }
         </div>
       ) : null}
     </li>
+  );
+}
+
+/** Picks a borrower and lends the package, without changing its stock or its owner. */
+function LendControl({ people, busy, onLend }: {
+  people: Person[];
+  busy: boolean;
+  onLend: (borrowerPersonId: string) => void;
+}) {
+  const { t } = useLocale();
+  const [borrower, setBorrower] = useState('');
+
+  if (people.length === 0) {
+    return null;
+  }
+
+  return (
+    <span className="inline-flex items-center gap-2">
+      <label className="sr-only" htmlFor={`lend-${people[0].id}`}>
+        {t('lend')}
+      </label>
+      <Select
+        id={`lend-${people[0].id}`}
+        value={borrower}
+        onChange={(event) => setBorrower(event.target.value)}
+        className="w-auto"
+      >
+        <option value="">{t('lend')}…</option>
+        {people.map((person) => (
+          <option key={person.id} value={person.id}>
+            {person.name}
+          </option>
+        ))}
+      </Select>
+      <Button variant="quiet" disabled={busy || borrower === ''} onClick={() => onLend(borrower)}>
+        {t('lend')}
+      </Button>
+    </span>
   );
 }
 

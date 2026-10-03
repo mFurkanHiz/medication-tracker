@@ -1,12 +1,18 @@
-REPORT-ACCOUNTS
+REMOVE-SYNTHETIC-ACCOUNTS
 
-The owner-only cleanup refused: the digest of the address the owner gave matched no
-account in production. The guard did its job and nothing was removed, but it leaves a
-question that guessing is the wrong way to answer — which accounts are these?
+The report run (37133260216) answered the question the previous refusal raised. Of the
+eleven accounts in production, ten are at @example.invalid — the domain RFC 2606
+reserves so that it can never belong to a person — and one is test@medtracker.com.
+None is the address the owner gave, so they never registered on the rebuilt production
+with it.
 
-This asks for a read-only description. Addresses are masked, because this repository is
-public and so are its job logs; the digest of each is printed in full, which discloses
-nothing on its own and lets the owner identify an account exactly by hashing a
-candidate address.
+Ten of the eleven therefore need no decision from anybody: an address at .invalid
+cannot be a real person's, whichever tool registered it. This removes those, and leaves
+test@medtracker.com for the owner to confirm.
 
-Remove this file once the report has run.
+The report also found one medication and one package created after the purge, so
+somebody is already using the site. If that data belongs to a .invalid household the
+foreign keys will refuse this cleanup and name the table, which is the protection
+working rather than a fault.
+
+Remove this file once the cleanup has run.

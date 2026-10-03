@@ -1,11 +1,13 @@
--- Removes the accounts the smoke test registers, and nothing else.
+-- Removes every account at a .invalid address, and nothing else.
 --
 -- WHY THIS EXISTS
 --
--- deploy/smoke-test.ps1 registers one synthetic household on every run so it can
--- exercise the live site end to end. Those households accumulate. After the care-data
--- purge of 2026-10-03 the owner was left with twelve accounts, of which one is theirs
--- and the rest are leftovers from smoke runs.
+-- Automated checks against the live site register accounts as they go: the smoke test
+-- uses synthetic-smoke-<guid>@example.invalid, and the browser checks use their own
+-- prefixes at the same domain. They accumulate. After the care-data purge of
+-- 2026-10-03 the owner was left with twelve accounts; a first pass that matched only
+-- the smoke test's own prefix removed exactly one, which is what revealed that the
+-- rest are other synthetic runs rather than smoke leftovers.
 --
 -- The purge deliberately kept every account, because keeping the user is what was
 -- asked for. Removing these is a narrower and different deletion, so it gets its own
@@ -13,11 +15,11 @@
 --
 -- WHAT IS MATCHED, AND WHY IT CANNOT MATCH A PERSON
 --
--- The smoke test registers synthetic-smoke-<guid>@example.invalid. The `.invalid`
--- top-level domain is reserved by RFC 2606 precisely so that it can never be
--- registered or routed: no real person can hold an address there. So the pattern is
--- matched rather than an owner address being named — which also keeps the owner's
--- email out of this public repository.
+-- Any address ending in @example.invalid. The `.invalid` top-level domain is reserved
+-- by RFC 2606 precisely so that it can never be registered or routed: no real person
+-- can hold an address there. Matching the domain rather than one tool's prefix means a
+-- future check that invents its own prefix is covered too — and matching a pattern
+-- rather than naming the owner keeps a personal address out of this public repository.
 --
 -- Emails are stored normalised with ToUpperInvariant (see IdentityEndpoints), so the
 -- comparison is made in upper case.
@@ -52,7 +54,7 @@ $$;
 CREATE TEMP TABLE doomed_accounts AS
 SELECT id
 FROM identity.accounts
-WHERE upper(normalized_email) LIKE 'SYNTHETIC-SMOKE-%@EXAMPLE.INVALID';
+WHERE upper(normalized_email) LIKE '%@EXAMPLE.INVALID';
 
 -- A household goes only when every one of its members is going with it. A household
 -- that has even one surviving member stays, and so does one with no members at all —

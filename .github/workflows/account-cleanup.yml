@@ -3,9 +3,9 @@ name: Account cleanup
 # Removes accounts from production. Which ones is chosen by the confirmation, and each
 # SQL file says at its top exactly what it matches and what it protects:
 #
-#   REMOVE-SMOKE-ACCOUNTS      the synthetic accounts deploy/smoke-test.ps1 registers,
-#                              matched by a pattern ending in .invalid — reserved by
-#                              RFC 2606, so it can never belong to a person.
+#   REMOVE-SYNTHETIC-ACCOUNTS  every account at a .invalid address — the domain RFC
+#                              2606 reserves so that it can never belong to a person.
+#                              That is where the automated checks register.
 #   KEEP-ONLY-OWNER-ACCOUNT    a one-off: everything except the owner's own account,
 #                              identified by the digest of their address so that no
 #                              personal address enters this public repository.
@@ -27,8 +27,8 @@ on:
     inputs:
       confirm:
         description: >-
-          REMOVE-SMOKE-ACCOUNTS removes the synthetic accounts the smoke test leaves
-          behind. KEEP-ONLY-OWNER-ACCOUNT removes every account except the owner's.
+          REMOVE-SYNTHETIC-ACCOUNTS removes every account at a .invalid address.
+          KEEP-ONLY-OWNER-ACCOUNT removes every account except the owner's.
           REPORT-ACCOUNTS changes nothing and only describes what is there. The two
           deletions also remove households left with no remaining member, and both take
           a verified backup first.
@@ -70,7 +70,7 @@ jobs:
           # Each confirmation names one reviewed SQL file. Nothing else can be run.
           sql_for() {
             case "$1" in
-              REMOVE-SMOKE-ACCOUNTS)   echo deploy/cleanup-smoke-accounts.sql ;;
+              REMOVE-SYNTHETIC-ACCOUNTS) echo deploy/cleanup-synthetic-accounts.sql ;;
               KEEP-ONLY-OWNER-ACCOUNT) echo deploy/keep-only-owner-account.sql ;;
               REPORT-ACCOUNTS)         echo deploy/account-report.sql ;;
               *)                       echo '' ;;
@@ -81,7 +81,7 @@ jobs:
             sql="$(sql_for "$CONFIRM")"
             test -n "$sql" || {
               echo 'Refusing: the confirmation must be exactly one of' >&2
-              echo 'REMOVE-SMOKE-ACCOUNTS, KEEP-ONLY-OWNER-ACCOUNT, REPORT-ACCOUNTS.' >&2
+              echo 'REMOVE-SYNTHETIC-ACCOUNTS, KEEP-ONLY-OWNER-ACCOUNT, REPORT-ACCOUNTS.' >&2
               exit 1
             }
             echo "Confirmed by the dispatch input: $sql"
@@ -99,7 +99,7 @@ jobs:
           fi
 
           sql=''
-          for confirmation in REMOVE-SMOKE-ACCOUNTS KEEP-ONLY-OWNER-ACCOUNT REPORT-ACCOUNTS; do
+          for confirmation in REMOVE-SYNTHETIC-ACCOUNTS KEEP-ONLY-OWNER-ACCOUNT REPORT-ACCOUNTS; do
             if grep -qx "$confirmation" "$request"; then
               test -z "$sql" || {
                 echo "Refusing: $request names more than one confirmation. One run," >&2
@@ -112,7 +112,7 @@ jobs:
 
           test -n "$sql" || {
             echo "Refusing: $request exists but holds no line that reads exactly" >&2
-            echo 'REMOVE-SMOKE-ACCOUNTS, KEEP-ONLY-OWNER-ACCOUNT or REPORT-ACCOUNTS.' >&2
+            echo 'REMOVE-SYNTHETIC-ACCOUNTS, KEEP-ONLY-OWNER-ACCOUNT or REPORT-ACCOUNTS.' >&2
             echo 'A file that does not say what it authorises authorises nothing.' >&2
             exit 1
           }

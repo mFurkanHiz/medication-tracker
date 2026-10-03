@@ -1,8 +1,17 @@
 name: CI
 
 on:
+  # A merge to main deploys, so a commit that changes nothing the server runs should
+  # not restart it. Docs-only merges are skipped here and nowhere else: pull requests
+  # below have no paths filter, so a documentation change is still built and tested
+  # before it lands — this only declines to ship it. GitHub skips a push only when
+  # every changed file matches, so a commit touching docs *and* code deploys as usual,
+  # and a docs commit can still be deployed on demand with Run workflow.
   push:
     branches: [main]
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
   pull_request:
 
   # Deploying the commit that is already on main should not need an empty commit to

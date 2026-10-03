@@ -1,0 +1,20 @@
+# The VPS's public SSH host key, pinned so a deploy can prove which machine it is
+# talking to. This is not a secret: every SSH client shows you this key the first
+# time it connects, and its job is to be compared rather than hidden.
+#
+# Stored without a host field on purpose. deploy/authorise-ssh.sh writes the
+# address it is about to connect to in front of it, so this stays correct whether
+# VPS_HOST holds the address or a name.
+#
+# Read from the server by a GitHub runner on 2026-10-03, in CI run 37125185792.
+# Fingerprint: SHA256:xbaKZHF43tdM9iRATyJ+tUzGr9GPcC1A7411tdPcMRQ
+#
+# That reading is trust-on-first-use, which is the one comparison a pin cannot
+# make for itself. Confirm it against the server, in Hostinger's browser terminal:
+#
+#   ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub
+#
+# If the server is rebuilt or moved this key changes and every deploy stops with
+# the new key printed for review. That is the check doing its job, not a fault:
+# compare the new fingerprint the same way, then replace the line below.
+ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEI4TRKskGa6ls54vaWY6OpLDsfTTvmoz3it/lPFVUXd

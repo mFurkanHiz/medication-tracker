@@ -431,3 +431,32 @@ read **when a session starts**, so one enabled mid-conversation does not load.
     registers one. Removing them is a narrower, different deletion than the one that
     was asked for, so it was not done. It needs the owner to say which account is
     theirs.
+- 2026-10-03: **Production now holds one account.** Getting there took four runs, and
+  the first two were wrong in a way worth recording, because each wrong answer was
+  caught by a guard rather than by luck.
+  - The care-data purge kept all twelve accounts, as asked. The assumption that eleven
+    were smoke-test leftovers was wrong: matching the smoke test's own prefix
+    (`synthetic-smoke-`) removed exactly **one** (run `37132135711`).
+  - Keeping only the owner's account by the digest of the address they gave refused:
+    `the owner digest matched no account` (run `37132572430`). Nothing was deleted and
+    the site never went down. The owner had never registered on the rebuilt production
+    with that address.
+  - So a read-only `REPORT-ACCOUNTS` mode was added rather than a third guess. It
+    prints each account with its address **masked** — these job logs are world readable
+    on a public repository — plus the full digest, which discloses nothing by itself and
+    lets any candidate address be checked by hashing it. Run `37133260216` showed ten
+    accounts at `@example.invalid` with four different prefixes, and one at
+    `test@medtracker.com`.
+  - Ten of those needed no decision from anybody: RFC 2606 reserves `.invalid` so that
+    it can never be registered or routed. Matching the whole domain rather than one
+    tool's prefix took production from eleven accounts to one (run `37133573790`):
+    accounts, households and memberships 11→1, sessions 7→3.
+  - `test@medtracker.com` survives with the medication and package created after the
+    purge. Whether that account stays is the owner's call.
+  - The cleanup machinery is one workflow with three confirmations — two deletions and
+    the read-only report — each naming one reviewed SQL file, and refusing a request
+    file that names more than one. Every deletion backs up and verifies the backup
+    first, runs in one transaction, refuses to leave the system without an account or
+    an account without a household, and leans on the `RESTRICT` foreign keys so that a
+    household still owning care data fails the statement by name instead of being
+    silently orphaned.

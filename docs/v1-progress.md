@@ -8,9 +8,11 @@ reconstructing the product history from a long conversation.
 - Owner-accepted V1: **NOT COMPLETE**. See `docs/v1-acceptance.md` for the authority
   on scope and `docs/adr/0013-v1-domain-rebuild-strategy.md` for why the domain was
   rebuilt rather than extended.
-- Production runs main `8ebe4c60a9660fb4cdb57fb31f6b51aa351c2d9f`, deployed 2026-10-03
-  from CI run `37125695168` — the first deployment GitHub Actions performed by itself.
-  Reports, export and counting are **live**.
+- Production tracks `main`: every merge deploys by itself, so the live revision is
+  whatever `main` last squashed to, and the deploy job on that run is the record. The
+  first self-driven deployment was `8ebe4c60a9660fb4cdb57fb31f6b51aa351c2d9f` from CI
+  run `37125695168` on 2026-10-03; several have followed. Reports, export and counting
+  are **live**. Documentation-only merges no longer redeploy (`paths-ignore` on push).
 - PR #11 (the rebuild), #12 (deployment tooling) and #13 (backup verification) are
   merged into main.
 - The API, the web client and the mobile client are all rebuilt against the new model.
@@ -53,14 +55,24 @@ narrowed or moved out of V1:
 4. **Mobile has no reports, export or counting surface.** These slices added all three
    to the web client only. Rows 18, 31 and 32 are satisfied — a user can reach every
    behaviour — but the mobile client does not yet show them.
-5. **Twelve accounts and households survive the purge, not one.** The care data is
-   gone, but every account was kept because keeping the user is what was asked for.
-   Eleven of them are almost certainly smoke-test registrations. Narrowing that needs
-   the owner to say which account is theirs.
+5. **One account survives, and whether it is the owner's is still unanswered.**
+   Production is down to `test@medtracker.com` (see the evidence checkpoint). If the
+   owner registers afresh with their own address instead, the care data created on
+   2026-10-03 belongs to the old account, and the `RESTRICT` foreign keys will refuse
+   to remove it until that data goes first. Ordering is handled here; the decision is
+   the owner's.
+6. **No test runner exists for the web client.** `apps/web` has no `*.test.*` file and
+   no runner in `package.json`; web logic is covered only by `tsc`, by the API suite
+   behind it, and by ad-hoc browser checks. The two UI fixes of 2026-10-03 were proven
+   with Playwright against a local stack, but nothing in CI would catch a regression
+   in them. Adding a runner is its own slice.
 
 ## Next exact action
 
-The synthetic demo seed, then the mobile surfaces.
+The synthetic demo seed, then the mobile surfaces — **unless the owner reports more
+defects from live testing, which take precedence.** They are testing the deployed site
+and reporting what they find; two such defects were fixed on 2026-10-03 (see the
+evidence checkpoint). Fixing what the owner actually hit comes before new scope.
 
 - Deployment is armed and proven: a merge to `main` deploys by itself, and the care
   data purge has run. The purge stays available for a future reset — commit
@@ -460,3 +472,35 @@ read **when a session starts**, so one enabled mid-conversation does not load.
     an account without a household, and leans on the `RESTRICT` foreign keys so that a
     household still owning care data fails the statement by name instead of being
     silently orphaned.
+
+- 2026-10-03: The owner tested the live site and reported two defects. Both were real,
+  and both were in the web client only — no API, schema or migration change.
+  - **A plan could not be given a time of day.** The day-period select existed, but its
+    own empty option was labelled `exactTime` — "Saat", the same word as the field
+    beside it — and choosing a period merely *disabled* the neighbouring clock instead
+    of removing it. The screen asked two timing questions where the domain allows one
+    answer. It is now a single `whenInDay` question whose options are Kesin saat,
+    Sabah, Öğle, İkindi, Akşam, Gece and Yatmadan önce, with the clock rendered only
+    when the answer is a clock. An as-needed plan hid both fields silently, which reads
+    as a missing feature; it now says the dose is recorded from the Today screen.
+  - **Adding stock could only count whole boxes.** The opened-package rows sat inside
+    `<Advanced>`, so "one full box of 20 plus an opened one with 8 left" looked
+    impossible, as did adding a box found later. The rows are now in the open, the
+    preview states the unit total as well as the box count, summed through
+    `addQuantities` as exact fractions, and one line says the form can be reopened
+    whenever stock arrives.
+  - Verified on the rendered screens, not by reading the code: a local stack
+    (PostgreSQL + API + the static export behind a proxy) driven with Playwright. One
+    full box of 20 plus an opened box of 8 previewed as `2 kutu — 28 tablet` and saved
+    as `20/20` + `8/20`; reopening the form for a found box of 13 added it without
+    disturbing the first two; two rounds of both left `82 tablet / 6 kutu`, exact. The
+    period select offered all six Turkish periods, choosing one removed the clock, and
+    a saved evening plan read back on the card as `Akşam`. No console errors anywhere.
+  - Caught while re-reading the diff: both new hint paragraphs used `text-muted`, which
+    is **not** a token in this theme (`--color-ink-muted` is), so they would have
+    rendered at full ink instead of secondary. Fixed before the commit, and re-shot to
+    confirm. The orphaned `dayPeriod` label key was removed from both locales.
+  - Gate before the commit: `dotnet test` **158 passed, 0 failed, 0 skipped** — run
+    against a real PostgreSQL by setting `MEDICATION_TRACKER_TEST_POSTGRES`, so the 39
+    integration tests ran rather than skipping as they do by default on a workstation
+    with no database. Lint, mobile typecheck and web build all clean.

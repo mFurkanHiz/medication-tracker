@@ -504,3 +504,77 @@ read **when a session starts**, so one enabled mid-conversation does not load.
     against a real PostgreSQL by setting `MEDICATION_TRACKER_TEST_POSTGRES`, so the 39
     integration tests ran rather than skipping as they do by default on a workstation
     with no database. Lint, mobile typecheck and web build all clean.
+
+- 2026-10-03 (ikinci tur): the owner challenged the as-needed explainer shipped earlier the
+  same day — "Ne demek gerektiğinde alınan ilaçlarda saat olmaz? Tok karnına alınamaz mı
+  ilaç?" — and asked three further things. Five subsystems were mapped before anything was
+  changed, and the mapping produced one finding worth more than the features.
+  - **The as-needed restriction was never a domain rule.** `RecurrenceRule.IsValid`'s
+    AsNeeded branch constrains only Pattern, WeekdayMask and IntervalDays; the plan-version
+    constructor adds nothing; and of the six check constraints on `treatments.plan_versions`
+    the only one naming the kind (`ck_plan_versions_schedule`) *relaxes* the requirement for
+    AsNeeded rather than restricting it. The gate existed solely in `Plans.tsx`. The line I
+    wrote asserted a rule the system does not have, which is worse than a missing feature.
+  - What *is* real: `ScheduledSlots.Within` skips any version whose `Recurrence.Kind` is not
+    `Scheduled`, and `PlanVersionSlice` carries only version number, recurrence, clock and
+    zone — there is no member a day period or food relation could travel in. So guidance can
+    never manufacture a missed dose. Both halves are now pinned by tests rather than left to
+    a reviewer: the stored vocabulary, and the structural absence from the replay.
+  - A plan of either kind now records a day period and a food relation. For a scheduled plan
+    the period is the schedule; for an as-needed one it is a preference, labelled as one, with
+    no clock offered — a dose fixed to a time is a scheduled dose. Food timing left the
+    Advanced disclosure. On Today the big label still reads "Gerektiğinde", with the
+    preference on the quiet line as "tercihen Akşam", so a preference cannot read as an
+    appointment.
+  - `MealRelation.FullStomach` ("Tok karnına") added. The owner is right that it is broader
+    than AfterFood. **No migration**: both enums are persisted through
+    `HasConversion<string>()` into `character varying(20)` with no CHECK on their values and
+    no native PostgreSQL enum anywhere in the repository, so a new member is a new string in
+    an existing column.
+  - **Archiving is a one-way door and said so nowhere.** `CatalogEndpoints` archive sets
+    `ArchivedAt` and then soft-deletes every active plan for that medication; restore clears
+    `ArchivedAt` only, and no route can revive a deleted plan (`PUT /plans/{planId}` filters
+    `DeletedAt == null`; there is no un-delete). Stock, packages, ledger and administrations
+    all survive. The button fired on first click with no confirmation, from inside the
+    "Kutuları göster" disclosure beside the per-BOX Lost/Disposed buttons — so it read as
+    "archive this box". It now confirms, names the medication, and counts the standing plans
+    the click will stop.
+  - Gate: `dotnet test` **164 passed, 0 failed, 0 skipped** against a real PostgreSQL (six new
+    tests). Lint, mobile typecheck and web build clean. Verified on the rendered screens with
+    Playwright: an as-needed plan saved as Gerektiğinde + tercihen Akşam + Tok karnına, Today
+    kept the Gerektiğinde label, and the archive dialog showed the live plan count.
+
+## Open, from the owner's second-round message and the mapping
+
+These are **not** narrowed or deferred scope; they are the remaining asks plus what the
+mapping turned up. Each needs its own turn, and the three marked (migration) must not share
+one: two EF migrations authored in the same turn both regenerate the model snapshot from the
+same baseline and conflict, and `tests/migrations/verify-upgrade.sql` and
+`verify-production-shape.sql` each hard-assert the migration count, currently 12.
+
+1. **Pause and resume a plan** (migration). The owner: "artık almadığımızı da
+   belirtebilmeliyiz... sonra da ilacın sayfasından artık almaya başladığımızı da". Today
+   only "Planı sonlandır" exists and it is an irreversible soft delete. Needs an `IsPaused`
+   flag on the version plus filters in `WorkspaceEndpoints` and `RefillEndpoints.ProjectAsync`,
+   both of which take the newest version with no effective-date filter.
+2. **Caution notes** (migration, split in two). Medicines not to combine, foods to avoid,
+   things to do and not do, shown somewhere prominent. They belong on the definition, must be
+   plainly the household's own notes, and must never be styled as a computed warning: the
+   footer promises the app does not evaluate interactions.
+3. **Reinstate a package marked Kayıp** (migration). `MedicationPackage.Reinstate()` exists
+   and nothing calls it. Retiring writes a negative `Loss` ledger entry, so restoring must
+   write the mirroring positive entry rather than deleting history.
+4. **Archiving still destroys a paused plan.** Once (1) lands, `CatalogEndpoints` will
+   cascade-delete paused plans too, because it filters only on `DeletedAt`. Pause and archive
+   interact badly and the fix belongs with (1).
+5. **Archiving a person is a worse one-way door, and nothing covers it.** `Person.Restore()`
+   exists with no route, and because `CurrentVersionsAsync` does not filter on the person's
+   archive state, an archived person's active plans keep producing doses on Today
+   indefinitely, with their name and no badge. The owner did not ask; it is the same question
+   one table over and it is a live defect.
+6. **`minimumIntervalMinutes` is enforced by nothing.** It is validated, stored, exported and
+   editable, and no code prevents a repeat dose. The form's "En az ara (dakika)" promises a
+   guard that does not exist — and it is the field an as-needed medicine most needs.
+7. **Mobile parity.** The Expo client ships no meal-relation or day-period labels and its
+   SQLite plans table has no `meal_relation` and no `instructions` column, so a household
+   member on the phone sees none of this turn's guidance.

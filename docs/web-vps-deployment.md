@@ -54,7 +54,13 @@ TXT records if they were added; they are not needed for VPS hosting.
 
 ## Deploy
 
-A merge to `main` deploys by itself once the owner has armed it. CI's `deploy` job
+A merge to `main` deploys by itself once the owner has armed it, unless every file it
+changed is documentation (`**/*.md` or `docs/**`): a commit that changes nothing the
+server runs should not restart it. Pull requests have no such filter, so documentation
+is still built and tested before it lands; only the shipping is declined, and
+*Run workflow* still deploys such a commit on demand.
+
+CI's `deploy` job
 runs after both test jobs pass, downloads the image artifact it just built, verifies
 its SHA-256 on both sides of the transfer, ships the deploy script and
 `compose.production.yml` from the same commit, and runs the script over SSH. It is

@@ -53,21 +53,19 @@ narrowed or moved out of V1:
 4. **Mobile has no reports, export or counting surface.** These slices added all three
    to the web client only. Rows 18, 31 and 32 are satisfied — a user can reach every
    behaviour — but the mobile client does not yet show them.
-5. **The superseded care data is still in production.** The purge is written, proven
-   against a real database and reachable from Actions, but it is deliberately
-   dispatch-only: no push can start it. It needs one manual run — see the next action.
+5. **Twelve accounts and households survive the purge, not one.** The care data is
+   gone, but every account was kept because keeping the user is what was asked for.
+   Eleven of them are almost certainly smoke-test registrations. Narrowing that needs
+   the owner to say which account is theirs.
 
 ## Next exact action
 
-Purge the superseded care data, then the synthetic demo seed.
+The synthetic demo seed, then the mobile surfaces.
 
-- **The purge** is confirmed by committing `deploy/purge-care-data.request` to `main`
-  with the line `ERASE-CARE-DATA` in it, or by dispatching the workflow and typing the
-  same. It never runs on its own, and the push trigger is narrowed to that one path.
-  The second route exists because an agent session's token cannot dispatch
-  (`workflow_dispatch` answers 403) and the owner asked not to be the one clicking.
-  Remove the request file once it has run.
-- Deployment itself is armed and proven; a merge to `main` now deploys by itself.
+- Deployment is armed and proven: a merge to `main` deploys by itself, and the care
+  data purge has run. The purge stays available for a future reset — commit
+  `deploy/purge-care-data.request` to `main` with the line `ERASE-CARE-DATA` in it, or
+  dispatch the workflow and type the same, then remove the file again.
 - **Synthetic demo seed** (row 35) is the last non-device, non-mobile item. It should
   reuse the shape the browser checks already seed: a household, two people, a scheduled
   and an as-needed medication, three packages, three weeks of mixed outcomes.
@@ -356,3 +354,29 @@ When the owner says **"continue" / "kaldığın yerden devam et"**:
   - That pin is trust-on-first-use, read by a runner. The one comparison it cannot make
     for itself is recorded in the file: `ssh-keygen -lf
     /etc/ssh/ssh_host_ed25519_key.pub` on the server.
+- 2026-10-03: **The superseded care data is gone from production.** Purge run
+  `37128421790`, confirmed by `deploy/purge-care-data.request` on `main`, with the
+  before/after table from the SQL itself as the evidence:
+
+  | table | before | after | |
+  | --- | --- | --- | --- |
+  | accounts | 12 | 12 | kept |
+  | households | 12 | 12 | kept |
+  | memberships | 12 | 12 | kept |
+  | people | 11 | 0 | purged |
+  | medications | 12 | 0 | purged |
+  | packages | 33 | 0 | purged |
+  | ledger entries | 61 | 0 | purged |
+  | plans | 16 | 0 | purged |
+  | administrations | 12 | 0 | purged |
+
+  The backup `.deploy/backups/pre-purge-20261003T140544Z.dump` was dumped and read
+  back before anything was removed, and is the only way back. `api` and `web` were
+  stopped for the few seconds the locks were held and came back; `database` stayed up.
+  Afterwards the site answered `200` and the anonymous session read `401`.
+  - **Twelve accounts and twelve households survive, not one.** The owner asked for
+    the user to be kept, so the purge kept every account — but eleven of these are
+    almost certainly synthetic households left by smoke-test runs, each of which
+    registers one. Removing them is a narrower, different deletion than the one that
+    was asked for, so it was not done. It needs the owner to say which account is
+    theirs.

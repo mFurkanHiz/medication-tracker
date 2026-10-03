@@ -1,0 +1,28 @@
+REMOVE-SMOKE-ACCOUNTS
+
+Requested 2026-10-03 by the owner. The care-data purge earlier the same day kept every
+account, because keeping the user is what was asked for. That left twelve accounts and
+twelve households in production, of which one belongs to the owner and the rest are
+leftovers from smoke-test runs — deploy/smoke-test.ps1 registers one synthetic
+household every time it runs.
+
+What goes: accounts whose address matches synthetic-smoke-<guid>@example.invalid,
+their sessions, their memberships, their subscriptions and entitlements, and the
+households left with no other member.
+
+What stays: every other account, and any household that still has a member who is
+staying — including one shared with a synthetic account.
+
+The owner's address is deliberately not named here. This repository is public, and the
+pattern is enough: .invalid is reserved by RFC 2606 so that it can never belong to
+anyone, which is a stronger guarantee than a name comparison would be.
+
+Proven against a real PostgreSQL database seeded to look like production — thirteen
+accounts including a synthetic one sharing the owner's household — where it removed
+twelve accounts, eleven households, twelve memberships and eleven sessions, left the
+owner and their household intact, and refused in all three failure cases: every
+account synthetic, a matched household still owning care data, and the wrong database
+name.
+
+This file is the confirmation. Remove it once the cleanup has run; the run that sees it
+gone reports that there is nothing to do and passes.

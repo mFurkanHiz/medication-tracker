@@ -54,9 +54,24 @@ A merge to `main` deploys by itself once the owner has armed it. CI's `deploy` j
 runs after both test jobs pass, downloads the image artifact it just built, verifies
 its SHA-256 on both sides of the transfer, ships the deploy script and
 `compose.production.yml` from the same commit, and runs the script over SSH. It is
-skipped entirely unless the repository variable `DEPLOY_ENABLED` is `true`, so the
-automation stays inert until it is configured. `docs/preflight.md` section 6a lists
-the two secrets and three variables to set, in Turkish.
+skipped entirely unless `DEPLOY_ENABLED` is `true`, so the automation stays inert
+until it is configured. `docs/secrets.md` says what each setting is and
+`docs/preflight.md` section 6a is the one-off setup, both in Turkish.
+
+Only `VPS_SSH_KEY` and `VPS_KNOWN_HOSTS` have to be secrets. `DEPLOY_ENABLED`,
+`VPS_HOST`, `VPS_USER` and `PUBLIC_URL` are read from either context, variable
+first, because an address and an on/off switch are not credentials and storing
+them as secrets only masks them in the logs. The arming switch is read in a
+separate `gate` job rather than the deploy job's `if:`, because a job-level
+condition cannot see the `secrets` context at all: a switch kept as a secret
+would read as empty there and deployment would silently never run. A step can see
+both, so `gate` reads either and publishes a plain `yes`/`no`.
+
+`VPS_KNOWN_HOSTS` is normalised before use. A full `known_hosts` line, the key on
+its own, and a line whose host field was masked to `***` all produce the same
+file, because whoever reads the key off a log has no host field to copy when the
+address is a secret. An unreadable value fails with its own message rather than
+inside ssh's refusal.
 
 The same job can be run on demand — Actions → CI → *Run workflow* on `main` — so
 deploying the commit that is already on `main` does not need an empty commit to push.

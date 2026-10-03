@@ -1,0 +1,99 @@
+name: Purge care data
+
+# Deliberately not part of CI and never automatic. This erases every care record in
+# production, so it runs only when somebody asks for it by hand and types the
+# confirmation. It lives in its own file so no change to the test pipeline can ever
+# start it by accident.
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: >-
+          Type ERASE-CARE-DATA to confirm. This erases every person, medication,
+          package, plan, dose and count in production. Accounts and households survive,
+          so signing in still works. A verified backup is taken first, and it is the
+          only way back.
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  purge:
+    name: Purge the superseded care data
+    runs-on: ubuntu-latest
+
+    # Never two at once, and never cancelled part-way through.
+    concurrency:
+      group: production-deploy
+      cancel-in-progress: false
+
+    environment: production
+
+    steps:
+      - name: Check the confirmation
+        env:
+          CONFIRM: ${{ inputs.confirm }}
+        run: |
+          set -euo pipefail
+          test "$CONFIRM" = "ERASE-CARE-DATA" || {
+            echo "Refusing: the confirmation must be exactly ERASE-CARE-DATA." >&2
+            exit 1
+          }
+
+      - uses: actions/checkout@v7
+
+      - name: Authorise the SSH session
+        env:
+          DEPLOY_KEY: ${{ secrets.VPS_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          test -n "$DEPLOY_KEY" || { echo 'Secret VPS_SSH_KEY is not set.' >&2; exit 1; }
+          test -n "$KNOWN_HOSTS" || { echo 'Secret VPS_KNOWN_HOSTS is not set.' >&2; exit 1; }
+          mkdir -m 700 -p ~/.ssh
+          printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/id_deploy
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/id_deploy ~/.ssh/known_hosts
+
+      - name: Purge, behind a verified backup
+        env:
+          VPS_HOST: ${{ vars.VPS_HOST }}
+          VPS_USER: ${{ vars.VPS_USER }}
+        run: |
+          set -euo pipefail
+          test -n "$VPS_HOST" || { echo 'Variable VPS_HOST is not set.' >&2; exit 1; }
+          target="${VPS_USER:-root}@${VPS_HOST}"
+          ssh_opts=(-i "$HOME/.ssh/id_deploy" -o IdentitiesOnly=yes
+                    -o StrictHostKeyChecking=yes
+                    -o UserKnownHostsFile="$HOME/.ssh/known_hosts"
+                    -o BatchMode=yes -o ConnectTimeout=20)
+
+          # Ship the script and its SQL from this commit, so what runs is what was
+          # reviewed rather than whatever happens to be on the host.
+          ssh "${ssh_opts[@]}" "$target" 'install -d -m 755 /opt/medication-tracker/deploy'
+          scp "${ssh_opts[@]}" \
+            deploy/purge-care-data.sh deploy/purge-care-data.sql \
+            "$target:/opt/medication-tracker/deploy/"
+
+          ssh "${ssh_opts[@]}" "$target" \
+            'bash /opt/medication-tracker/deploy/purge-care-data.sh --yes-erase-care-data'
+
+      - name: Prove the site still answers
+        env:
+          PUBLIC_URL: ${{ vars.PUBLIC_URL || 'https://medicationtracker.rapidconfigs.com' }}
+        run: |
+          set -euo pipefail
+          landing="$(curl --silent --show-error --location --max-time 30 \
+            --output /dev/null --write-out '%{http_code}' "$PUBLIC_URL/")"
+          session="$(curl --silent --show-error --max-time 30 \
+            --output /dev/null --write-out '%{http_code}' "$PUBLIC_URL/api/auth/session")"
+          echo "GET / -> $landing"
+          echo "GET /api/auth/session -> $session"
+          test "$landing" = "200" || { echo 'The site did not serve.' >&2; exit 1; }
+          test "$session" = "401" || { echo "Expected 401, got $session." >&2; exit 1; }
+
+      - name: Forget the key
+        if: always()
+        run: shred --remove --force ~/.ssh/id_deploy 2>/dev/null || rm -f ~/.ssh/id_deploy

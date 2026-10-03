@@ -19,11 +19,18 @@ Hepsinin bulunduğu sayfa:
 | Ad | Nedir | Nasıl üretilir |
 | --- | --- | --- |
 | `VPS_SSH_KEY` | Sunucuya bağlanmak için kullanılan **özel** SSH anahtarı. GitHub Actions bununla dağıtım yapar. | `ssh-keygen -t ed25519 -C "claude" -f %USERPROFILE%\claude-mt -N ""` komutunun ürettiği **uzantısız** dosyanın içeriği (`-----BEGIN` satırından `-----END` satırına kadar tamamı). |
-| `VPS_KNOWN_HOSTS` | Sunucunun **açık** host anahtarı. Bağlanılan makinenin gerçekten sizin sunucunuz olduğunu doğrular; araya giren bir makineye bağlanmayı imkânsız kılar. | Actions → **Show VPS host key** iş akışını çalıştırın, çıktıdaki bloğu kopyalayın. (Windows'un kendi `ssh-keyscan`'i çoğu zaman sunucunun şifreleme yöntemini tanımadığı için hata verir; bu iş akışı o yüzden var.) |
+| `VPS_KNOWN_HOSTS` | *(isteğe bağlı)* Sunucunun **açık** host anahtarı. Bağlanılan makinenin gerçekten sizin sunucunuz olduğunu doğrular; araya giren bir makineye bağlanmayı imkânsız kılar. | Actions → **Show VPS host key** iş akışını çalıştırın, çıktıdaki bloğu kopyalayın. (Windows'un kendi `ssh-keyscan`'i çoğu zaman sunucunun şifreleme yöntemini tanımadığı için hata verir; bu iş akışı o yüzden var.) |
 
 Host anahtarı aslında bir sır değil — her SSH istemcisi ilk bağlantıda onu gösterir.
-Burada Secret olarak tutulması gizlilik için değil, kimsenin kazara
-değiştirememesi için.
+Bu yüzden `VPS_KNOWN_HOSTS` zorunlu değil: aynı anahtar depoda
+`deploy/known_hosts` dosyasında sabitli. Sır kurulmuşsa o öne geçer, yoksa dosya
+kullanılır. İkisi de yoksa dağıtım **ağa güvenmez**: sunucunun o an sunduğu
+anahtarı kayda yazar ve durur, hiçbir şey dağıtmadan. Mantığın tamamı
+`deploy/authorise-ssh.sh` içinde ve iki iş akışı da aynı betiği çağırır.
+
+Sunucuyu yeniden kurar ya da taşırsanız anahtar değişir ve dağıtım durur — bu bir
+arıza değil, tam olarak o kontrolün işini yapmasıdır. O zaman kayıttaki yeni
+anahtarı `deploy/known_hosts`'a yazın (ya da sırra koyun).
 
 ## Sır olmayan ayarlar (Secret da olur, Variable da)
 

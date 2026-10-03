@@ -171,29 +171,31 @@ ssh-keygen -t ed25519 -C "github-actions-deploy" -f medication-tracker-deploy -N
 ssh-copy-id -i medication-tracker-deploy.pub root@31.97.53.159
 ```
 
-3. Sunucunun host anahtarını alın (sahte bir sunucuya bağlanmayı imkânsız kılar):
-   Actions → **Show VPS host key** → *Run workflow*. Windows'un kendi
-   `ssh-keyscan`'i çoğu zaman güncel bir OpenSSH sunucusunun anahtar değişim
-   yöntemini tanımadığı için hata verir; bu iş akışı tam olarak o yüzden var ve
-   sunucuya hiç bağlanmadığı, hiçbir sır kullanmadığı için güvenlidir.
-
-4. GitHub → **Settings → Secrets and variables → Actions**:
+3. GitHub → **Settings → Secrets and variables → Actions**:
 
 | Ad | Secret mi Variable mı | Değer |
 | --- | --- | --- |
 | `VPS_SSH_KEY` | **Secret** (zorunlu) | `medication-tracker-deploy` dosyasının tamamı (özel anahtar) |
-| `VPS_KNOWN_HOSTS` | **Secret** (zorunlu) | 3. adımın çıktısındaki blok |
 | `VPS_HOST` | ikisi de olur | `31.97.53.159` |
 | `VPS_USER` | ikisi de olur | `root` |
 | `DEPLOY_ENABLED` | ikisi de olur | `true` |
+| `VPS_KNOWN_HOSTS` | **Secret**, isteğe bağlı | Sunucunun açık host anahtarı. Boş bırakılabilir: aynı anahtar depoda `deploy/known_hosts` içinde sabitli. |
 
-Son üçü sır değildir — bir adres, bir kullanıcı adı ve bir açma/kapama anahtarı.
-İş akışları ikisini de okur, önce Variable'a bakar. Variable olarak koyarsanız
-kayıtlar okunabilir kalır; Secret olarak koyarsanız GitHub o değerleri bütün
-kayıtlarda `***` ile maskeler — çalışmayı engellemez, yalnızca kayıtları okumayı
-zorlaştırır.
+Yalnızca ilk satır gerçekten sırdır. Host anahtarı gizli bir veri değil — her SSH
+istemcisi ilk bağlantıda onu gösterir — ve depoda sabitli olduğu için onu
+yapıştırmanız gerekmiyor. Sabitli bir anahtar da yoksa dağıtım **ağa güvenmez**:
+sunucunun sunduğu anahtarı kayda yazıp durur, hiçbir şey dağıtmadan. Anahtarı
+yeniden okumak isterseniz: Actions → **Show VPS host key** → *Run workflow*.
+(Windows'un kendi `ssh-keyscan`'i çoğu zaman güncel bir OpenSSH sunucusunun
+anahtar değişim yöntemini tanımadığı için hata verir; o iş akışı bu yüzden var.)
 
-5. İsteğe bağlı ama önerilir: **Settings → Environments → production** altına
+`VPS_HOST`, `VPS_USER` ve `DEPLOY_ENABLED` sır değildir — bir adres, bir kullanıcı
+adı ve bir açma/kapama anahtarı. İş akışları her iki yeri de okur, önce Variable'a
+bakar. Variable olarak koyarsanız kayıtlar okunabilir kalır; Secret olarak
+koyarsanız GitHub o değerleri bütün kayıtlarda `***` ile maskeler — çalışmayı
+engellemez, yalnızca kayıtları okumayı zorlaştırır.
+
+4. İsteğe bağlı ama önerilir: **Settings → Environments → production** altına
    kendinizi *required reviewer* olarak ekleyin. O zaman her dağıtım sizin
    onayınızı bekler — kabul sözleşmesinin 39. satırındaki preflight kapısı
    otomasyona rağmen korunmuş olur.

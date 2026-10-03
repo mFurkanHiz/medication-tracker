@@ -86,6 +86,39 @@ containers that are **not** ours before it starts and compares them at the end: 
 one of them is no longer running the deploy fails and names it. Another project
 starting a new container is not treated as damage.
 
+## Purging the superseded care data
+
+`deploy/purge-care-data.sh --yes-erase-care-data` erases every care record the
+household entered — people, the medication catalog, packages, the whole inventory
+ledger, plans and their versions, recorded doses with their allocations and
+corrections, counts, refill settings and sync receipts — and keeps what lets somebody
+sign in: accounts, sessions, households, memberships and subscriptions.
+
+It exists because the rows that migrated forward describe the pre-rebuild product the
+owner rejected, and reading them beside package-first data is misleading. It is a
+deliberate one-off, not a feature, and the only way back is the backup it takes first.
+
+How it protects the data it is not erasing:
+
+- The SQL refuses to run unless `current_database()` is `medication_tracker`.
+- A backup is dumped **and its table of contents read back** before anything is
+  removed, inside the container against a real file.
+- The whole purge is one transaction, and it refuses to commit if any account would be
+  left without a household.
+- `TRUNCATE` names every table explicitly and deliberately omits `CASCADE`: a future
+  table referencing one of these fails the statement by name rather than being
+  silently erased.
+- api and web are stopped for the few seconds the exclusive locks are held, then
+  brought back. A failed purge still brings the site back up and says the data is
+  unchanged.
+- Only this project's containers are touched, and the outsider check from the deploy
+  runs here too.
+
+Rehearsed with Docker mocked across three scenarios — success, a failing transaction,
+and an unrelated container disappearing — and the SQL itself was run against a real
+PostgreSQL database seeded through the API: every care table emptied, accounts and
+households intact, and the application then signed in and created new data normally.
+
 ### Manual fallback
 
 Download the image artifact, verify its SHA-256 checksum, transfer it to the VPS, and

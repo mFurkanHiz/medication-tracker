@@ -151,7 +151,7 @@ Dürüst liste. Hiçbiri dağıtımı engellemiyor, ama bilerek onaylayın.
 `main`'e birleştirilince dağıtım artık CI'ın içindeki `deploy` işi tarafından
 yapılır. İş üç kapıdan geçmeden çalışmaz: her iki test işi yeşil olacak, yayınlanabilir
 bir `main` derlemesi olacak (birleştirme ya da elle tetikleme), ve **siz**
-`DEPLOY_ENABLED` değişkenini kurmuş olacaksınız. O değişken yokken iş atlanır, yani
+`DEPLOY_ENABLED`'ı `true` yapmış olacaksınız. O kurulmadan iş atlanır, yani
 birleştirmeler asla kurulmamış bir dağıtım yüzünden kırmızı görünmez.
 
 Kurulumun **tamamı bundan ibaret**. Sonrasını ben yapıyorum: dağıtımı
@@ -167,22 +167,31 @@ oluşturan bir araç yok. Anahtarın iki yarısı da erişemediğim yerlere gidi
 # 1. Yalnızca dağıtım için bir anahtar çifti üretin (kendi makinenizde)
 ssh-keygen -t ed25519 -C "github-actions-deploy" -f medication-tracker-deploy -N ""
 
-# 2. Açık anahtarı VPS'e kurun
+# 2. Açık anahtarı VPS'e kurun — Hostinger panelinden de eklenebilir
 ssh-copy-id -i medication-tracker-deploy.pub root@31.97.53.159
-
-# 3. Sunucunun host anahtarını alın (sahte sunucuya bağlanmayı imkânsız kılar)
-ssh-keyscan -t ed25519 31.97.53.159
 ```
+
+3. Sunucunun host anahtarını alın (sahte bir sunucuya bağlanmayı imkânsız kılar):
+   Actions → **Show VPS host key** → *Run workflow*. Windows'un kendi
+   `ssh-keyscan`'i çoğu zaman güncel bir OpenSSH sunucusunun anahtar değişim
+   yöntemini tanımadığı için hata verir; bu iş akışı tam olarak o yüzden var ve
+   sunucuya hiç bağlanmadığı, hiçbir sır kullanmadığı için güvenlidir.
 
 4. GitHub → **Settings → Secrets and variables → Actions**:
 
-| Tür | Ad | Değer |
+| Ad | Secret mi Variable mı | Değer |
 | --- | --- | --- |
-| Secret | `VPS_SSH_KEY` | `medication-tracker-deploy` dosyasının tamamı (özel anahtar) |
-| Secret | `VPS_KNOWN_HOSTS` | 3. adımdaki `ssh-keyscan` çıktısı |
-| Variable | `VPS_HOST` | `31.97.53.159` |
-| Variable | `VPS_USER` | `root` |
-| Variable | `DEPLOY_ENABLED` | `true` |
+| `VPS_SSH_KEY` | **Secret** (zorunlu) | `medication-tracker-deploy` dosyasının tamamı (özel anahtar) |
+| `VPS_KNOWN_HOSTS` | **Secret** (zorunlu) | 3. adımın çıktısındaki blok |
+| `VPS_HOST` | ikisi de olur | `31.97.53.159` |
+| `VPS_USER` | ikisi de olur | `root` |
+| `DEPLOY_ENABLED` | ikisi de olur | `true` |
+
+Son üçü sır değildir — bir adres, bir kullanıcı adı ve bir açma/kapama anahtarı.
+İş akışları ikisini de okur, önce Variable'a bakar. Variable olarak koyarsanız
+kayıtlar okunabilir kalır; Secret olarak koyarsanız GitHub o değerleri bütün
+kayıtlarda `***` ile maskeler — çalışmayı engellemez, yalnızca kayıtları okumayı
+zorlaştırır.
 
 5. İsteğe bağlı ama önerilir: **Settings → Environments → production** altına
    kendinizi *required reviewer* olarak ekleyin. O zaman her dağıtım sizin

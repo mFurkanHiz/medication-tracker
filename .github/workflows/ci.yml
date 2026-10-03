@@ -146,19 +146,53 @@ jobs:
           retention-days: 2
           if-no-files-found: error
 
-  deploy:
-    name: Deploy to the VPS
-    needs: [api, clients]
-
-    # Three gates, all of which must hold. Both test jobs passed, this is a releasable
-    # main build rather than a pull request, and the owner has armed deployment by
-    # setting the DEPLOY_ENABLED repository variable to "true". Until that variable
-    # exists the job is skipped, so a merge is never red for a deployment nobody
-    # configured.
+  # DEPLOY_ENABLED is the owner's arming switch, and it has to be read in a job of its
+  # own. A job-level `if:` cannot see the `secrets` context at all, so a switch stored
+  # as a secret would read as empty there and deployment would never run — with no
+  # error to explain why. A step can see both contexts, so this job reads either and
+  # publishes a plain yes/no the deploy job can gate on.
+  #
+  # The answer is deliberately "yes"/"no" rather than the switch's own value: if the
+  # switch lives in a secret, GitHub masks its value everywhere in the logs, and an
+  # output of "true" would print as "***".
+  gate:
+    name: Check whether deployment is armed
     if: >-
       (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
       && github.ref == 'refs/heads/main'
-      && vars.DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    outputs:
+      armed: ${{ steps.check.outputs.armed }}
+    steps:
+      - name: Read the arming switch
+        id: check
+        env:
+          FROM_VARIABLE: ${{ vars.DEPLOY_ENABLED }}
+          FROM_SECRET: ${{ secrets.DEPLOY_ENABLED }}
+        run: |
+          set -euo pipefail
+          # A variable wins over a secret, so the readable one is authoritative when
+          # both exist. Neither being set means deployment was never configured.
+          switch="${FROM_VARIABLE:-${FROM_SECRET:-}}"
+          if [ "$switch" = "true" ]; then
+            echo 'armed=yes' >> "$GITHUB_OUTPUT"
+            echo 'Deployment is armed.'
+          else
+            echo 'armed=no' >> "$GITHUB_OUTPUT"
+            echo 'DEPLOY_ENABLED is not set to true, so the deploy job will be skipped.'
+            echo 'Set it as a repository variable (readable) or a secret (masked) under'
+            echo 'Settings -> Secrets and variables -> Actions.'
+          fi
+
+  deploy:
+    name: Deploy to the VPS
+    needs: [api, clients, gate]
+
+    # Both test jobs passed, this is a releasable main build rather than a pull
+    # request, and the gate job above found the arming switch set to "true". Until it
+    # is, the job is skipped rather than failing, so a merge is never red for a
+    # deployment nobody configured.
+    if: needs.gate.outputs.armed == 'yes'
     runs-on: ubuntu-latest
 
     # One deploy at a time, and never cancelled half-way: two overlapping runs would
@@ -183,22 +217,52 @@ jobs:
         env:
           DEPLOY_KEY: ${{ secrets.VPS_SSH_KEY }}
           KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+          VPS_HOST: ${{ vars.VPS_HOST || secrets.VPS_HOST }}
         run: |
           set -euo pipefail
           test -n "$DEPLOY_KEY" || { echo 'Secret VPS_SSH_KEY is not set.' >&2; exit 1; }
           test -n "$KNOWN_HOSTS" || { echo 'Secret VPS_KNOWN_HOSTS is not set.' >&2; exit 1; }
+          test -n "$VPS_HOST" || { echo 'VPS_HOST is not set, as a variable or a secret.' >&2; exit 1; }
           mkdir -m 700 -p ~/.ssh
           printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/id_deploy
-          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+
+          # A known_hosts line is "<host> <type> <key>". Accept the key on its own as
+          # well, and accept a leading "***": if the address was stored as a secret
+          # rather than a variable, GitHub masks it in the logs, so whoever read the
+          # key off a log has no host field to copy. The host we are about to connect
+          # to is the one that belongs in front of the key either way.
+          printf '%s\n' "$KNOWN_HOSTS" | while IFS= read -r line; do
+            line="${line%$'\r'}"
+            case "$line" in
+              '' | '#'*) continue ;;
+              ssh-* | ecdsa-* | sk-*) printf '%s %s\n' "$VPS_HOST" "$line" ;;
+              '***'[[:space:]]*)
+                rest="${line#'***'}"
+                printf '%s %s\n' "$VPS_HOST" "${rest# }"
+                ;;
+              *) printf '%s\n' "$line" ;;
+            esac
+          done > ~/.ssh/known_hosts
+
           chmod 600 ~/.ssh/id_deploy ~/.ssh/known_hosts
+
+          # Fail here, with a readable reason, rather than inside ssh's own refusal.
+          test -s ~/.ssh/known_hosts || {
+            echo 'VPS_KNOWN_HOSTS held no host key.' >&2
+            exit 1
+          }
+          ssh-keygen -lf ~/.ssh/known_hosts >/dev/null || {
+            echo 'VPS_KNOWN_HOSTS is not a readable host key. Run the "Show VPS host key" workflow and paste its output.' >&2
+            exit 1
+          }
 
       - name: Transfer the release, verifying it survived the wire
         env:
-          VPS_HOST: ${{ vars.VPS_HOST }}
-          VPS_USER: ${{ vars.VPS_USER }}
+          VPS_HOST: ${{ vars.VPS_HOST || secrets.VPS_HOST }}
+          VPS_USER: ${{ vars.VPS_USER || secrets.VPS_USER }}
         run: |
           set -euo pipefail
-          test -n "$VPS_HOST" || { echo 'Variable VPS_HOST is not set.' >&2; exit 1; }
+          test -n "$VPS_HOST" || { echo 'VPS_HOST is not set, as a variable or a secret.' >&2; exit 1; }
           target="${VPS_USER:-root}@${VPS_HOST}"
 
           # The host key comes from a secret and is never accepted on trust: an
@@ -238,8 +302,8 @@ jobs:
 
       - name: Run the deployment
         env:
-          VPS_HOST: ${{ vars.VPS_HOST }}
-          VPS_USER: ${{ vars.VPS_USER }}
+          VPS_HOST: ${{ vars.VPS_HOST || secrets.VPS_HOST }}
+          VPS_USER: ${{ vars.VPS_USER || secrets.VPS_USER }}
         run: |
           set -euo pipefail
           target="${VPS_USER:-root}@${VPS_HOST}"
@@ -258,7 +322,7 @@ jobs:
       # reader of this log cannot otherwise check. It writes nothing.
       - name: Prove the public site answers
         env:
-          PUBLIC_URL: ${{ vars.PUBLIC_URL || 'https://medicationtracker.rapidconfigs.com' }}
+          PUBLIC_URL: ${{ vars.PUBLIC_URL || secrets.PUBLIC_URL || 'https://medicationtracker.rapidconfigs.com' }}
         run: |
           set -euo pipefail
 
@@ -280,7 +344,7 @@ jobs:
       - name: Run the public smoke test
         if: inputs.run_smoke_test
         env:
-          PUBLIC_URL: ${{ vars.PUBLIC_URL || 'https://medicationtracker.rapidconfigs.com' }}
+          PUBLIC_URL: ${{ vars.PUBLIC_URL || secrets.PUBLIC_URL || 'https://medicationtracker.rapidconfigs.com' }}
         shell: pwsh
         run: ./deploy/smoke-test.ps1 -BaseUrl $env:PUBLIC_URL
 

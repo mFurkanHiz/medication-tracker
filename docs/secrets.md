@@ -14,14 +14,18 @@ Hepsinin bulunduğu sayfa:
 
 ---
 
-## Secrets (şifreli, geri okunamaz)
+## Gerçekten sır olanlar (Secret olmak zorunda)
 
 | Ad | Nedir | Nasıl üretilir |
 | --- | --- | --- |
 | `VPS_SSH_KEY` | Sunucuya bağlanmak için kullanılan **özel** SSH anahtarı. GitHub Actions bununla dağıtım yapar. | `ssh-keygen -t ed25519 -C "claude" -f %USERPROFILE%\claude-mt -N ""` komutunun ürettiği **uzantısız** dosyanın içeriği (`-----BEGIN` satırından `-----END` satırına kadar tamamı). |
 | `VPS_KNOWN_HOSTS` | Sunucunun **açık** host anahtarı. Bağlanılan makinenin gerçekten sizin sunucunuz olduğunu doğrular; araya giren bir makineye bağlanmayı imkânsız kılar. | Actions → **Show VPS host key** iş akışını çalıştırın, çıktıdaki bloğu kopyalayın. (Windows'un kendi `ssh-keyscan`'i çoğu zaman sunucunun şifreleme yöntemini tanımadığı için hata verir; bu iş akışı o yüzden var.) |
 
-## Variables (düz metin, herkes görebilir — sır değildir)
+Host anahtarı aslında bir sır değil — her SSH istemcisi ilk bağlantıda onu gösterir.
+Burada Secret olarak tutulması gizlilik için değil, kimsenin kazara
+değiştirememesi için.
+
+## Sır olmayan ayarlar (Secret da olur, Variable da)
 
 | Ad | Değer | Nedir |
 | --- | --- | --- |
@@ -29,6 +33,19 @@ Hepsinin bulunduğu sayfa:
 | `VPS_USER` | `root` | Bağlanılacak kullanıcı. |
 | `DEPLOY_ENABLED` | `true` | Dağıtımın açma/kapama anahtarı. `true` değilse dağıtım işi atlanır — `main`'e birleştirme yapılsa bile sunucuya hiçbir şey gitmez. Dağıtımı geçici olarak durdurmak isterseniz bunu `false` yapmak yeterlidir. |
 | `PUBLIC_URL` | *(isteğe bağlı)* | Dağıtım sonrası kontrol edilen adres. Boşsa `https://medicationtracker.rapidconfigs.com` kullanılır. |
+
+Bu üçü ve `PUBLIC_URL` için iş akışları **her iki yeri de** okur ve önce Variable'a
+bakar. Yani hangisine koyduğunuz çalışmayı etkilemez. Tek fark okunabilirlik:
+bir değer Secret'ta durduğunda GitHub onu bütün iş kayıtlarında `***` ile
+maskeler. `VPS_USER` = `root` bir sır olarak durursa kayıtlarda geçen her "root"
+kelimesi maskelenir; `DEPLOY_ENABLED` = `true` bir sır olarak durursa her "true"
+maskelenir. Hiçbir şeyi bozmaz, yalnızca kayıtları okumayı zorlaştırır.
+
+`DEPLOY_ENABLED`'ın bir iş kapısı olarak okunabilmesi için ayrı bir `gate` işi
+var: GitHub, bir işin `if:` koşulunda `secrets` bağlamını hiç göstermez, bu yüzden
+sır olarak duran bir anahtar orada boş okunur ve dağıtım hiç çalışmaz — hem de
+sebebini söyleyen bir hata olmadan. `gate` işi değeri bir adımın içinde okur
+(adımlar iki bağlamı da görür) ve dağıtım işine düz bir `yes`/`no` verir.
 
 ---
 
@@ -77,3 +94,11 @@ kalsa bile artık hiçbir kapıyı açmaz.
 | **CI** | Testleri koşturur; `main`'de ayrıca imajı derleyip sunucuya dağıtır. | `main`'e birleştirmede kendiliğinden; ya da Actions → CI → *Run workflow*. |
 | **Purge care data** | Üretimdeki tüm bakım verisini siler (hesaplar kalır). Önce yedek alır. | Yalnızca elle: Actions → Purge care data → *Run workflow* → `ERASE-CARE-DATA` yazın. |
 | **Show VPS host key** | Sunucunun açık host anahtarını yazdırır. | Yalnızca elle. Sunucuya giriş yapmaz, hiçbir sır kullanmaz. |
+
+`VPS_HOST`'u Secret olarak tuttuysanız host anahtarı satırının başındaki adres
+kayıtta `***` olarak görünür. Bu bir arıza değil — kaydın değeri saklamasıdır,
+anahtarın kendisi sağlamdır. Bloğu olduğu gibi kopyalayın: dağıtım, bir
+`known_hosts` satırını adres alanıyla da, yalnız anahtar hâliyle de, `***` ile
+başlamış hâliyle de kabul eder ve bağlanacağı adresi anahtarın önüne kendisi
+yazar. Beş yazım biçimiyle sınanmıştır; okunamaz bir değer ise dağıtımı SSH'in
+kendi reddine bırakmadan, sebebini söyleyerek durdurur.

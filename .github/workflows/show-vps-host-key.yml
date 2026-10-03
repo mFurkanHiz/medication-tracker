@@ -22,11 +22,14 @@ jobs:
     steps:
       - name: Scan
         env:
-          VPS_HOST: ${{ vars.VPS_HOST }}
+          VPS_HOST: ${{ vars.VPS_HOST || secrets.VPS_HOST }}
+          # A comparison, never the value: this only says where the address came from.
+          HOST_FROM_SECRET: ${{ (vars.VPS_HOST == '' && secrets.VPS_HOST != '') && 'yes' || 'no' }}
         run: |
           set -euo pipefail
           test -n "$VPS_HOST" || {
-            echo 'Set the VPS_HOST repository variable first (Settings -> Secrets and variables -> Actions -> Variables).' >&2
+            echo 'Set VPS_HOST first, as a repository variable or a secret' >&2
+            echo '(Settings -> Secrets and variables -> Actions).' >&2
             exit 1
           }
 
@@ -49,5 +52,16 @@ jobs:
           echo
           echo 'Paste it into the repository secret VPS_KNOWN_HOSTS.'
           echo
+          # If VPS_HOST was stored as a secret rather than a variable, GitHub masks the
+          # address everywhere in this log, so the host field above reads "***". That is
+          # this log protecting the value, not a failed scan: the key itself is intact,
+          # and the deploy puts the address back in front of it. Copy it either way.
+          if [ "$HOST_FROM_SECRET" = "yes" ]; then
+            echo 'The address above shows as *** because VPS_HOST is stored as a secret,'
+            echo 'so GitHub hides it in logs. Copy the block as it is — the deploy puts'
+            echo 'the address back in front of the key. Storing VPS_HOST as a variable'
+            echo 'instead makes logs readable; it is an address, not a credential.'
+            echo
+          fi
           echo 'Fingerprint, so you can compare it against what your own SSH client shows:'
           printf '%s\n' "$keys" | ssh-keygen -lf -

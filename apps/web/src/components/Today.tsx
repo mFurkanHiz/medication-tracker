@@ -159,14 +159,25 @@ function DoseRow({ dose, workspace, busy, onTaken, onSkipped, onDetails }: {
 
   return (
     <Card as="li" className="flex flex-wrap items-center gap-4">
+      {/* An as-needed dose always reads "Gerektiğinde" here, even when it carries a
+          preferred part of the day. The big label is what the person reads first, and it
+          must not turn a preference into an apparent appointment. The preference goes on
+          the quiet line below, where it reads as the advice it is. */}
       <p className="min-w-20 text-2xl font-bold text-accent-ink" aria-label={t('exactTime')}>
-        {dose.localTime ? dose.localTime.slice(0, 5) : period ? t(period) : t('asNeeded')}
+        {dose.kind === 'AsNeeded'
+          ? t('asNeeded')
+          : dose.localTime
+            ? dose.localTime.slice(0, 5)
+            : period
+              ? t(period)
+              : t('asNeeded')}
       </p>
 
       <div className="min-w-48 flex-1">
         <h3 className="text-lg font-bold">{medication?.name ?? '—'}</h3>
         <p className="text-sm text-ink-muted">
           {person?.name ?? '—'} · {formatQuantity(dose.dose)} {medication ? unitLabel(medication.unit) : ''}
+          {dose.kind === 'AsNeeded' && period ? ` · ${t('preferably')} ${t(period)}` : ''}
           {meal ? ` · ${t(meal)}` : ''}
         </p>
         <div className="mt-1 flex flex-wrap gap-1.5">

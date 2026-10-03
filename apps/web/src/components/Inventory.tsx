@@ -56,6 +56,9 @@ export function Inventory({ household, workspace, onChanged }: {
               household={household}
               medication={medication}
               people={workspace.people}
+              activePlanCount={
+                workspace.plans.filter((plan) => plan.medicationDefinitionId === medication.id).length
+              }
               onEdit={() => setEditing(medication)}
               onAddStock={() => setAddingStockTo(medication)}
               onRefill={() => setRefillFor(medication)}
@@ -131,10 +134,14 @@ export function Inventory({ household, workspace, onChanged }: {
   );
 }
 
-function MedicationRow({ household, medication, people, onEdit, onAddStock, onRefill, onChanged, onError }: {
+function MedicationRow({
+  household, medication, people, activePlanCount, onEdit, onAddStock, onRefill, onChanged, onError,
+}: {
   household: string;
   medication: MedicationDefinition;
   people: Person[];
+  /** How many standing plans archiving would stop. The user is told before, not after. */
+  activePlanCount: number;
   onEdit: () => void;
   onAddStock: () => void;
   onRefill: () => void;
@@ -143,6 +150,8 @@ function MedicationRow({ household, medication, people, onEdit, onAddStock, onRe
 }) {
   const { t } = useLocale();
   const [forecast, setForecast] = useState<Forecast | null>(null);
+  const [confirmingArchive, setConfirmingArchive] = useState(false);
+  const [archiving, setArchiving] = useState(false);
 
   useEffect(() => {
     void api
@@ -215,22 +224,63 @@ function MedicationRow({ household, medication, people, onEdit, onAddStock, onRe
           </p>
         ) : null}
 
+        {/* Archiving used to fire on the first click, from inside the package panel, next
+            to the per-box Lost/Disposed buttons — so it read as "archive this box" while it
+            actually stopped every standing plan for the whole household, irreversibly. It
+            now says what it will do, and names the medication, before it does it. */}
         <div className="mt-3 flex flex-wrap gap-2">
-          <Button
-            variant="danger"
-            onClick={async () => {
-              try {
-                await api.archiveDefinition(household, medication.id);
-                onChanged();
-              } catch (caught) {
-                onError(t(caught instanceof ApiError ? errorKey(caught.code) : 'errorNetwork'));
-              }
-            }}
-          >
+          <Button variant="danger" onClick={() => setConfirmingArchive(true)}>
             {t('archiveMedication')}
           </Button>
         </div>
       </Advanced>
+
+      {confirmingArchive ? (
+        <Dialog
+          open
+          onClose={() => setConfirmingArchive(false)}
+          title={`${t('archiveMedication')} — ${medication.name}`}
+          footer={
+            <>
+              <Button variant="secondary" onClick={() => setConfirmingArchive(false)}>
+                {t('cancel')}
+              </Button>
+              <Button
+                variant="danger"
+                disabled={archiving}
+                onClick={async () => {
+                  setArchiving(true);
+                  try {
+                    await api.archiveDefinition(household, medication.id);
+                    setConfirmingArchive(false);
+                    onChanged();
+                  } catch (caught) {
+                    onError(t(caught instanceof ApiError ? errorKey(caught.code) : 'errorNetwork'));
+                  } finally {
+                    setArchiving(false);
+                  }
+                }}
+              >
+                {t('archiveMedication')}
+              </Button>
+            </>
+          }
+        >
+          <div className="flex flex-col gap-3 text-sm">
+            <p>{t('archiveKeeps')}</p>
+
+            {activePlanCount > 0 ? (
+              <Notice tone="danger">
+                {t('archiveStopsPlansBefore')} {activePlanCount} {t('archiveStopsPlansAfter')}
+              </Notice>
+            ) : (
+              <p className="text-ink-muted">{t('archiveNoPlans')}</p>
+            )}
+
+            <p className="text-ink-muted">{t('archiveReversible')}</p>
+          </div>
+        </Dialog>
+      ) : null}
     </Card>
   );
 }

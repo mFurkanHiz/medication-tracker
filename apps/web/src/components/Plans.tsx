@@ -19,7 +19,9 @@ const WEEKDAYS: { bit: number; key: MessageKey }[] = [
 ];
 
 const DAY_PERIODS = ['Morning', 'Noon', 'Afternoon', 'Evening', 'Night', 'Bedtime'];
-const MEAL_RELATIONS = ['Fasting', 'BeforeFood', 'WithFood', 'AfterFood'];
+// "Aç karnına" and "tok karnına" are the two instructions a Turkish prescription gives
+// most often, and they are opposites, so they lead. The three meal-relative ones follow.
+const MEAL_RELATIONS = ['Fasting', 'FullStomach', 'BeforeFood', 'WithFood', 'AfterFood'];
 
 /**
  * Who takes which medication, and how.
@@ -71,7 +73,14 @@ export function Plans({ household, workspace, onChanged }: {
                   </div>
 
                   <div className="flex flex-wrap items-center gap-1.5">
-                    {period ? <Badge tone="accent">{t(period)}</Badge> : null}
+                    {/* The same named period means an obligation on a scheduled plan and a
+                        preference on an as-needed one. Say which, rather than letting the
+                        badge imply a timetable the household never promised. */}
+                    {period ? (
+                      <Badge tone="accent">
+                        {plan.kind === 'AsNeeded' ? `${t('preferably')} ${t(period)}` : t(period)}
+                      </Badge>
+                    ) : null}
                     {meal ? <Badge>{t(meal)}</Badge> : null}
                     <Badge tone="quiet">v{plan.versionNumber}</Badge>
                   </div>
@@ -194,6 +203,8 @@ function PlanDialog({ household, workspace, plan, onClose, onSaved }: {
         kind === 'Scheduled' && pattern === 'EveryNDays' ? Number.parseInt(intervalDays, 10) : null,
       effectiveFrom: effectiveFrom === '' ? null : effectiveFrom,
       effectiveTo: effectiveTo === '' ? null : effectiveTo,
+      // An exact clock belongs to a schedule. An as-needed dose has no clock — but it can
+      // still prefer a part of the day, and that preference is recorded, not discarded.
       localTime: kind === 'Scheduled' && dayPeriod === '' ? `${localTime}:00` : null,
       dayPeriod: dayPeriod === '' ? null : dayPeriod,
       mealRelation: mealRelation === '' ? null : mealRelation,
@@ -328,11 +339,12 @@ function PlanDialog({ household, workspace, plan, onClose, onSaved }: {
         ) : null}
 
         {/* A dose is pinned to a clock time or to a named part of the day, never both —
-            that is the domain rule. Two side-by-side fields where filling one disabled
-            the other made the choice look like an afterthought, and the "time of day"
-            select's own first option was labelled "Time", the same word as the field
-            next to it. One question, asked once, with the clock appearing only when the
-            answer is a clock. */}
+            that is the domain rule for a SCHEDULE. An as-needed dose has no schedule, but
+            that never meant it has nothing to say about timing: "take it on a full stomach,
+            preferably in the evening" is ordinary medical advice, and the owner was right
+            that the form refused to record it. The domain and the database never forbade
+            it — only this form did. So both kinds ask about timing now; only the scheduled
+            one treats the answer as an obligation. */}
         {kind === 'Scheduled' ? (
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label={t('whenInDay')}>
@@ -365,24 +377,23 @@ function PlanDialog({ household, workspace, plan, onClose, onSaved }: {
             ) : null}
           </div>
         ) : (
-          /* Hiding the timing fields for an as-needed plan is right, but silence reads
-             as a missing feature. Say why they are gone. */
-          <p className="rounded-lg bg-surface-sunken px-3 py-2 text-sm text-ink-muted">
-            {t('asNeededExplainer')}
-          </p>
-        )}
-
-        <Advanced label={t('advancedOptions')}>
           <div className="flex flex-col gap-4">
-            <Field label={t('mealRelation')} optional={t('optional')}>
-              {({ id }) => (
-                <Select id={id} value={mealRelation} onChange={(e) => setMealRelation(e.target.value)}>
-                  <option value="">{t('none')}</option>
-                  {MEAL_RELATIONS.map((relation) => {
-                    const key = enumKey(relation);
+            {/* No clock here on purpose: a dose fixed to a time is a scheduled dose, and
+                that is the other option in the list above. A preference is not a time. */}
+            <Field label={t('preferredTime')} hint={t('preferredTimeHint')} optional={t('optional')}>
+              {({ id, describedBy }) => (
+                <Select
+                  id={id}
+                  aria-describedby={describedBy}
+                  value={dayPeriod}
+                  onChange={(e) => setDayPeriod(e.target.value)}
+                >
+                  <option value="">{t('noTimePreference')}</option>
+                  {DAY_PERIODS.map((period) => {
+                    const key = enumKey(period);
                     return (
-                      <option key={relation} value={relation}>
-                        {key ? t(key) : relation}
+                      <option key={period} value={period}>
+                        {key ? t(key) : period}
                       </option>
                     );
                   })}
@@ -390,6 +401,38 @@ function PlanDialog({ household, workspace, plan, onClose, onSaved }: {
               )}
             </Field>
 
+            <p className="rounded-lg bg-surface-sunken px-3 py-2 text-sm text-ink-muted">
+              {t('asNeededExplainer')}
+            </p>
+          </div>
+        )}
+
+        {/* Food timing is guidance for both kinds, and it is the thing a person most often
+            needs to remember while holding the box, so it does not belong behind a
+            disclosure. It is recorded as written and never shifts a scheduled time. */}
+        <Field label={t('mealRelation')} hint={t('mealRelationHint')} optional={t('optional')}>
+          {({ id, describedBy }) => (
+            <Select
+              id={id}
+              aria-describedby={describedBy}
+              value={mealRelation}
+              onChange={(e) => setMealRelation(e.target.value)}
+            >
+              <option value="">{t('none')}</option>
+              {MEAL_RELATIONS.map((relation) => {
+                const key = enumKey(relation);
+                return (
+                  <option key={relation} value={relation}>
+                    {key ? t(key) : relation}
+                  </option>
+                );
+              })}
+            </Select>
+          )}
+        </Field>
+
+        <Advanced label={t('advancedOptions')}>
+          <div className="flex flex-col gap-4">
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label={t('effectiveFrom')}>
                 {({ id }) => (

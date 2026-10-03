@@ -1,0 +1,23 @@
+KEEP-ONLY-OWNER-ACCOUNT
+
+Requested 2026-10-03 by the owner: "Sıfırdan test edeceğiz."
+
+The care-data purge earlier the same day kept every account, because keeping the user
+is what was asked for. Twelve survived. Removing the smoke test's leftovers took out
+exactly one, which is what showed the other eleven are not smoke accounts at all —
+they are earlier manual registrations. The owner wants production to hold their own
+account and nothing else.
+
+What goes: every account whose normalised address does not hash to the owner's digest,
+with their sessions, memberships, subscriptions and entitlements, and the households
+left with no remaining member.
+
+What stays: the owner's account, and any household they belong to.
+
+The owner is identified by the SHA-256 digest of their upper-cased address rather than
+by the address itself, because this repository is public. A wrong digest cannot cause
+damage: it would match no account, and the first guard stops the transaction before a
+row is deleted.
+
+This file is the confirmation. Remove it once the cleanup has run; the run that sees it
+gone reports that there is nothing to do and passes.

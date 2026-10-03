@@ -1,30 +1,39 @@
 #!/usr/bin/env bash
 #
-# Runs deploy/cleanup-smoke-accounts.sql against production, behind a verified backup.
+# Runs an account-cleanup SQL file against production, behind a verified backup.
 #
-# This removes the accounts the smoke test registers — synthetic-smoke-<guid>@
-# example.invalid — together with the households that have no other member. Nothing
-# else is touched: the pattern cannot match a real address, because .invalid is
-# reserved by RFC 2606 and can never be routed.
+#   bash deploy/cleanup-accounts.sh --yes-remove-accounts deploy/<file>.sql
 #
-#   bash deploy/cleanup-smoke-accounts.sh --yes-remove-smoke-accounts
+# Two files use it today:
+#
+#   cleanup-smoke-accounts.sql   removes the synthetic accounts smoke-test.ps1 leaves
+#                                behind, matched by a pattern that cannot belong to a
+#                                person. Reusable for as long as the smoke test exists.
+#   keep-only-owner-account.sql  a one-off: reduces production to the owner's single
+#                                account, identified by the digest of their address.
+#
+# Both are one transaction with the same guards, so the wrapper is the same for both:
+# back up, verify the backup is readable, run the file, prove the site still serves,
+# prove no other project's containers went down.
 #
 # Unlike the care-data purge, this takes no downtime. That one TRUNCATEs and needs an
-# exclusive lock on every table; this one DELETEs a handful of rows and takes row locks,
-# so api and web keep serving throughout.
+# exclusive lock on every table; these DELETE rows and take row locks, so api and web
+# keep serving throughout.
 set -euo pipefail
 
-if [ "${1:-}" != "--yes-remove-smoke-accounts" ]; then
+sql="${2:-}"
+
+if [ "${1:-}" != "--yes-remove-accounts" ] || [ -z "$sql" ]; then
   cat >&2 <<'USAGE'
-This removes the synthetic accounts left behind by deploy/smoke-test.ps1, and the
-households whose only members are those accounts. A real person's account cannot match:
-the pattern ends in .invalid, which RFC 2606 reserves so it can never belong to anyone.
+This removes accounts from production. Which ones depends on the SQL file you name;
+each file says at the top exactly what it matches and what it protects.
 
 A backup is taken and verified first, and the whole cleanup runs in one transaction
 that refuses to commit if it would empty the system or strand an account outside a
-household. Re-run with the confirmation flag if that is what you want:
+household. Re-run with the confirmation flag and a file:
 
-  bash deploy/cleanup-smoke-accounts.sh --yes-remove-smoke-accounts
+  bash deploy/cleanup-accounts.sh --yes-remove-accounts deploy/cleanup-smoke-accounts.sql
+  bash deploy/cleanup-accounts.sh --yes-remove-accounts deploy/keep-only-owner-account.sql
 USAGE
   exit 2
 fi
@@ -32,8 +41,10 @@ fi
 cd /opt/medication-tracker
 test "$(pwd -P)" = /opt/medication-tracker
 test -f compose.production.yml
-test -f deploy/cleanup-smoke-accounts.sql
+test -f "$sql" || { echo "No such SQL file: $sql" >&2; exit 2; }
 umask 077
+
+label="$(basename "$sql" .sql)"
 
 # Same promise the deploy and the purge make: this host runs other people's projects
 # behind one nginx, and nothing here may disturb them.
@@ -53,7 +64,7 @@ done
 "${compose[@]}" exec -T database pg_isready -U medication_tracker -d medication_tracker
 
 mkdir -p .deploy/backups
-backup=".deploy/backups/pre-cleanup-$(date -u +%Y%m%dT%H%M%SZ).dump"
+backup=".deploy/backups/pre-$label-$(date -u +%Y%m%dT%H%M%SZ).dump"
 database_container="$("${compose[@]}" ps -q database)"
 test -n "$database_container"
 
@@ -68,15 +79,15 @@ echo "Backing up before removing anything..."
   test -s /tmp/pre-cleanup.toc
 '
 docker cp "$database_container:/tmp/pre-cleanup.dump" "$backup"
-docker cp "$database_container:/tmp/pre-cleanup.toc" .deploy/pre-cleanup-contents.txt
+docker cp "$database_container:/tmp/pre-cleanup.toc" ".deploy/pre-$label-contents.txt"
 "${compose[@]}" exec -T database rm -f /tmp/pre-cleanup.dump /tmp/pre-cleanup.toc
 test -s "$backup"
-test -s .deploy/pre-cleanup-contents.txt
+test -s ".deploy/pre-$label-contents.txt"
 echo "Backup written to $backup and its contents verified readable."
 
 cleanup_status=0
 "${compose[@]}" exec -T database psql -v ON_ERROR_STOP=1 -U medication_tracker -d medication_tracker \
-  < deploy/cleanup-smoke-accounts.sql || cleanup_status=$?
+  < "$sql" || cleanup_status=$?
 
 if [ "$cleanup_status" -ne 0 ]; then
   echo "CLEANUP FAILED: the transaction rolled back and the accounts are unchanged." >&2
@@ -97,4 +108,4 @@ if [ -n "$missing" ]; then
   exit 1
 fi
 
-echo "Smoke-test accounts removed. The backup at $backup is the only way back."
+echo "$label complete. The backup at $backup is the only way back."

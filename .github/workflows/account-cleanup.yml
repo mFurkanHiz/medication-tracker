@@ -1,15 +1,20 @@
-name: Clean up smoke-test accounts
+name: Account cleanup
 
-# Removes the accounts deploy/smoke-test.ps1 registers — synthetic-smoke-<guid>@
-# example.invalid — and the households left with no other member. A real address cannot
-# match: RFC 2606 reserves .invalid so that it can never be routed to anyone.
+# Removes accounts from production. Which ones is chosen by the confirmation, and each
+# SQL file says at its top exactly what it matches and what it protects:
 #
-# It is its own workflow rather than a mode of the care-data purge, because a
-# destructive operation should name exactly what it erases. Confirmation works the same
-# way, by either route:
+#   REMOVE-SMOKE-ACCOUNTS      the synthetic accounts deploy/smoke-test.ps1 registers,
+#                              matched by a pattern ending in .invalid — reserved by
+#                              RFC 2606, so it can never belong to a person.
+#   KEEP-ONLY-OWNER-ACCOUNT    a one-off: everything except the owner's own account,
+#                              identified by the digest of their address so that no
+#                              personal address enters this public repository.
 #
-#   1. Dispatch it and type REMOVE-SMOKE-ACCOUNTS into the form.
-#   2. Commit deploy/cleanup-smoke-accounts.request to main containing that same line.
+# Separate from the care-data purge, because a destructive operation should name
+# exactly what it erases. Confirmation works by either route:
+#
+#   1. Dispatch it and type the confirmation into the form.
+#   2. Commit deploy/account-cleanup.request to main containing that same line.
 #
 # The second exists because an agent session's token cannot dispatch a workflow
 # (GitHub answers 403). The push trigger is narrowed to that one path, so no ordinary
@@ -20,23 +25,24 @@ on:
     inputs:
       confirm:
         description: >-
-          Type REMOVE-SMOKE-ACCOUNTS to confirm. This removes the synthetic accounts the
-          smoke test leaves behind, and the households whose only members are those
-          accounts. A verified backup is taken first.
+          REMOVE-SMOKE-ACCOUNTS removes the synthetic accounts the smoke test leaves
+          behind. KEEP-ONLY-OWNER-ACCOUNT removes every account except the owner's.
+          Either way the households left with no remaining member go too, and a
+          verified backup is taken first.
         required: true
         type: string
 
   push:
     branches: [main]
     paths:
-      - 'deploy/cleanup-smoke-accounts.request'
+      - 'deploy/account-cleanup.request'
 
 permissions:
   contents: read
 
 jobs:
   cleanup:
-    name: Remove the smoke-test accounts
+    name: Remove the accounts named by the confirmation
     runs-on: ubuntu-latest
 
     # Shared with the deploy and the purge: these must never run against the same
@@ -56,15 +62,27 @@ jobs:
           CONFIRM: ${{ inputs.confirm }}
         run: |
           set -euo pipefail
-          request=deploy/cleanup-smoke-accounts.request
+          request=deploy/account-cleanup.request
+
+          # Each confirmation names one reviewed SQL file. Nothing else can be run.
+          sql_for() {
+            case "$1" in
+              REMOVE-SMOKE-ACCOUNTS)   echo deploy/cleanup-smoke-accounts.sql ;;
+              KEEP-ONLY-OWNER-ACCOUNT) echo deploy/keep-only-owner-account.sql ;;
+              *)                       echo '' ;;
+            esac
+          }
 
           if [ -n "${CONFIRM:-}" ]; then
-            test "$CONFIRM" = "REMOVE-SMOKE-ACCOUNTS" || {
-              echo 'Refusing: the confirmation must be exactly REMOVE-SMOKE-ACCOUNTS.' >&2
+            sql="$(sql_for "$CONFIRM")"
+            test -n "$sql" || {
+              echo 'Refusing: the confirmation must be exactly REMOVE-SMOKE-ACCOUNTS' >&2
+              echo 'or KEEP-ONLY-OWNER-ACCOUNT.' >&2
               exit 1
             }
-            echo 'Confirmed by the dispatch input.'
+            echo "Confirmed by the dispatch input: $sql"
             echo 'proceed=yes' >> "$GITHUB_OUTPUT"
+            echo "sql=$sql" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -76,16 +94,29 @@ jobs:
             exit 0
           fi
 
-          grep -qx 'REMOVE-SMOKE-ACCOUNTS' "$request" || {
+          sql=''
+          for confirmation in REMOVE-SMOKE-ACCOUNTS KEEP-ONLY-OWNER-ACCOUNT; do
+            if grep -qx "$confirmation" "$request"; then
+              test -z "$sql" || {
+                echo "Refusing: $request names more than one confirmation. One run," >&2
+                echo 'one deletion, so that the log says plainly what happened.' >&2
+                exit 1
+              }
+              sql="$(sql_for "$confirmation")"
+            fi
+          done
+
+          test -n "$sql" || {
             echo "Refusing: $request exists but holds no line that reads exactly" >&2
-            echo 'REMOVE-SMOKE-ACCOUNTS. A file that does not say what it authorises' >&2
-            echo 'authorises nothing.' >&2
+            echo 'REMOVE-SMOKE-ACCOUNTS or KEEP-ONLY-OWNER-ACCOUNT. A file that does' >&2
+            echo 'not say what it authorises authorises nothing.' >&2
             exit 1
           }
 
-          echo "Confirmed by $request in this commit:"
+          echo "Confirmed by $request in this commit, running $sql:"
           sed 's/^/    /' "$request"
           echo 'proceed=yes' >> "$GITHUB_OUTPUT"
+          echo "sql=$sql" >> "$GITHUB_OUTPUT"
 
       - name: Authorise the SSH session
         if: steps.gate.outputs.proceed == 'yes'
@@ -106,6 +137,7 @@ jobs:
         env:
           VPS_HOST: ${{ vars.VPS_HOST || secrets.VPS_HOST }}
           VPS_USER: ${{ vars.VPS_USER || secrets.VPS_USER }}
+          SQL: ${{ steps.gate.outputs.sql }}
         run: |
           set -euo pipefail
           test -n "$VPS_HOST" || { echo 'VPS_HOST is not set, as a variable or a secret.' >&2; exit 1; }
@@ -119,11 +151,11 @@ jobs:
           # reviewed rather than whatever happens to be on the host.
           ssh "${ssh_opts[@]}" "$target" 'install -d -m 755 /opt/medication-tracker/deploy'
           scp "${ssh_opts[@]}" \
-            deploy/cleanup-smoke-accounts.sh deploy/cleanup-smoke-accounts.sql \
+            deploy/cleanup-accounts.sh "$SQL" \
             "$target:/opt/medication-tracker/deploy/"
 
           ssh "${ssh_opts[@]}" "$target" \
-            'bash /opt/medication-tracker/deploy/cleanup-smoke-accounts.sh --yes-remove-smoke-accounts'
+            "cd /opt/medication-tracker && bash deploy/cleanup-accounts.sh --yes-remove-accounts '$SQL'"
 
       - name: Prove the site still answers
         if: steps.gate.outputs.proceed == 'yes'

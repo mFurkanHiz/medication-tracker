@@ -99,7 +99,7 @@ kalsa bile artık hiçbir kapıyı açmaz.
 | İş akışı | Ne yapar | Nasıl çalışır |
 | --- | --- | --- |
 | **CI** | Testleri koşturur; `main`'de ayrıca imajı derleyip sunucuya dağıtır. | `main`'e birleştirmede kendiliğinden; ya da Actions → CI → *Run workflow*. |
-| **Purge care data** | Üretimdeki tüm bakım verisini siler (hesaplar kalır). Önce yedek alır. | Yalnızca elle: Actions → Purge care data → *Run workflow* → `ERASE-CARE-DATA` yazın. |
+| **Purge care data** | Üretimdeki tüm bakım verisini siler (hesaplar kalır). Önce yedek alır. | İki yoldan onaylanır: Actions → Purge care data → *Run workflow* → `ERASE-CARE-DATA` yazmak; ya da `main`'e içinde o satır bulunan `deploy/purge-care-data.request` dosyasını commit etmek. Kendi başına asla çalışmaz. |
 | **Show VPS host key** | Sunucunun açık host anahtarını yazdırır. | Yalnızca elle. Sunucuya giriş yapmaz, hiçbir sır kullanmaz. |
 
 `VPS_HOST`'u Secret olarak tuttuysanız host anahtarı satırının başındaki adres

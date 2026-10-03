@@ -280,6 +280,31 @@ When the owner says **"continue" / "kaldığın yerden devam et"**:
   syntax-checked but **never run against the real host**, which is the largest
   remaining unknown and the reason the first deploy should be approved live through
   the `production` environment.
+- 2026-10-03: **A one-off purge of the superseded care data was written and proven.**
+  The owner asked for the pre-rebuild rows to go — they describe the product that was
+  rejected, and reading them beside package-first data misleads — while keeping the
+  accounts that sign in. `deploy/purge-care-data.sql` and its wrapper erase people, the
+  catalog, packages, the ledger, plans, doses, allocations, corrections, counts, refill
+  settings and sync receipts, and keep accounts, sessions, households, memberships and
+  subscriptions.
+  - The foreign-key graph was read out of the database rather than assumed. Every key
+    between these tables is `RESTRICT` and two are self-referencing, so a row-by-row
+    delete would have to unpick the order by hand; one `TRUNCATE` over the complete set
+    does not. `CASCADE` is deliberately omitted, so a future table referencing one of
+    these fails the statement by name instead of being erased by accident.
+  - Nothing that survives references anything that goes: accounts and households are
+    the *parents* of care data, never its children. That is what makes the purge safe.
+  - Proven against a real PostgreSQL database named as production is, seeded through
+    the API with two households, 18 administrations, 22 ledger entries and a count:
+    every care table went to zero, accounts/sessions/households/memberships were
+    untouched, and the application then signed in with the original password and
+    created a person, a medication, stock, a plan and a dose, with counting, reports
+    and export all working. The database guard was confirmed by watching it refuse a
+    wrongly-named database.
+  - The wrapper was rehearsed with Docker mocked in three scenarios: success, a failing
+    transaction, and an unrelated container disappearing. The failing case is the one
+    that matters — the site comes back up and the message says the data is unchanged.
+  - **Not yet run against production**, which this session cannot reach.
 - 2026-10-02: The first deployment attempt halted at backup verification and changed
   nothing — `pg_restore -l /dev/stdin` cannot read a custom-format archive from a pipe.
   The backup it had already written was confirmed sound (188 entries) and the outgoing

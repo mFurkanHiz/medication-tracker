@@ -67,11 +67,19 @@ condition cannot see the `secrets` context at all: a switch kept as a secret
 would read as empty there and deployment would silently never run. A step can see
 both, so `gate` reads either and publishes a plain `yes`/`no`.
 
-`VPS_KNOWN_HOSTS` is normalised before use. A full `known_hosts` line, the key on
-its own, and a line whose host field was masked to `***` all produce the same
-file, because whoever reads the key off a log has no host field to copy when the
-address is a secret. An unreadable value fails with its own message rather than
-inside ssh's refusal.
+The host key is handled by `deploy/authorise-ssh.sh`, which both workflows call.
+It takes the key from the `VPS_KNOWN_HOSTS` secret, else from `deploy/known_hosts`
+in the same commit, which is why that secret is optional: a host key is public by
+design. Either source is normalised first, so a full `known_hosts` line, the key
+on its own, and a line whose host field was masked to `***` all produce the same
+file — whoever read the key off a log had no host field to copy when the address
+is a secret.
+
+With no key from either source it does **not** fall back to trusting the network.
+`StrictHostKeyChecking=yes` only means something while the key is pinned, so the
+script reads what the server currently offers, prints it with its fingerprint for
+review, and fails before anything is transferred. Pinning that key is a decision
+someone makes, not one a deploy makes for itself.
 
 The same job can be run on demand — Actions → CI → *Run workflow* on `main` — so
 deploying the commit that is already on `main` does not need an empty commit to push.

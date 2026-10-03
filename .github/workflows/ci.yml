@@ -216,45 +216,19 @@ jobs:
       - name: Authorise the SSH session
         env:
           DEPLOY_KEY: ${{ secrets.VPS_SSH_KEY }}
-          KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
           VPS_HOST: ${{ vars.VPS_HOST || secrets.VPS_HOST }}
         run: |
           set -euo pipefail
           test -n "$DEPLOY_KEY" || { echo 'Secret VPS_SSH_KEY is not set.' >&2; exit 1; }
-          test -n "$KNOWN_HOSTS" || { echo 'Secret VPS_KNOWN_HOSTS is not set.' >&2; exit 1; }
-          test -n "$VPS_HOST" || { echo 'VPS_HOST is not set, as a variable or a secret.' >&2; exit 1; }
           mkdir -m 700 -p ~/.ssh
           printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
 
-          # A known_hosts line is "<host> <type> <key>". Accept the key on its own as
-          # well, and accept a leading "***": if the address was stored as a secret
-          # rather than a variable, GitHub masks it in the logs, so whoever read the
-          # key off a log has no host field to copy. The host we are about to connect
-          # to is the one that belongs in front of the key either way.
-          printf '%s\n' "$KNOWN_HOSTS" | while IFS= read -r line; do
-            line="${line%$'\r'}"
-            case "$line" in
-              '' | '#'*) continue ;;
-              ssh-* | ecdsa-* | sk-*) printf '%s %s\n' "$VPS_HOST" "$line" ;;
-              '***'[[:space:]]*)
-                rest="${line#'***'}"
-                printf '%s %s\n' "$VPS_HOST" "${rest# }"
-                ;;
-              *) printf '%s\n' "$line" ;;
-            esac
-          done > ~/.ssh/known_hosts
-
-          chmod 600 ~/.ssh/id_deploy ~/.ssh/known_hosts
-
-          # Fail here, with a readable reason, rather than inside ssh's own refusal.
-          test -s ~/.ssh/known_hosts || {
-            echo 'VPS_KNOWN_HOSTS held no host key.' >&2
-            exit 1
-          }
-          ssh-keygen -lf ~/.ssh/known_hosts >/dev/null || {
-            echo 'VPS_KNOWN_HOSTS is not a readable host key. Run the "Show VPS host key" workflow and paste its output.' >&2
-            exit 1
-          }
+          # Takes the host key from the secret, or from deploy/known_hosts in this
+          # commit, and fails with the server's current key for review if neither
+          # holds one. It never trusts the network: see the script's own comment.
+          bash deploy/authorise-ssh.sh ~/.ssh/known_hosts
 
       - name: Transfer the release, verifying it survived the wire
         env:

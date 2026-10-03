@@ -47,15 +47,18 @@ jobs:
       - name: Authorise the SSH session
         env:
           DEPLOY_KEY: ${{ secrets.VPS_SSH_KEY }}
-          KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+          VPS_HOST: ${{ vars.VPS_HOST || secrets.VPS_HOST }}
         run: |
           set -euo pipefail
           test -n "$DEPLOY_KEY" || { echo 'Secret VPS_SSH_KEY is not set.' >&2; exit 1; }
-          test -n "$KNOWN_HOSTS" || { echo 'Secret VPS_KNOWN_HOSTS is not set.' >&2; exit 1; }
           mkdir -m 700 -p ~/.ssh
           printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/id_deploy
-          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
-          chmod 600 ~/.ssh/id_deploy ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/id_deploy
+
+          # Same host-key handling as the deploy, from the same script: the secret,
+          # else deploy/known_hosts from this commit, else stop before the network.
+          bash deploy/authorise-ssh.sh ~/.ssh/known_hosts
 
       - name: Purge, behind a verified backup
         env:

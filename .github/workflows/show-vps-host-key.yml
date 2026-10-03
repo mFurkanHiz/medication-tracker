@@ -1,0 +1,53 @@
+name: Show VPS host key
+
+# Prints the server's public host key so it can be pasted into the VPS_KNOWN_HOSTS
+# secret.
+#
+# This exists because `ssh-keyscan` needs a client that can negotiate with the server,
+# and the OpenSSH bundled with Windows is often too old for the key exchange a current
+# OpenSSH server offers. A GitHub runner has no such problem.
+#
+# Nothing here is secret: a host key is public by design, and this is what every SSH
+# client shows you the first time you connect. No credentials are used, and nothing on
+# the server is touched or even logged into.
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  show:
+    name: Read the host key
+    runs-on: ubuntu-latest
+    steps:
+      - name: Scan
+        env:
+          VPS_HOST: ${{ vars.VPS_HOST }}
+        run: |
+          set -euo pipefail
+          test -n "$VPS_HOST" || {
+            echo 'Set the VPS_HOST repository variable first (Settings -> Secrets and variables -> Actions -> Variables).' >&2
+            exit 1
+          }
+
+          echo "Reading the host key for $VPS_HOST..."
+          echo
+
+          # Comment lines carry the server's banner, not the key. Only the real key
+          # lines belong in known_hosts.
+          keys="$(ssh-keyscan -t ed25519 "$VPS_HOST" 2>/dev/null | grep -v '^#' || true)"
+
+          test -n "$keys" || {
+            echo "No ed25519 host key came back. The server may offer another type:" >&2
+            ssh-keyscan "$VPS_HOST" 2>&1 | grep -v '^#' >&2 || true
+            exit 1
+          }
+
+          echo '================ COPY EVERYTHING BELOW THIS LINE ================'
+          printf '%s\n' "$keys"
+          echo '================ COPY EVERYTHING ABOVE THIS LINE ================'
+          echo
+          echo 'Paste it into the repository secret VPS_KNOWN_HOSTS.'
+          echo
+          echo 'Fingerprint, so you can compare it against what your own SSH client shows:'
+          printf '%s\n' "$keys" | ssh-keygen -lf -

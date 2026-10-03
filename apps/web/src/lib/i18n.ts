@@ -137,6 +137,8 @@ export const tr = {
   assignTo: 'Kişiye ata',
   stockPreview: 'Eklenecek:',
   stockPreviewPackages: 'kutu',
+  addStockAgainHint:
+    'Sonradan da ekleyebilirsiniz — yeni bir kutu aldığınızda ya da kayıp bir kutuyu bulduğunuzda bu formu yeniden açmanız yeter.',
 
   // Plans
   addPlan: 'Plan ekle',
@@ -153,7 +155,10 @@ export const tr = {
   scheduleAsNeeded: 'Gerektiğinde',
   intervalDays: 'Gün aralığı',
   exactTime: 'Saat',
-  dayPeriod: 'Gün dilimi',
+  whenInDay: 'Ne zaman',
+  useExactTime: 'Kesin saat',
+  asNeededExplainer:
+    'Gerektiğinde alınan ilaçta saat ya da gün dilimi olmaz. İlacı aldığınızda Bugün ekranından kaydedersiniz.',
   mealRelation: 'Yemek ilişkisi',
   minimumInterval: 'En az ara (dakika)',
   effectiveFrom: 'Başlangıç',
@@ -464,6 +469,8 @@ export const en: Record<MessageKey, string> = {
   assignTo: 'Assign to',
   stockPreview: 'Will add',
   stockPreviewPackages: 'packages',
+  addStockAgainHint:
+    'You can add more at any time — open this form again when a new box arrives, or when a lost one turns up.',
 
   addPlan: 'Add a plan',
   editPlan: 'Edit plan',
@@ -479,7 +486,10 @@ export const en: Record<MessageKey, string> = {
   scheduleAsNeeded: 'As needed',
   intervalDays: 'Day interval',
   exactTime: 'Time',
-  dayPeriod: 'Time of day',
+  whenInDay: 'When',
+  useExactTime: 'At a set time',
+  asNeededExplainer:
+    'An as-needed medication has no time or part of the day. You record it from Today when it is taken.',
   mealRelation: 'Food timing',
   minimumInterval: 'Minimum gap (minutes)',
   effectiveFrom: 'From',

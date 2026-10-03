@@ -1,0 +1,126 @@
+name: VPS inspection
+
+# Reads the state of the host and changes nothing. It exists because a cloud agent
+# session cannot reach port 22 — the deploy key works, the route is blocked by the
+# environment's network policy — so every look at the server goes through a runner.
+#
+# Confirmed the same way as the other server workflows, by either route:
+#
+#   1. Dispatch it and type INSPECT-VPS into the form.
+#   2. Commit deploy/vps-inspection.request to main containing that same line.
+#
+# Nothing here writes, restarts, deletes or deploys. The worst it can do is print.
+#
+# WHAT IT WILL NOT PRINT
+#
+# This repository is public, so its job logs are world readable. Every line of output
+# is passed through an address redactor before it reaches the log, because this
+# application's data is about people's medication. Other projects sharing the host are
+# counted, never named. No secret is read: not the database password, not a key.
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: Type INSPECT-VPS to confirm. Read-only; nothing on the host changes.
+        required: true
+        type: string
+
+  push:
+    branches: [main]
+    paths:
+      - 'deploy/vps-inspection.request'
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    name: Read the state of the host
+    runs-on: ubuntu-latest
+
+    # Shares the lock with the deploy and the cleanups: a report taken while a deploy
+    # is half-applied would describe a host that does not exist for long.
+    concurrency:
+      group: production-deploy
+      cancel-in-progress: false
+
+    environment: production
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Resolve the confirmation
+        id: gate
+        env:
+          CONFIRM: ${{ inputs.confirm }}
+        run: |
+          set -euo pipefail
+          request=deploy/vps-inspection.request
+
+          if [ -n "${CONFIRM:-}" ]; then
+            test "$CONFIRM" = "INSPECT-VPS" || {
+              echo 'Refusing: the confirmation must be exactly INSPECT-VPS.' >&2
+              exit 1
+            }
+            echo 'Confirmed by the dispatch input.'
+            echo 'proceed=yes' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [ ! -f "$request" ]; then
+            echo "No $request in this commit, so nothing is being asked for."
+            echo 'proceed=no' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          grep -qx 'INSPECT-VPS' "$request" || {
+            echo "Refusing: $request holds no line that reads exactly INSPECT-VPS." >&2
+            exit 1
+          }
+
+          echo "Confirmed by $request in this commit."
+          echo 'proceed=yes' >> "$GITHUB_OUTPUT"
+
+      - name: Authorise the SSH session
+        if: steps.gate.outputs.proceed == 'yes'
+        env:
+          DEPLOY_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+          VPS_HOST: ${{ vars.VPS_HOST || secrets.VPS_HOST }}
+        run: |
+          set -euo pipefail
+          test -n "$DEPLOY_KEY" || { echo 'Secret VPS_SSH_KEY is not set.' >&2; exit 1; }
+          mkdir -m 700 -p ~/.ssh
+          printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          bash deploy/authorise-ssh.sh ~/.ssh/known_hosts
+
+      - name: Inspect
+        if: steps.gate.outputs.proceed == 'yes'
+        env:
+          VPS_HOST: ${{ vars.VPS_HOST || secrets.VPS_HOST }}
+          VPS_USER: ${{ vars.VPS_USER || secrets.VPS_USER }}
+        run: |
+          set -euo pipefail
+          test -n "$VPS_HOST" || { echo 'VPS_HOST is not set, as a variable or a secret.' >&2; exit 1; }
+          target="${VPS_USER:-root}@${VPS_HOST}"
+          ssh_opts=(-i "$HOME/.ssh/id_deploy" -o IdentitiesOnly=yes
+                    -o StrictHostKeyChecking=yes
+                    -o UserKnownHostsFile="$HOME/.ssh/known_hosts"
+                    -o BatchMode=yes -o ConnectTimeout=20)
+
+          ssh "${ssh_opts[@]}" "$target" 'install -d -m 755 /opt/medication-tracker/deploy'
+          scp "${ssh_opts[@]}" deploy/inspect-vps.sh "$target:/opt/medication-tracker/deploy/"
+
+          # The redactor is the last thing between the host and a public log, so it runs
+          # on everything, including anything a probe prints unexpectedly.
+          set +e
+          ssh "${ssh_opts[@]}" "$target" 'bash /opt/medication-tracker/deploy/inspect-vps.sh' 2>&1 \
+            | sed -E 's/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/<address redacted>/g'
+          status="${PIPESTATUS[0]}"
+          set -e
+          test "$status" = "0" || { echo "The inspection exited with $status." >&2; exit "$status"; }
+
+      - name: Forget the key
+        if: always()
+        run: shred --remove --force ~/.ssh/id_deploy 2>/dev/null || rm -f ~/.ssh/id_deploy

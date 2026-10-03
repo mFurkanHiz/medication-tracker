@@ -77,6 +77,27 @@ jobs:
           --health-retries 10
     steps:
       - uses: actions/checkout@v7
+
+      # A squash merge computes its diff against the merge base, not against main. So
+      # when a branch renames a file that main gained from an earlier squash of the same
+      # branch, the rename arrives as an addition and the old file is never deleted —
+      # leaving a workflow behind that still points at a script that moved. That is how
+      # cleanup-smoke-accounts.yml survived its own rename. Cheap to check, invisible
+      # otherwise.
+      - name: Every script a workflow names must exist
+        run: |
+          set -euo pipefail
+          missing=0
+          for path in $(grep -hoE 'deploy/[A-Za-z0-9._-]+\.(sh|sql)' .github/workflows/*.yml | sort -u); do
+            if [ -f "$path" ]; then
+              echo "ok      $path"
+            else
+              echo "MISSING $path — referenced by a workflow but not in the tree" >&2
+              missing=1
+            fi
+          done
+          test "$missing" = 0
+
       - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 10.0.x

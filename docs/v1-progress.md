@@ -106,19 +106,32 @@ they are here rather than in a conversation.
   the way that cannot disturb the others, and prove it afterwards — the deploy's
   outsider-container check is the pattern.
 - **Notion is the durable project record.** The owner keeps project management there
-  so a different agent or a person can take this over without losing anything, and
-  that explicitly includes secrets. `ProjectSample` in the Project Management space is
-  the guide to follow; `Psicologa` and `SargasmGames` may be read once to learn the
-  conventions and never touched again. Write only inside the **Medication Tracker**
-  project. Sprints and tasks come later, once the project is at the level the owner
-  wants; the current mission is getting it there.
+  so a different agent or a person can take this over without losing anything.
+  `ProjectSample` in the Project Management space is the guide to follow; `Psicologa`
+  and `SargasmGames` may be read once to learn the conventions and never touched
+  again. Write only inside the **Medication Tracker** project.
 - **Address the owner as Furkan**, reply in Turkish, and end a turn with a short
   summary of what was done since their last message.
 
-As of 2026-10-03 the Notion connector is connected to the account but its installed
-instance reports *no tools available*, so no session can write there yet. It needs
-reconnecting, with page access granted to the Project Management space; connectors are
-read when a session starts, so a session begun before that fix cannot see them.
+### Where Notion holds what
+
+`🧩 Project Management` carries four data sources: **Projects** (one page per
+project), **Sprints**, **Tasks** and **Research**. Tasks and Research are shared
+across every project, so every record must set `Project = Medication Tracker` and no
+other project's rows are ever touched.
+
+Populated 2026-10-03: the `💊 Medication Tracker` project page (properties plus a
+"Güncel durum" section), a `Secrets & Config (HASSAS)` sub-page, and three Production
+tasks covering the deploy automation, the care-data purge, and reports/export/counting.
+
+**Secrets in Notion follow the owner's own §G rule, not an agent's caution:** names,
+where each value is kept, and public values only. Production secret values, private
+SSH keys and long-lived tokens stay in GitHub Secrets and on the VPS — never in Notion
+and never in git. The owner asked for secrets to live in Notion; §G is how their own
+convention answers that, and the HASSAS sub-page is where it is written down.
+
+Notion is read-only history until a session actually has the connector: connectors are
+read **when a session starts**, so one enabled mid-conversation does not load.
 
 ## Evidence checkpoint
 

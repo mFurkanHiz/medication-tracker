@@ -8,13 +8,14 @@ reconstructing the product history from a long conversation.
 - Owner-accepted V1: **NOT COMPLETE**. See `docs/v1-acceptance.md` for the authority
   on scope and `docs/adr/0013-v1-domain-rebuild-strategy.md` for why the domain was
   rebuilt rather than extended.
-- Production runs main `371447da76f29e336ae3a00e1cc8864e5613d242`, deployed 2026-10-02
-  from CI run `37046495484`. The package-first rebuild is **live**.
+- Production runs main `8ebe4c60a9660fb4cdb57fb31f6b51aa351c2d9f`, deployed 2026-10-03
+  from CI run `37125695168` — the first deployment GitHub Actions performed by itself.
+  Reports, export and counting are **live**.
 - PR #11 (the rebuild), #12 (deployment tooling) and #13 (backup verification) are
   merged into main.
 - The API, the web client and the mobile client are all rebuilt against the new model.
-- Reports and export (rows 31 and 32) are **implemented and merged into the branch**,
-  but are **not yet deployed**: production still runs `371447da`, which has neither.
+- Reports, export and counting (rows 18, 31, 32) are implemented, merged **and
+  deployed**.
 - PR #9 is **subsumed** by PR #11, not abandoned. Its recurrence rules are carried
   forward onto `TreatmentPlanVersion`. Do not merge PR #9 separately.
 - PR #10 (packaged migration SQL fix) is already on main.
@@ -52,21 +53,21 @@ narrowed or moved out of V1:
 4. **Mobile has no reports, export or counting surface.** These slices added all three
    to the web client only. Rows 18, 31 and 32 are satisfied — a user can reach every
    behaviour — but the mobile client does not yet show them.
-5. **Not deployed.** Reports, export and counting are merged to `main` (`fe4b29a`,
-   CI `37071473724` green) but production still runs `371447da`, which has none of
-   them. Deployment is automated now but not yet armed — see the next action.
+5. **The superseded care data is still in production.** The purge is written, proven
+   against a real database and reachable from Actions, but it is deliberately
+   dispatch-only: no push can start it. It needs one manual run — see the next action.
 
 ## Next exact action
 
-Arm the deploy, then the synthetic demo seed.
+Purge the superseded care data, then the synthetic demo seed.
 
-- **Arming the deploy** needs the owner, and only the owner: two GitHub secrets and
-  three variables, plus the public half of a key on the VPS. `docs/preflight.md`
-  section 6a has the five steps. The agent session that wired it could not perform
-  them — the environment's network policy denies both the VPS's SSH port and the
-  public hostname, and the session cannot create GitHub secrets.
-- Once armed, a merge to `main` deploys by itself. The first one should be watched:
-  add a required reviewer to the `production` environment and approve it live.
+- **The purge** needs one manual dispatch: Actions → *Purge care data* → **Run
+  workflow** → type `ERASE-CARE-DATA`. It is dispatch-only on purpose, so no push
+  can ever start it, and an agent session cannot start it either — `workflow_dispatch`
+  returns 403 for the session's token. That is the right place for a human hand: it
+  erases every care record in production. A verified backup is taken first and is the
+  only way back.
+- Deployment itself is armed and proven; a merge to `main` now deploys by itself.
 - **Synthetic demo seed** (row 35) is the last non-device, non-mobile item. It should
   reuse the shape the browser checks already seed: a household, two people, a scheduled
   and an as-needed medication, three packages, three weeks of mixed outcomes.
@@ -310,3 +311,48 @@ When the owner says **"continue" / "kaldığın yerden devam et"**:
   The backup it had already written was confirmed sound (188 entries) and the outgoing
   images had been tagged `:previous`, so the rollback path was intact throughout. Fixed
   in PR #13 by dumping and checking inside the container against a real file.
+- 2026-10-03: **GitHub Actions deployed to the VPS by itself, for the first time.**
+  CI run `37125695168` on `8ebe4c60` ran all four jobs green and put reports, export
+  and counting live. Evidence from the deploy job's own log:
+  - The image archive's SHA-256 matched on both sides of the transfer, so what ran on
+    the host is what the runner built.
+  - The pre-migration backup was dumped and its table of contents read back inside the
+    database container before the schema was touched.
+  - The packaged migration applied (`DO … COMMIT`), then `api` and `web` were recreated
+    from the new images and the readiness check passed. `database` stayed up throughout
+    — three weeks old and healthy — because the script stops only `api web`.
+  - `Deploy complete. deploy-production.sh left 23 container(s) from other projects
+    untouched.` The owner's other sites and containers were the stated constraint, and
+    this is the line that answers it: the outsider snapshot taken before the deploy
+    matched the one taken after.
+  - From outside: `GET / -> 200` and `GET /api/auth/session -> 401`. The 401 is the
+    useful one — it proves the request reached the API through nginx, where 200 or 502
+    would mean it had not.
+  - `deploy/smoke-test.ps1` did **not** run: it is behind the `run_smoke_test` dispatch
+    input, and a session cannot dispatch (403). One manual run with that box ticked
+    would cover the behaviours end to end on the live site, at the cost of one
+    synthetic household.
+- 2026-10-03: Getting there took three corrections, each a real defect rather than a
+  retry:
+  - All five settings had been stored as **secrets**, but three were read only from the
+    `vars` context. `DEPLOY_ENABLED` sat in a job-level `if:`, where GitHub does not
+    expose `secrets` at all, so the deploy job would have **skipped in silence** with
+    nothing in the log to explain it. A `gate` job now reads the switch in a step,
+    where both contexts are visible, and publishes a plain yes/no. Its answer is not
+    the switch's own value on purpose: a secret holding `true` is masked everywhere,
+    so an output of `true` would print as `***`.
+  - `VPS_HOST`, `VPS_USER` and `PUBLIC_URL` now read `vars.X || secrets.X`. An address
+    and an on/off switch are not credentials; insisting on the tidier place would have
+    been a correction to the owner rather than to the code.
+  - There was no host key, and no way for the owner to read one: their Windows
+    `ssh-keyscan` cannot negotiate with this server. `deploy/authorise-ssh.sh` now takes
+    the key from the secret, else from `deploy/known_hosts` in the same commit, and with
+    neither it reads what the server offers, prints it with its fingerprint, and fails
+    **before** transferring anything. It never falls back to trusting the network:
+    `StrictHostKeyChecking=yes` means nothing once any key is accepted. Run
+    `37125185792` printed the key that way, and it is pinned as
+    `SHA256:xbaKZHF43tdM9iRATyJ+tUzGr9GPcC1A7411tdPcMRQ`, stored without a host field
+    so the script writes the connected address in front of it.
+  - That pin is trust-on-first-use, read by a runner. The one comparison it cannot make
+    for itself is recorded in the file: `ssh-keygen -lf
+    /etc/ssh/ssh_host_ed25519_key.pub` on the server.

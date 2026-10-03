@@ -1,8 +1,12 @@
 # Web VPS deployment
 
-Status: V1 web/API release deployed and accepted on 2026-09-14.
+Status: V1 web/API release deployed and accepted on 2026-09-14. Reports, export and
+counting deployed 2026-10-03 from `8ebe4c60a9660fb4cdb57fb31f6b51aa351c2d9f`, CI run
+`37125695168` — the first release GitHub Actions shipped without a hand on it. The
+script reported `left 23 container(s) from other projects untouched`, and the public
+checks returned 200 and 401. See `docs/v1-progress.md` for the full evidence.
 
-Current application image source: `11b9fd5c32511af8fea9df68189768e5e6dc86d0`.
+Earlier application image source: `11b9fd5c32511af8fea9df68189768e5e6dc86d0`.
 CI `34757450538` passed all 15 API tests against PostgreSQL, web lint/build,
 mobile TypeScript and both production Docker builds. The downloaded image archive
 was verified as SHA-256

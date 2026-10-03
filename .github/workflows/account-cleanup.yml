@@ -9,6 +9,8 @@ name: Account cleanup
 #   KEEP-ONLY-OWNER-ACCOUNT    a one-off: everything except the owner's own account,
 #                              identified by the digest of their address so that no
 #                              personal address enters this public repository.
+#   REPORT-ACCOUNTS            read-only. Describes the accounts with their addresses
+#                              masked, for when it is not yet clear which to remove.
 #
 # Separate from the care-data purge, because a destructive operation should name
 # exactly what it erases. Confirmation works by either route:
@@ -27,8 +29,9 @@ on:
         description: >-
           REMOVE-SMOKE-ACCOUNTS removes the synthetic accounts the smoke test leaves
           behind. KEEP-ONLY-OWNER-ACCOUNT removes every account except the owner's.
-          Either way the households left with no remaining member go too, and a
-          verified backup is taken first.
+          REPORT-ACCOUNTS changes nothing and only describes what is there. The two
+          deletions also remove households left with no remaining member, and both take
+          a verified backup first.
         required: true
         type: string
 
@@ -69,6 +72,7 @@ jobs:
             case "$1" in
               REMOVE-SMOKE-ACCOUNTS)   echo deploy/cleanup-smoke-accounts.sql ;;
               KEEP-ONLY-OWNER-ACCOUNT) echo deploy/keep-only-owner-account.sql ;;
+              REPORT-ACCOUNTS)         echo deploy/account-report.sql ;;
               *)                       echo '' ;;
             esac
           }
@@ -76,8 +80,8 @@ jobs:
           if [ -n "${CONFIRM:-}" ]; then
             sql="$(sql_for "$CONFIRM")"
             test -n "$sql" || {
-              echo 'Refusing: the confirmation must be exactly REMOVE-SMOKE-ACCOUNTS' >&2
-              echo 'or KEEP-ONLY-OWNER-ACCOUNT.' >&2
+              echo 'Refusing: the confirmation must be exactly one of' >&2
+              echo 'REMOVE-SMOKE-ACCOUNTS, KEEP-ONLY-OWNER-ACCOUNT, REPORT-ACCOUNTS.' >&2
               exit 1
             }
             echo "Confirmed by the dispatch input: $sql"
@@ -95,7 +99,7 @@ jobs:
           fi
 
           sql=''
-          for confirmation in REMOVE-SMOKE-ACCOUNTS KEEP-ONLY-OWNER-ACCOUNT; do
+          for confirmation in REMOVE-SMOKE-ACCOUNTS KEEP-ONLY-OWNER-ACCOUNT REPORT-ACCOUNTS; do
             if grep -qx "$confirmation" "$request"; then
               test -z "$sql" || {
                 echo "Refusing: $request names more than one confirmation. One run," >&2
@@ -108,8 +112,8 @@ jobs:
 
           test -n "$sql" || {
             echo "Refusing: $request exists but holds no line that reads exactly" >&2
-            echo 'REMOVE-SMOKE-ACCOUNTS or KEEP-ONLY-OWNER-ACCOUNT. A file that does' >&2
-            echo 'not say what it authorises authorises nothing.' >&2
+            echo 'REMOVE-SMOKE-ACCOUNTS, KEEP-ONLY-OWNER-ACCOUNT or REPORT-ACCOUNTS.' >&2
+            echo 'A file that does not say what it authorises authorises nothing.' >&2
             exit 1
           }
 

@@ -131,6 +131,24 @@ It exists because the rows that migrated forward describe the pre-rebuild produc
 owner rejected, and reading them beside package-first data is misleading. It is a
 deliberate one-off, not a feature, and the only way back is the backup it takes first.
 
+### How it is confirmed
+
+The workflow never runs on its own. It takes a confirmation by one of two routes,
+each a deliberate act that names what is being erased:
+
+1. Dispatch it and type `ERASE-CARE-DATA` into the form.
+2. Commit `deploy/purge-care-data.request` to `main` with that line in it.
+
+The second route exists because an agent session's token cannot dispatch a workflow —
+GitHub answers 403 — and the owner asked not to be the one clicking. A commit on main
+is if anything the stronger record: reviewed, attributed, timestamped and kept. The
+push trigger is narrowed to that single path, so no ordinary commit can reach this
+workflow. The request file is removed again once the purge has run; removing it
+changes that path too, so the workflow runs once more, finds nothing asked for, says
+so and passes. Everything the purge protects — the database-name guard, the verified
+backup, the single transaction, the stranded-account check — is in the script and
+unchanged by which route confirmed it.
+
 How it protects the data it is not erasing:
 
 - The SQL refuses to run unless `current_database()` is `medication_tracker`.

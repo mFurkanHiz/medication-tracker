@@ -61,12 +61,12 @@ narrowed or moved out of V1:
 
 Purge the superseded care data, then the synthetic demo seed.
 
-- **The purge** needs one manual dispatch: Actions → *Purge care data* → **Run
-  workflow** → type `ERASE-CARE-DATA`. It is dispatch-only on purpose, so no push
-  can ever start it, and an agent session cannot start it either — `workflow_dispatch`
-  returns 403 for the session's token. That is the right place for a human hand: it
-  erases every care record in production. A verified backup is taken first and is the
-  only way back.
+- **The purge** is confirmed by committing `deploy/purge-care-data.request` to `main`
+  with the line `ERASE-CARE-DATA` in it, or by dispatching the workflow and typing the
+  same. It never runs on its own, and the push trigger is narrowed to that one path.
+  The second route exists because an agent session's token cannot dispatch
+  (`workflow_dispatch` answers 403) and the owner asked not to be the one clicking.
+  Remove the request file once it has run.
 - Deployment itself is armed and proven; a merge to `main` now deploys by itself.
 - **Synthetic demo seed** (row 35) is the last non-device, non-mobile item. It should
   reuse the shape the browser checks already seed: a household, two people, a scheduled

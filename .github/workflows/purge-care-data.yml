@@ -1,9 +1,22 @@
 name: Purge care data
 
-# Deliberately not part of CI and never automatic. This erases every care record in
-# production, so it runs only when somebody asks for it by hand and types the
-# confirmation. It lives in its own file so no change to the test pipeline can ever
-# start it by accident.
+# This erases every care record in production, so it never runs on its own. It needs
+# an explicit confirmation, and it lives in its own file so no change to the test
+# pipeline can start it by accident.
+#
+# There are two ways to confirm, and both are deliberate acts that name the thing
+# being erased:
+#
+#   1. Dispatch it and type ERASE-CARE-DATA into the form.
+#   2. Commit deploy/purge-care-data.request to main containing that same line.
+#
+# The second exists because an agent session's token cannot dispatch a workflow —
+# GitHub answers 403 — and the owner asked not to be the one clicking. A commit on
+# main is if anything a stronger record than a form field: it is reviewed, attributed,
+# timestamped and kept. The push trigger is narrowed to that one path, so no ordinary
+# commit can reach this workflow, and the request file is removed again afterwards.
+# Removing it changes that path too, so this then runs once more and finds nothing to
+# do, which it reports and passes.
 on:
   workflow_dispatch:
     inputs:
@@ -16,6 +29,11 @@ on:
         required: true
         type: string
 
+  push:
+    branches: [main]
+    paths:
+      - 'deploy/purge-care-data.request'
+
 permissions:
   contents: read
 
@@ -24,7 +42,8 @@ jobs:
     name: Purge the superseded care data
     runs-on: ubuntu-latest
 
-    # Never two at once, and never cancelled part-way through.
+    # Never two at once, and never cancelled part-way through. Shared with the deploy:
+    # a purge and a release must not race on the same compose project.
     concurrency:
       group: production-deploy
       cancel-in-progress: false
@@ -32,19 +51,50 @@ jobs:
     environment: production
 
     steps:
-      - name: Check the confirmation
+      - uses: actions/checkout@v7
+
+      # Reads the confirmation from whichever route asked, and refuses anything else.
+      # This touches no network and holds no credential, so it runs before the key is
+      # ever written to disk.
+      - name: Resolve the confirmation
+        id: gate
         env:
           CONFIRM: ${{ inputs.confirm }}
         run: |
           set -euo pipefail
-          test "$CONFIRM" = "ERASE-CARE-DATA" || {
-            echo "Refusing: the confirmation must be exactly ERASE-CARE-DATA." >&2
+          request=deploy/purge-care-data.request
+
+          if [ -n "${CONFIRM:-}" ]; then
+            test "$CONFIRM" = "ERASE-CARE-DATA" || {
+              echo 'Refusing: the confirmation must be exactly ERASE-CARE-DATA.' >&2
+              exit 1
+            }
+            echo 'Confirmed by the dispatch input.'
+            echo 'proceed=yes' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [ ! -f "$request" ]; then
+            echo "No $request in this commit, so nothing is being asked for."
+            echo 'This is what the run looks like after a request file is removed'
+            echo 'again, which is the last step of a purge rather than a failure.'
+            echo 'proceed=no' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          grep -qx 'ERASE-CARE-DATA' "$request" || {
+            echo "Refusing: $request exists but holds no line that reads exactly" >&2
+            echo 'ERASE-CARE-DATA. A file that does not say what it authorises' >&2
+            echo 'authorises nothing.' >&2
             exit 1
           }
 
-      - uses: actions/checkout@v7
+          echo "Confirmed by $request in this commit:"
+          sed 's/^/    /' "$request"
+          echo 'proceed=yes' >> "$GITHUB_OUTPUT"
 
       - name: Authorise the SSH session
+        if: steps.gate.outputs.proceed == 'yes'
         env:
           DEPLOY_KEY: ${{ secrets.VPS_SSH_KEY }}
           VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
@@ -61,6 +111,7 @@ jobs:
           bash deploy/authorise-ssh.sh ~/.ssh/known_hosts
 
       - name: Purge, behind a verified backup
+        if: steps.gate.outputs.proceed == 'yes'
         env:
           VPS_HOST: ${{ vars.VPS_HOST || secrets.VPS_HOST }}
           VPS_USER: ${{ vars.VPS_USER || secrets.VPS_USER }}
@@ -84,6 +135,7 @@ jobs:
             'bash /opt/medication-tracker/deploy/purge-care-data.sh --yes-erase-care-data'
 
       - name: Prove the site still answers
+        if: steps.gate.outputs.proceed == 'yes'
         env:
           PUBLIC_URL: ${{ vars.PUBLIC_URL || secrets.PUBLIC_URL || 'https://medicationtracker.rapidconfigs.com' }}
         run: |

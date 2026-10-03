@@ -88,6 +88,38 @@ When the owner says **"continue" / "kaldığın yerden devam et"**:
    report.
 7. Never redefine a required V1 item as "later" without explicit owner approval.
 
+## How the owner wants this project run
+
+Standing instructions, given 2026-10-03. They outlive any one session, which is why
+they are here rather than in a conversation.
+
+- **Do the work.** Merges, pushes, branches, deploys and the care-data purge are the
+  agent's to perform, not the owner's. Do not ask them to click Merge or to dispatch a
+  workflow; if a route is closed, find another that keeps the same safeguards —
+  `deploy/purge-care-data.request` is the worked example.
+- **Ask when something is genuinely missing or ambiguous**, including when the
+  instruction itself has a gap. Do not ask for the sake of asking.
+- **The owner does the things only they can do**: generating a key, adding a secret,
+  a DNS record, a third-party account. Tell them exactly how, then carry on.
+- **This VPS, GitHub account and Notion workspace are shared with other projects.**
+  Touch nothing outside this project. Where a shared surface has to be used, use it in
+  the way that cannot disturb the others, and prove it afterwards — the deploy's
+  outsider-container check is the pattern.
+- **Notion is the durable project record.** The owner keeps project management there
+  so a different agent or a person can take this over without losing anything, and
+  that explicitly includes secrets. `ProjectSample` in the Project Management space is
+  the guide to follow; `Psicologa` and `SargasmGames` may be read once to learn the
+  conventions and never touched again. Write only inside the **Medication Tracker**
+  project. Sprints and tasks come later, once the project is at the level the owner
+  wants; the current mission is getting it there.
+- **Address the owner as Furkan**, reply in Turkish, and end a turn with a short
+  summary of what was done since their last message.
+
+As of 2026-10-03 the Notion connector is connected to the account but its installed
+instance reports *no tools available*, so no session can write there yet. It needs
+reconnecting, with page access granted to the Project Management space; connectors are
+read when a session starts, so a session begun before that fix cannot see them.
+
 ## Evidence checkpoint
 
 - 2026-10-02: Takeover audit of `a1c761a`. Measured the product at roughly 1,500 lines

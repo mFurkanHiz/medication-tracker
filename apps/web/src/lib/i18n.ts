@@ -107,6 +107,13 @@ export const tr = {
   showPackages: 'Kutuları göster',
   hidePackages: 'Kutuları gizle',
   archiveMedication: 'İlacı arşivle',
+  archiveKeeps:
+    'Stok, kutular ve geçmiş kayıtların hiçbiri silinmez. İlaç listeden kalkar, Bugün ekranında doz çıkmaz ve sayımda görünmez.',
+  archiveStopsPlansBefore: 'Bu ilaç için duran',
+  archiveStopsPlansAfter:
+    'kullanım planı sonlandırılır ve bu geri alınamaz. İlacı sonra geri getirebilirsiniz ama planları yeniden kurmanız gerekir.',
+  archiveNoPlans: 'Bu ilaç için duran bir kullanım planı yok.',
+  archiveReversible: 'İlacın kendisi, stoğuyla birlikte, aşağıdaki “Arşivlenen” bölümünden geri getirilebilir.',
   restoreMedication: 'Arşivden çıkar',
 
   // Definition form
@@ -157,9 +164,16 @@ export const tr = {
   exactTime: 'Saat',
   whenInDay: 'Ne zaman',
   useExactTime: 'Kesin saat',
+  preferredTime: 'Tercih edilen zaman',
+  preferredTimeHint:
+    'Sabit bir saati yoktur ama bir tercihiniz olabilir. Burası yalnızca not; takvime doz eklenmez ve almadığınız gün kaçırılmış sayılmaz.',
+  noTimePreference: 'Farketmez',
+  preferably: 'tercihen',
   asNeededExplainer:
-    'Gerektiğinde alınan ilaçta saat ya da gün dilimi olmaz. İlacı aldığınızda Bugün ekranından kaydedersiniz.',
+    'Gerektiğinde alınan ilacın sabit saati yoktur: takvime doz eklenmez ve almadığınız gün kaçırılmış sayılmaz. İhtiyaç duyduğunuzda alır, Bugün ekranından kaydedersiniz. Tercih ettiğiniz gün dilimini ve yemek ilişkisini yine de buraya yazabilirsiniz.',
   mealRelation: 'Yemek ilişkisi',
+  mealRelationHint:
+    'Doktorunuzun ya da prospektüsün söylediğini olduğu gibi not edin. Uygulama bunu yorumlamaz, yalnızca ilacı alırken size gösterir.',
   minimumInterval: 'En az ara (dakika)',
   effectiveFrom: 'Başlangıç',
   effectiveTo: 'Bitiş',
@@ -183,6 +197,7 @@ export const tr = {
   bedtime: 'Yatmadan önce',
 
   fasting: 'Aç karnına',
+  fullStomach: 'Tok karnına',
   beforeFood: 'Yemekten önce',
   withFood: 'Yemekle',
   afterFood: 'Yemekten sonra',
@@ -441,6 +456,13 @@ export const en: Record<MessageKey, string> = {
   showPackages: 'Show packages',
   hidePackages: 'Hide packages',
   archiveMedication: 'Archive medication',
+  archiveKeeps:
+    'No stock, package or history is deleted. The medication leaves the list, stops producing doses on Today, and is excluded from counting.',
+  archiveStopsPlansBefore: 'Archiving stops',
+  archiveStopsPlansAfter:
+    'standing plan(s) for this medication, and that cannot be undone. You can restore the medication later, but the plans must be set up again.',
+  archiveNoPlans: 'There is no standing plan for this medication.',
+  archiveReversible: 'The medication itself, with its stock, can be restored from the “Archived” section below.',
   restoreMedication: 'Restore medication',
 
   medicationName: 'Medication name',
@@ -488,9 +510,16 @@ export const en: Record<MessageKey, string> = {
   exactTime: 'Time',
   whenInDay: 'When',
   useExactTime: 'At a set time',
+  preferredTime: 'Preferred time',
+  preferredTimeHint:
+    'There is no fixed time, but you may have a preference. This is a note only: no dose is added to the calendar, and a day you do not take it is never counted as missed.',
+  noTimePreference: 'No preference',
+  preferably: 'preferably',
   asNeededExplainer:
-    'An as-needed medication has no time or part of the day. You record it from Today when it is taken.',
+    'An as-needed medication has no fixed time: no dose is added to the calendar, and a day you do not take it is never counted as missed. You take it when you need it and record it from Today. You can still note a preferred part of the day and how it relates to food.',
   mealRelation: 'Food timing',
+  mealRelationHint:
+    'Note what your doctor or the leaflet told you, as written. The app does not interpret it; it only shows it back to you when you take the medication.',
   minimumInterval: 'Minimum gap (minutes)',
   effectiveFrom: 'From',
   effectiveTo: 'Until',
@@ -514,6 +543,7 @@ export const en: Record<MessageKey, string> = {
   bedtime: 'Bedtime',
 
   fasting: 'Fasting',
+  fullStomach: 'On a full stomach',
   beforeFood: 'Before food',
   withFood: 'With food',
   afterFood: 'After food',
@@ -729,6 +759,7 @@ export function enumKey(value: string | null | undefined): MessageKey | null {
     Night: 'night',
     Bedtime: 'bedtime',
     Fasting: 'fasting',
+    FullStomach: 'fullStomach',
     BeforeFood: 'beforeFood',
     WithFood: 'withFood',
     AfterFood: 'afterFood',

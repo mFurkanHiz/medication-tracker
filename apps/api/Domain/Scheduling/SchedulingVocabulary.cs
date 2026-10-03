@@ -51,6 +51,14 @@ public enum MealRelation
     BeforeFood = 1,
     WithFood = 2,
     AfterFood = 3,
+
+    /// <summary>
+    /// On a full stomach. Broader than <see cref="AfterFood"/>: it says the stomach must
+    /// not be empty, without fixing the dose to a particular meal. Turkish prescribing
+    /// says "tok karnına" far more often than it names a specific meal, and the owner
+    /// asked for it by name.
+    /// </summary>
+    FullStomach = 4,
 }
 
 /// <summary>

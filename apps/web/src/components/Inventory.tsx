@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { ApiError, api, type AddStockInput, type MedicationDefinitionInput } from '@/lib/api';
 import { enumKey, errorKey, useLocale } from '@/lib/i18n';
-import { formatQuantity, parseQuantity } from '@/lib/quantity';
+import { addQuantities, formatQuantity, parseQuantity, type Quantity } from '@/lib/quantity';
 import type { Forecast, MedicationDefinition, MedicationPackage, Person, Workspace } from '@/lib/types';
 import { unitLabel } from './Today';
 import { Advanced, Badge, Button, Card, Dialog, EmptyState, Field, Input, Notice, Select, Spinner } from './ui';
@@ -610,6 +610,40 @@ function AddStockDialog({ household, definition, people, onClose, onSaved }: {
   const fullCount = Number.parseInt(fullPackages, 10);
   const packagesToCreate = (Number.isFinite(fullCount) ? Math.max(fullCount, 0) : 0) + opened.length;
 
+  // What those boxes come to in units. "2 packages" does not answer "how many tablets",
+  // which is the question somebody looking at a shelf is actually asking. Added as
+  // fractions rather than floats, so half a box stays half a box.
+  const previewTotal = ((): Quantity | null => {
+    if (!parsedCapacity) {
+      return null;
+    }
+
+    const parts: Quantity[] = [];
+    const whole = Number.isFinite(fullCount) ? Math.max(fullCount, 0) : 0;
+    for (let index = 0; index < whole; index += 1) {
+      parts.push({ ...parsedCapacity, display: '' });
+    }
+
+    for (const value of opened) {
+      const parsed = parseQuantity(value === '' ? '0' : value);
+      if (!parsed) {
+        return null;
+      }
+      parts.push({ ...parsed, display: '' });
+    }
+
+    if (loose.trim() !== '') {
+      const parsed = parseQuantity(loose);
+      if (!parsed) {
+        return null;
+      }
+      parts.push({ ...parsed, display: '' });
+    }
+
+    const total = addQuantities(parts);
+    return total.numerator > 0 ? { ...total, display: '' } : null;
+  })();
+
   async function submit() {
     if (!parsedCapacity || parsedCapacity.numerator <= 0) {
       setError(t('errorGeneric'));
@@ -703,46 +737,63 @@ function AddStockDialog({ household, definition, people, onClose, onSaved }: {
           </Field>
         </div>
 
-        {/* Each box is a real container, so the preview counts rows, not a total. */}
+        {/* A part-used box was only reachable behind "Advanced options", so the form
+            looked like it could add full boxes and nothing else. A half box is not an
+            advanced case — it is the box you are holding. It belongs in the open. */}
+        <div className="flex flex-col gap-2">
+          {opened.map((value, index) => (
+            <div key={index} className="flex items-end gap-2">
+              <Field
+                label={`${t('openedPackage')} ${index + 1} — ${t('remainingInPackage')} (${unitLabel(definition.unit)})`}
+                className="flex-1"
+              >
+                {({ id }) => (
+                  <Input
+                    id={id}
+                    value={value}
+                    onChange={(e) =>
+                      setOpened(opened.map((existing, i) => (i === index ? e.target.value : existing)))
+                    }
+                  />
+                )}
+              </Field>
+              <Button
+                variant="quiet"
+                onClick={() => setOpened(opened.filter((_, i) => i !== index))}
+                aria-label={t('removeRow')}
+              >
+                {t('removeRow')}
+              </Button>
+            </div>
+          ))}
+          <div>
+            <Button variant="secondary" onClick={() => setOpened([...opened, ''])}>
+              {t('addOpenedPackage')}
+            </Button>
+          </div>
+        </div>
+
+        {/* Each box is a real container, so the preview counts rows — and then says what
+            that comes to, because "2 packages" does not answer "how many tablets". */}
         {packagesToCreate > 0 && parsedCapacity ? (
           <p className="rounded-lg bg-surface-sunken px-3 py-2 text-sm">
             {t('stockPreview')} <strong>{packagesToCreate}</strong> {t('stockPreviewPackages')}
+            {previewTotal ? (
+              <>
+                {' — '}
+                <strong>{formatQuantity(previewTotal)}</strong> {unitLabel(definition.unit)}
+              </>
+            ) : null}
           </p>
         ) : null}
 
+        {/* Stock is added as often as stock arrives: this form can be opened again
+            tomorrow for the box you found at the back of a drawer. Saying so costs one
+            line and saves the question. */}
+        <p className="text-sm text-ink-muted">{t('addStockAgainHint')}</p>
+
         <Advanced label={t('advancedOptions')}>
           <div className="flex flex-col gap-4">
-            <div className="flex flex-col gap-2">
-              {opened.map((value, index) => (
-                <div key={index} className="flex items-end gap-2">
-                  <Field
-                    label={`${t('openedPackage')} ${index + 1} — ${t('remainingInPackage')}`}
-                    className="flex-1"
-                  >
-                    {({ id }) => (
-                      <Input
-                        id={id}
-                        value={value}
-                        onChange={(e) =>
-                          setOpened(opened.map((existing, i) => (i === index ? e.target.value : existing)))
-                        }
-                      />
-                    )}
-                  </Field>
-                  <Button
-                    variant="quiet"
-                    onClick={() => setOpened(opened.filter((_, i) => i !== index))}
-                    aria-label={t('removeRow')}
-                  >
-                    {t('removeRow')}
-                  </Button>
-                </div>
-              ))}
-              <Button variant="secondary" onClick={() => setOpened([...opened, ''])}>
-                {t('addOpenedPackage')}
-              </Button>
-            </div>
-
             <Field label={t('assignTo')} optional={t('optional')}>
               {({ id }) => (
                 <Select id={id} value={owner} onChange={(e) => setOwner(e.target.value)}>

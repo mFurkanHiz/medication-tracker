@@ -327,24 +327,18 @@ function PlanDialog({ household, workspace, plan, onClose, onSaved }: {
           </Field>
         ) : null}
 
+        {/* A dose is pinned to a clock time or to a named part of the day, never both —
+            that is the domain rule. Two side-by-side fields where filling one disabled
+            the other made the choice look like an afterthought, and the "time of day"
+            select's own first option was labelled "Time", the same word as the field
+            next to it. One question, asked once, with the clock appearing only when the
+            answer is a clock. */}
         {kind === 'Scheduled' ? (
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label={t('exactTime')}>
-              {({ id }) => (
-                <Input
-                  id={id}
-                  type="time"
-                  value={localTime}
-                  onChange={(e) => setLocalTime(e.target.value)}
-                  disabled={dayPeriod !== ''}
-                />
-              )}
-            </Field>
-
-            <Field label={t('dayPeriod')} optional={t('optional')}>
+            <Field label={t('whenInDay')}>
               {({ id }) => (
                 <Select id={id} value={dayPeriod} onChange={(e) => setDayPeriod(e.target.value)}>
-                  <option value="">{t('exactTime')}</option>
+                  <option value="">{t('useExactTime')}</option>
                   {DAY_PERIODS.map((period) => {
                     const key = enumKey(period);
                     return (
@@ -356,8 +350,27 @@ function PlanDialog({ household, workspace, plan, onClose, onSaved }: {
                 </Select>
               )}
             </Field>
+
+            {dayPeriod === '' ? (
+              <Field label={t('exactTime')}>
+                {({ id }) => (
+                  <Input
+                    id={id}
+                    type="time"
+                    value={localTime}
+                    onChange={(e) => setLocalTime(e.target.value)}
+                  />
+                )}
+              </Field>
+            ) : null}
           </div>
-        ) : null}
+        ) : (
+          /* Hiding the timing fields for an as-needed plan is right, but silence reads
+             as a missing feature. Say why they are gone. */
+          <p className="rounded-lg bg-surface-sunken px-3 py-2 text-sm text-ink-muted">
+            {t('asNeededExplainer')}
+          </p>
+        )}
 
         <Advanced label={t('advancedOptions')}>
           <div className="flex flex-col gap-4">

@@ -51,11 +51,17 @@ public sealed class MedicationDefinitionConfiguration : IEntityTypeConfiguration
         b.Property(x => x.Category).HasColumnName("category").HasMaxLength(100);
         b.Property(x => x.Tags).HasColumnName("tags").HasColumnType("text[]");
         b.Property(x => x.Notes).HasColumnName("notes").HasMaxLength(2000);
+        b.Property(x => x.CautionDoNotTakeWith).HasColumnName("caution_do_not_take_with").HasColumnType("text");
+        b.Property(x => x.CautionFoodsToAvoid).HasColumnName("caution_foods_to_avoid").HasColumnType("text");
+        b.Property(x => x.CautionThingsToDo).HasColumnName("caution_things_to_do").HasColumnType("text");
+        b.Property(x => x.CautionThingsToAvoid).HasColumnName("caution_things_to_avoid").HasColumnType("text");
+        b.Property(x => x.CautionWarning).HasColumnName("caution_warning").HasColumnType("text");
         b.Property(x => x.ExternalCodes).HasColumnName("external_codes").HasColumnType("jsonb");
         b.Property(x => x.CreatedAt).HasColumnName("created_at");
         b.Property(x => x.ArchivedAt).HasColumnName("archived_at");
         b.Property(x => x.LegacyPersonId).HasColumnName("legacy_person_id");
         b.Ignore(x => x.DefaultPackageCapacity);
+        b.Ignore(x => x.Cautions);
         b.Ignore(x => x.IsArchived);
 
         b.HasOne<Household>().WithMany().HasForeignKey(x => x.HouseholdId).OnDelete(DeleteBehavior.Restrict);
@@ -76,8 +82,8 @@ public sealed class MedicationDefinitionChangeEventConfiguration
         b.Property(x => x.MedicationDefinitionId).HasColumnName("medication_definition_id");
         b.Property(x => x.AccountId).HasColumnName("account_id");
         b.Property(x => x.Kind).HasColumnName("kind").HasConversion<string>().HasMaxLength(40).IsRequired();
-        b.Property(x => x.PreviousValue).HasColumnName("previous_value").HasMaxLength(4000);
-        b.Property(x => x.NewValue).HasColumnName("new_value").HasMaxLength(4000);
+        b.Property(x => x.PreviousValue).HasColumnName("previous_value").HasColumnType("text");
+        b.Property(x => x.NewValue).HasColumnName("new_value").HasColumnType("text");
         b.Property(x => x.RecordedAt).HasColumnName("recorded_at");
 
         b.HasOne<Household>().WithMany().HasForeignKey(x => x.HouseholdId).OnDelete(DeleteBehavior.Restrict);

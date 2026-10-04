@@ -21,7 +21,7 @@ DECLARE
     skipped_dose CONSTANT uuid := '67676767-6767-4676-8676-767676767676';
     consume_entry CONSTANT uuid := 'f3f3f3f3-f3f3-4f3f-8f3f-f3f3f3f3f3f3';
 BEGIN
-    IF (SELECT count(*) FROM infrastructure.__ef_migrations_history) <> 13 THEN
+    IF (SELECT count(*) FROM infrastructure.__ef_migrations_history) <> 14 THEN
         RAISE EXCEPTION 'Unexpected migration history count: %',
             (SELECT count(*) FROM infrastructure.__ef_migrations_history);
     END IF;
@@ -77,6 +77,52 @@ BEGIN
           AND new_value = '{"name":"after"}'
     ) THEN
         RAISE EXCEPTION 'Medication audit history was not preserved';
+    END IF;
+
+    -- Migration 14 widened the audit snapshot columns from varchar(4000) to text in the
+    -- same migration that added the caution notes. That pairing is the point: the
+    -- snapshot is hand-serialised JSON of every field, and five prose notes push it well
+    -- past 4000 characters, so columns without the widening fail the audit write exactly
+    -- when the household finally records something worth auditing. Asserted here because
+    -- a regenerated migration could drop the widening and nothing else would notice.
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'catalog'
+          AND table_name = 'medication_definition_change_events'
+          AND column_name IN ('previous_value', 'new_value')
+          AND data_type <> 'text'
+    ) THEN
+        RAISE EXCEPTION 'Catalog audit snapshot columns are not text: %',
+            (SELECT string_agg(column_name || ' ' || data_type, ', ')
+             FROM information_schema.columns
+             WHERE table_schema = 'catalog'
+               AND table_name = 'medication_definition_change_events'
+               AND column_name IN ('previous_value', 'new_value'));
+    END IF;
+
+    IF (
+        SELECT count(*) FROM information_schema.columns
+        WHERE table_schema = 'catalog'
+          AND table_name = 'medication_definitions'
+          AND column_name LIKE 'caution_%'
+          AND data_type = 'text'
+    ) <> 5 THEN
+        RAISE EXCEPTION 'Expected five text caution columns on the catalog, found %',
+            (SELECT count(*) FROM information_schema.columns
+             WHERE table_schema = 'catalog'
+               AND table_name = 'medication_definitions'
+               AND column_name LIKE 'caution_%');
+    END IF;
+
+    -- Additive and nullable, so an upgrade must not invent a warning for a medicine
+    -- whose household never wrote one. An empty string here would read on screen as a
+    -- note somebody left blank on purpose.
+    IF EXISTS (
+        SELECT 1 FROM catalog.medication_definitions
+        WHERE coalesce(caution_do_not_take_with, caution_foods_to_avoid, caution_things_to_do,
+                       caution_things_to_avoid, caution_warning) IS NOT NULL
+    ) THEN
+        RAISE EXCEPTION 'The upgrade invented caution notes on a pre-existing medication';
     END IF;
 
     -- -------------------------------------------------------------- treatments ----

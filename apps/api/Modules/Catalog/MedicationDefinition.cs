@@ -38,7 +38,8 @@ public sealed class MedicationDefinition
         ExactQuantity? defaultPackageCapacity = null,
         string? category = null,
         string[]? tags = null,
-        string? notes = null)
+        string? notes = null,
+        CautionNotes cautions = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
 
@@ -56,6 +57,7 @@ public sealed class MedicationDefinition
         Tags = tags ?? [];
         Notes = Clean(notes);
         SetDefaultPackageCapacity(defaultPackageCapacity);
+        SetCautions(cautions);
     }
 
     public Guid Id { get; private set; }
@@ -105,6 +107,37 @@ public sealed class MedicationDefinition
     public string? Notes { get; private set; }
 
     /// <summary>
+    /// The household's own safety notes, stored one column per note.
+    /// </summary>
+    /// <remarks>
+    /// Flat columns rather than an owned entity, matching
+    /// <see cref="DefaultPackageCapacity"/>: an optional owned type whose every column
+    /// is null is the exact shape EF Core warns about, and a medicine with nothing
+    /// recorded is the common case here, not the edge one.
+    /// </remarks>
+    public string? CautionDoNotTakeWith { get; private set; }
+
+    public string? CautionFoodsToAvoid { get; private set; }
+
+    public string? CautionThingsToDo { get; private set; }
+
+    public string? CautionThingsToAvoid { get; private set; }
+
+    public string? CautionWarning { get; private set; }
+
+    /// <summary>
+    /// What the household was told about taking this safely, as one value so a caller
+    /// cannot pick up four of the five notes by accident. Never derived by the
+    /// software — <see cref="CautionNotes"/> says why that line is not crossed.
+    /// </summary>
+    public CautionNotes Cautions => new(
+        CautionDoNotTakeWith,
+        CautionFoodsToAvoid,
+        CautionThingsToDo,
+        CautionThingsToAvoid,
+        CautionWarning);
+
+    /// <summary>
     /// Reserved for future external identifiers (barcode, GTIN, ATC, national code)
     /// as a JSON document, so adding one later needs no schema change. Not read by
     /// any V1 behaviour.
@@ -135,7 +168,8 @@ public sealed class MedicationDefinition
         ExactQuantity? defaultPackageCapacity,
         string? category,
         string[] tags,
-        string? notes)
+        string? notes,
+        CautionNotes cautions)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         ArgumentNullException.ThrowIfNull(activeIngredients);
@@ -152,6 +186,7 @@ public sealed class MedicationDefinition
         Tags = tags;
         Notes = Clean(notes);
         SetDefaultPackageCapacity(defaultPackageCapacity);
+        SetCautions(cautions);
     }
 
     /// <summary>
@@ -180,6 +215,24 @@ public sealed class MedicationDefinition
 
         DefaultPackageCapacityNumerator = capacity.Value.Numerator;
         DefaultPackageCapacityDenominator = capacity.Value.Denominator;
+    }
+
+    private void SetCautions(CautionNotes cautions)
+    {
+        if (!cautions.IsValid())
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(cautions),
+                $"A caution note may be at most {CautionNotes.MaximumNoteLength} characters.");
+        }
+
+        var normalized = cautions.Normalized();
+
+        CautionDoNotTakeWith = normalized.DoNotTakeWith;
+        CautionFoodsToAvoid = normalized.FoodsToAvoid;
+        CautionThingsToDo = normalized.ThingsToDo;
+        CautionThingsToAvoid = normalized.ThingsToAvoid;
+        CautionWarning = normalized.Warning;
     }
 
     private static string? Clean(string? value) =>

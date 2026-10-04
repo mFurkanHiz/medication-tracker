@@ -825,33 +825,67 @@ Standing rules the owner set for this phase, which bind future turns:
     and the cached query are the evidence; a real Android device is still the acceptance
     gate (rows 28 and 29, owner-held).
 
+- **Sprint 5, third slice — owner-approved scope change, 2026-10-04.** The owner moved
+  mobile feature code to a version after V1, kept the mobile infrastructure, and asked
+  for server work to continue planned so mobile stays compatible. Recorded as **ADR
+  0015**, with acceptance rows 28 and 29 marked `DEFERRED` (not `DONE`) and the mobile
+  halves of rows 34 and 37 recorded as deferred too.
+  - The decisive fact was not a coding problem. There is no release channel, so every
+    mobile slice lands on `main` and reaches nobody, while the V1 rows that do reach
+    users were waiting behind it.
+  - **The compatibility claim is now a test rather than an intention.**
+    `MobileContractTests` pins the field set `/workspace` and `/today` must carry — the
+    rows the Expo client already caches, plus `cautions`, `minimumIntervalMinutes`,
+    `lastTakenAt` and `nextDoseAllowedFrom`, which the deferred slices will read and the
+    server already sends. It asserts presence and type, **not** exhaustiveness, so an
+    additive change stays free and only removal or renaming fails.
+  - Why this specifically matters while mobile is deferred: during active development a
+    dropped field is a failing build within the hour. Deferred, the same drop is silent
+    for months, and the cost lands on whoever resumes the work — as unbudgeted server
+    work, discovered after the mobile estimate was given.
+  - Proven to catch it: `mealRelation` was removed from the Today projection and the test
+    failed with *"The mobile client reads mealRelation, and the server no longer sends
+    it"*. Restored, green again. A contract test that has never been seen to fail is a
+    comment.
+  - The app itself was not touched. It stays at on-device schema version 2, and
+    `pnpm typecheck:mobile` plus `pnpm check:mobile-migration` keep running on every
+    commit — deferred is not abandoned, and the next mobile version will inherit whatever
+    version-2 databases exist by then.
+  - Gate: `dotnet test` **208 passed, 0 failed, 0 skipped**; lint, mobile typecheck,
+    migration check and web build all clean.
+  - **Sprint 5 is closed** under the approved scope. The remaining mobile parity work
+    (caution notes and the gap notice on the phone, and reports/export/counting, which is
+    a surface the phone never had) goes with the client to a later version.
+
 ## Where this stands
 
-Sprints 2, 3 and 4 are closed, each with its report on its Notion sprint page. The
-acceptance table stands at **32 DONE, 7 PARTIAL, 1 OPEN**; row 35 was the last PARTIAL
-that was purely technical, so every remaining PARTIAL now needs either the mobile client
-or the owner.
+Sprints 2, 3, 4 and 5 are closed, each with its report on its Notion sprint page.
 
-Sprint 5 is **in progress**: the pause defect and the guidance display are done. The
-mobile schema is at version 2 and `pnpm check:mobile-migration` guards its upgrade path.
+The acceptance table stands at **32 DONE, 5 PARTIAL, 2 DEFERRED, 1 OPEN** of 40 rows.
+`DEFERRED` is an owner decision recorded on a date, not a criterion met: **V1 is a web
+release with mobile infrastructure in place and does not deliver the offline mobile
+client** (ADR 0015). Do not reword it into something that reads as delivered.
 
-**Blocked on the owner, not on code:** mobile has no release channel — no store release,
-no EAS build, no internal distribution. A phone fix that lands on `main` therefore reaches
-nobody, and rows 28 and 29 cannot close until that decision is made. Do not treat a green
-mobile CI run as a mobile release.
+**V1's remaining work is now web and operational, and none of it is blocked on mobile:**
 
-**Exact next action.** The next mobile slice is **caution notes and the minimum-gap notice
-on the Today row**. Both already come down from the server on the Today response (Sprint 3
-added them), so this is a snapshot change plus rendering: mobile schema version **3**, one
-step migration adding the caution columns and the gap fields to `due_doses`. Add the new
-`MIGRATE_2_TO_3` step beside the existing one — the check asserts the number of step
-migrations matches `SCHEMA_VERSION - 1`, so it will fail until that step exists, which is
-the intended reminder.
+1. Row 34 — the web accessibility audit. Relative units, labelled controls,
+   `aria-describedby` hints, a permanent focus ring and a reduced-motion rule are in
+   place and were checked in a browser at 375px, but no formal audit has been run.
+2. Row 37 — log redaction is unverified and rate limiting is still auth-only. Both are
+   server work. See `docs/security-threat-model.md`.
+3. Row 39 — the deployment preflight needs the owner's approval; the migration half is
+   already complete and tested on blank and production-shaped baselines.
+4. Row 38 — the final V1 commit must pass CI again.
+5. Row 30 — the owner's visual judgement on the web surface. Nothing agreed is missing.
+6. Row 40 — the owner runs the acceptance flow and approves. Last gate, and mandatory.
 
-After that, the last mobile block is **reports, export and counting**, which is a surface
-that does not exist on the phone at all rather than a defect — bigger, but nothing in it
-is currently misleading anybody.
+**Exact next action.** Start Sprint 6 with row 37's server half, because it is the only
+remaining item that is both entirely in this repository's hands and a real exposure
+rather than a judgement: verify that no request log, error response or audit row can
+carry a credential, a session token or an e-mail address, and extend rate limiting
+beyond the auth endpoints. Then the web accessibility audit (row 34). The owner-held
+rows (39's preflight approval, 40's acceptance) come last and cannot be done for them.
 
-Note for whoever picks this up: the mobile screen cannot be rendered in an agent container
-(`react-native-web` is not installed), so mobile slices end at typecheck plus the migration
-check. Visual confirmation is the owner's device.
+Still open for the owner, unchanged by this scope change: the mobile release-channel
+decision when mobile resumes; which production household is theirs, so the synthetic
+ones left by smoke tests can be cleaned; and the `VPS_SSH_KEY` rotation.

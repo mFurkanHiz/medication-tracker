@@ -8,6 +8,8 @@ Owner-accepted V1 is governed by [`v1-acceptance.md`](./v1-acceptance.md). The o
 
 Delivered in the technical baseline includes person-free medication entry, exact full/opened packages, package assignment, category/tag/status filters, and regular/as-needed plans with optional dates, times, named periods and meal relation. Mobile authenticated sync is implemented, but physical-device final acceptance and other V1 gaps remain.
 
+**Scope change — 2026-10-04 (ADR 0015).** The owner explicitly moved the mobile client past V1 and kept its infrastructure. The sentence above about physical-device acceptance is therefore now history: V1 is a web release, acceptance rows 28 and 29 are `DEFERRED` rather than outstanding, and the mobile sprint items listed further down this roadmap belong to a later version. The remaining V1 work is web and operational.
+
 ## Sprint 0 — Foundation
 
 - Repository, CI quality gates, architecture decisions, and local developer workflow

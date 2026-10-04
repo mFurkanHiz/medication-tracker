@@ -101,25 +101,35 @@ earlier catalog/package wording.
 **Owner-accepted V1 is not complete.** The authoritative completion criteria are in
 `docs/v1-acceptance.md`; resumable execution state is in `docs/v1-progress.md`.
 
-The `v1.0.0` tag and the live site remain a useful **technical production baseline**,
-not an acceptance point. Production currently runs main
-`0b463d3a3b4afb15ee5fc0873b89fb0d5f4d50a1`.
+The `v1.0.0` tag and the live site are a **technical production baseline**, not an
+acceptance point. Merging to `main` deploys automatically, so the live commit is whatever
+`main` last deployed; the deploy job prints the commit and proves the public site answers.
 
-The package-first domain rebuild is on `claude/v1-domain-rebuild`, proposed in
-[PR #11](https://github.com/mFurkanHiz/medication-tracker/pull/11). It delivers the
-rebuilt domain, persistence, data-preserving migration and API — medication
-definitions, physical packages, consumption allocations, allocation corrections,
-untracked doses, manual source selection, partial and extra doses, low-stock
-warnings, official refill eligibility and the refill-gap warning.
+The package-first domain rebuild (ADR 0014) is merged and live, and the web client is
+rebuilt against it: Today, medications with package detail, effective-dated plans, people,
+history, inventory counting, lending, refill settings, reports, export, the household's own
+caution notes and an advisory minimum gap.
 
-**It is not deployable yet.** The web and mobile clients still call the superseded
-endpoints and are the next slice. Remaining V1 work, none of it narrowed or deferred:
-web rebuild, mobile offline rebuild, reliable local reminders, reports, export,
-accessibility, a reproducible synthetic demo seed, and the TR/EN sweep across the
-rebuilt surfaces.
+**Mobile is deferred past V1 by owner approval (ADR 0015, 2026-10-04).** The Expo app
+remains in the repository as working infrastructure — SQLite snapshot, durable outbox,
+local reminders, a Today screen that records offline — and stays compiling and migration-
+tested on every commit. It has never run on a physical device and there is no release
+channel to put it on one. Acceptance rows 28 and 29 are recorded `DEFERRED`, not `DONE`:
+**V1 is a web release with mobile infrastructure in place.**
+
+Server work continues mobile-compatible, and that is enforced rather than intended:
+`MobileContractTests` pins the field set `/workspace` and `/today` must carry for an
+offline client, so removing or renaming one fails CI while additive change stays free.
+
+Remaining V1 work, all of it web or operational: the web accessibility audit (row 34), log
+redaction and rate limiting beyond the auth endpoints (row 37), the owner-approved
+deployment preflight (row 39), a final green CI run (row 38), the owner's visual judgement
+on the web surface (row 30), and the owner's acceptance run (row 40).
 
 No sprint, tag, CI run or deployment may redefine a required V1 item as later work
-without explicit owner approval.
+without explicit owner approval. Where the owner grants one, it is recorded as `DEFERRED`
+in the acceptance document with a date and an ADR — never as `DONE`, and never by
+deleting or softening the row.
 
 ## Non-goals for the first release
 

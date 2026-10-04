@@ -73,6 +73,8 @@ export function Plans({ household, workspace, onChanged }: {
                   </div>
 
                   <div className="flex flex-wrap items-center gap-1.5">
+                    {plan.isPaused ? <Badge tone="warning">{t('planPaused')}</Badge> : null}
+
                     {/* The same named period means an obligation on a scheduled plan and a
                         preference on an as-needed one. Say which, rather than letting the
                         badge imply a timetable the household never promised. */}
@@ -90,6 +92,24 @@ export function Plans({ household, workspace, onChanged }: {
                   <Button variant="secondary" onClick={() => setEditing(plan)}>
                     {t('editPlan')}
                   </Button>
+
+                  {/* Sits before the destructive one on purpose. "I have stopped for now"
+                      is the ordinary case; ending a plan outright is the rare one, and
+                      until today it was the only thing on offer. */}
+                  <Button
+                    variant="secondary"
+                    onClick={async () => {
+                      try {
+                        await api.setPlanPaused(household, plan.id, !plan.isPaused);
+                        onChanged();
+                      } catch (caught) {
+                        setError(t(caught instanceof ApiError ? errorKey(caught.code) : 'errorNetwork'));
+                      }
+                    }}
+                  >
+                    {plan.isPaused ? t('resumePlan') : t('pausePlan')}
+                  </Button>
+
                   <Button
                     variant="danger"
                     onClick={async () => {

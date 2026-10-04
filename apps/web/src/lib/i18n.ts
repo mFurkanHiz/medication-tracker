@@ -180,6 +180,11 @@ export const tr = {
   instructions: 'Talimat notu',
   planVersionNote: 'Düzenleme yeni bir sürüm oluşturur; geçmiş kayıtlar değişmez.',
   deletePlan: 'Planı sonlandır',
+  pausePlan: 'Şimdilik ara ver',
+  resumePlan: 'Yeniden başla',
+  planPaused: 'Ara verildi',
+  medicationHasPausedPlan:
+    'Bu ilaç için ara verilmiş bir plan var. Yeniden almaya başladıysanız buradan devam ettirebilirsiniz.',
 
   monday: 'Pzt',
   tuesday: 'Sal',
@@ -526,6 +531,11 @@ export const en: Record<MessageKey, string> = {
   instructions: 'Instruction note',
   planVersionNote: 'Editing creates a new version; past records are unchanged.',
   deletePlan: 'End plan',
+  pausePlan: 'Pause for now',
+  resumePlan: 'Start again',
+  planPaused: 'Paused',
+  medicationHasPausedPlan:
+    'There is a paused plan for this medication. If you have started taking it again, you can resume it here.',
 
   monday: 'Mon',
   tuesday: 'Tue',

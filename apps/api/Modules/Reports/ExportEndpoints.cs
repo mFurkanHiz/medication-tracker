@@ -48,7 +48,7 @@ public static class ExportEndpoints
     /// <summary>
     /// Bumped whenever the shape changes, so a file read back later can be understood.
     /// </summary>
-    public const int SchemaVersion = 1;
+    public const int SchemaVersion = 2;
 
     /// <summary>
     /// Rows taken from any one collection. A household holds orders of magnitude less
@@ -312,6 +312,7 @@ public static class ExportEndpoints
                 mealRelation = version.MealRelation?.ToString(),
                 version.MinimumIntervalMinutes,
                 version.Instructions,
+                version.IsPaused,
                 version.CreatedAt,
             }),
 

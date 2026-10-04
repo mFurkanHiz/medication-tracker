@@ -124,10 +124,12 @@ public static class TreatmentEndpoints
 
             plan.Reassign(request.PersonId, request.MedicationDefinitionId);
 
+            // The pause rides forward. Editing the dose of a plan you have set aside is not
+            // a statement that you have started taking it again — resuming is its own act.
             var version = new TreatmentPlanVersion(
                 Guid.CreateVersion7(), plan.Id, latest.VersionNumber + 1, parsed.Dose, parsed.Recurrence,
                 request.LocalTime, request.TimeZoneId, now, accountId, parsed.DayPeriod, parsed.MealRelation,
-                request.MinimumIntervalMinutes, request.Instructions);
+                request.MinimumIntervalMinutes, request.Instructions, latest.IsPaused);
 
             db.TreatmentPlanVersions.Add(version);
             db.TreatmentPlanChangeEvents.Add(new TreatmentPlanChangeEvent(
@@ -136,6 +138,89 @@ public static class TreatmentEndpoints
 
             await db.SaveChangesAsync(ct);
             return Results.Ok(new { versionId = version.Id, versionNumber = version.VersionNumber });
+        });
+
+        // Pausing and resuming are the same operation with a different answer, so they
+        // share one route. Both append a version rather than mutating one: the days before
+        // a pause were really governed by the schedule, and the days inside it really were
+        // not, and an effective-dated chain is how this product records that distinction
+        // everywhere else.
+        api.MapPost("/{planId:guid}/paused", async (
+            Guid householdId,
+            Guid planId,
+            SetPlanPausedRequest request,
+            HttpContext context,
+            MedicationTrackerDbContext db,
+            CancellationToken ct) =>
+        {
+            if (!await HouseholdAccess.IsMemberAsync(db, householdId, context, ct))
+            {
+                return ApiResults.Forbidden();
+            }
+
+            var plan = await db.TreatmentPlans.SingleOrDefaultAsync(
+                candidate => candidate.Id == planId
+                             && candidate.HouseholdId == householdId
+                             && candidate.DeletedAt == null, ct);
+
+            if (plan is null)
+            {
+                return Results.NotFound();
+            }
+
+            var latest = await db.TreatmentPlanVersions.AsNoTracking()
+                .Where(version => version.TreatmentPlanId == planId)
+                .OrderByDescending(version => version.VersionNumber)
+                .FirstAsync(ct);
+
+            // Pausing twice is not an error and must not append a second identical version,
+            // which would make the history read as two separate decisions.
+            if (latest.IsPaused == request.IsPaused)
+            {
+                return Results.Ok(new
+                {
+                    versionId = latest.Id,
+                    versionNumber = latest.VersionNumber,
+                    isPaused = latest.IsPaused,
+                });
+            }
+
+            var accountId = HouseholdAccess.RequireAccountId(context);
+            var now = DateTimeOffset.UtcNow;
+            var before = Snapshot(plan, latest);
+
+            // Everything else is copied verbatim. A pause says nothing about the dose, the
+            // days or the times, and resuming must bring back exactly the plan that was set
+            // aside rather than some reconstruction of it.
+            var version = new TreatmentPlanVersion(
+                Guid.CreateVersion7(),
+                plan.Id,
+                latest.VersionNumber + 1,
+                latest.Dose,
+                latest.Recurrence,
+                latest.LocalTime,
+                latest.TimeZoneId,
+                now,
+                accountId,
+                latest.DayPeriod,
+                latest.MealRelation,
+                latest.MinimumIntervalMinutes,
+                latest.Instructions,
+                request.IsPaused);
+
+            db.TreatmentPlanVersions.Add(version);
+            db.TreatmentPlanChangeEvents.Add(new TreatmentPlanChangeEvent(
+                Guid.CreateVersion7(), householdId, plan.Id, accountId,
+                ChangeKind.VersionAppended, before, Snapshot(plan, version), now));
+
+            await db.SaveChangesAsync(ct);
+
+            return Results.Ok(new
+            {
+                versionId = version.Id,
+                versionNumber = version.VersionNumber,
+                isPaused = version.IsPaused,
+            });
         });
 
         api.MapDelete("/{planId:guid}", async (
@@ -282,6 +367,12 @@ public static class TreatmentEndpoints
         DayPeriod = version.DayPeriod?.ToString(),
         MealRelation = version.MealRelation?.ToString(),
         version.MinimumIntervalMinutes,
+
+        // Instructions were missing from this projection, so an edit to the instruction
+        // note audited as a no-op. Added here rather than left for later: the file was
+        // already open and the hole is one line wide.
+        version.Instructions,
+        version.IsPaused,
         version.VersionNumber,
     });
 
@@ -291,6 +382,9 @@ public static class TreatmentEndpoints
         DayPeriod? DayPeriod,
         MealRelation? MealRelation);
 }
+
+/// <summary>Whether the household is setting this plan aside, or picking it back up.</summary>
+public sealed record SetPlanPausedRequest(bool IsPaused);
 
 public sealed record TreatmentPlanRequest(
     Guid PersonId,

@@ -10,7 +10,13 @@ public sealed record PlanVersionSlice(
     int VersionNumber,
     RecurrenceSpecification Recurrence,
     TimeOnly? LocalTime,
-    TimeZoneInfo Zone);
+    TimeZoneInfo Zone,
+
+    /// <summary>
+    /// Whether the household had set this plan aside over the days this version governs.
+    /// Defaulted so that every existing caller keeps its meaning: not paused.
+    /// </summary>
+    bool IsPaused = false);
 
 /// <summary>
 /// Works out which dose slots a plan actually placed inside a past period.
@@ -71,6 +77,16 @@ public static class ScheduledSlots
         for (var day = firstDay; day <= lastDay; day = day.AddDays(1))
         {
             if (Governing(versions, day) is not { } version)
+            {
+                continue;
+            }
+
+            // A paused version places no slots either, for exactly the same reason an
+            // as-needed plan does not: the household never promised those doses. Counting
+            // a deliberate break as a run of missed doses would punish the person for
+            // telling the truth about it, which is the opposite of what recording it is
+            // for. The days stay governed and auditable; they simply ask for nothing.
+            if (version.IsPaused)
             {
                 continue;
             }

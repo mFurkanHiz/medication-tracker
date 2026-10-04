@@ -79,6 +79,7 @@ public sealed class TreatmentPlanVersionConfiguration : IEntityTypeConfiguration
         b.Property(x => x.TimeZoneId).HasColumnName("time_zone_id").HasMaxLength(100).IsRequired();
         b.Property(x => x.DayPeriod).HasColumnName("day_period").HasConversion<string>().HasMaxLength(20);
         b.Property(x => x.MealRelation).HasColumnName("meal_relation").HasConversion<string>().HasMaxLength(20);
+        b.Property(x => x.IsPaused).HasColumnName("is_paused").HasDefaultValue(false);
         b.Property(x => x.MinimumIntervalMinutes).HasColumnName("minimum_interval_minutes");
         b.Property(x => x.Instructions).HasColumnName("instructions").HasMaxLength(1000);
         b.Property(x => x.CreatedAt).HasColumnName("created_at");

@@ -92,6 +92,8 @@ export type TreatmentPlan = {
   mealRelation: string | null;
   minimumIntervalMinutes: number | null;
   instructions: string | null;
+  /** Set aside for now. The plan stays listed so it can be picked up again. */
+  isPaused: boolean;
 };
 
 export type Workspace = {

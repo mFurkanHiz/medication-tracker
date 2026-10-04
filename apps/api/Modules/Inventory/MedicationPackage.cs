@@ -178,11 +178,20 @@ public sealed class MedicationPackage
         IsPinned = false;
     }
 
-    public void Reinstate(DateTimeOffset reinstatedAt)
+    /// <summary>
+    /// Brings a retired package back into use, as sealed or opened depending on whether
+    /// its seal had already been broken.
+    /// </summary>
+    /// <remarks>
+    /// Takes no timestamp on purpose: the package has no reinstated-at field, and the
+    /// instant belongs on the ledger entry that puts the stock back, where it sits beside
+    /// the amount and the entry it undoes. Storing it here as well would be a second copy
+    /// of the same fact, free to drift from the first.
+    /// </remarks>
+    public void Reinstate()
     {
         State = OpenedAt is null ? PackageState.Sealed : PackageState.Opened;
         RetiredAt = null;
-        _ = reinstatedAt;
     }
 
     /// <summary>Transfers ownership. Does not move custody and does not change stock.</summary>

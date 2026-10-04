@@ -161,6 +161,12 @@ export const tr = {
   cautionThingsToAvoidHint: 'Örneğin "aldıktan sonra yarım saat uzanma".',
   cautionWarning: 'Diğer uyarılar',
 
+  // Kayıp ya da atılmış işaretlenen kutuyu geri getirme. Kutudaki miktar stoğa geri
+  // ekleniyor; kayıt silinmiyor, geri alındığı yazılıyor.
+  reinstatePackage: 'Kutuyu geri getir',
+  retiredPackages: 'geri getirilebilir',
+  reinstateHint: 'Kutuda kalan miktar stoğa geri eklenir. Kayıp kaydı silinmez; geri alındığı yazılır.',
+
   // "En az ara" alanı artık gerçekten bir şey yapıyor: erken olduğunu söylüyor. Ama
   // ENGELLEMİYOR. Gerçekten alınmış bir dozu kaydetmeyi reddetmek defteri yalancı yapar,
   // ve insanı gerçeği kaydettiği için cezalandırmak ona kaydetmeyi bırakmayı öğretir.
@@ -548,6 +554,11 @@ export const en: Record<MessageKey, string> = {
   cautionThingsToAvoid: 'Things to avoid',
   cautionThingsToAvoidHint: 'For example "do not lie down for half an hour after it".',
   cautionWarning: 'Other warnings',
+
+  reinstatePackage: 'Bring the package back',
+  retiredPackages: 'can be brought back',
+  reinstateHint:
+    'What was left in the box goes back into stock. The loss is not erased; it is recorded as undone.',
 
   tooSoon: 'Sooner than your own note allows',
   tooSoonStillRecordable: 'The app is not blocking you — record whatever actually happened.',

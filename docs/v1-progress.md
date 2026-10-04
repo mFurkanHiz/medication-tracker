@@ -742,6 +742,48 @@ Standing rules the owner set for this phase, which bind future turns:
   "henüz erken" notice with `Alındı` still enabled, the medicine card carries the same
   block, and the form section opens itself when notes already exist.
 
+- 2026-10-04: **A box you wrote off can be found again**, and **a reproducible synthetic
+  demo household exists**. Sprint 4, no migration.
+  - `MedicationPackage.Reinstate()` had sat in the domain since the rebuild with nothing
+    calling it — no endpoint, no button — so marking a box lost was a one-way door. The
+    capability was modelled and then left unconnected, which is the worst of both: it
+    reads as finished in the code and is missing in the product.
+  - The state flag was the easy half. Retiring writes a NEGATIVE ledger entry for whatever
+    was left in the box, so reinstating writes the symmetric positive one, or the household
+    stays permanently short by an amount that was never actually missing. The entry names
+    the retirement it undoes through `ReversesEntryId` — a field that already existed, was
+    already exported, and nothing wrote. Without the link the history reads as a loss
+    followed by an unexplained windfall, which is the shape of a mistake rather than of a
+    correction. Nothing is deleted: the loss really was recorded, and this says it was
+    undone.
+  - `Found` is the existing ledger type for "stock the household found that the ledger did
+    not know about", so no new enum member and **no migration**. Verified there is no CHECK
+    constraint on `entry_type` before relying on that.
+  - Which retirement gets undone is chosen by the package's own `RetiredAt` rather than by
+    taking the newest loss, so a box lost, found and lost again pairs each find with its
+    own loss; reversing the older entry twice would conjure stock out of nothing. A box
+    retired while empty brings nothing back, which `ck_ledger_entries_non_zero` also
+    demands.
+  - Found by driving the screen rather than reading it: a household that loses its only box
+    saw `Kutuları göster (0)` — the count hid the very box they needed, inside a panel they
+    now had no reason to open. The label names recoverable boxes when there are any.
+  - **Demo seed** (`tools/demo-seed.mjs`, `pnpm seed:demo`) closes acceptance row 35, the
+    last PARTIAL technical row. It drives the **public API**, not SQL: a SQL fixture can
+    write states the domain cannot reach — a package whose balance disagrees with its
+    ledger — and a fixture that drifts from the product is worse than none, because it
+    looks like evidence. The first run proved the point by being rejected for an invalid
+    `form`.
+  - It is additive and isolated: it registers its own account at a fresh `.invalid` address
+    (RFC 2606, never a real mailbox) and writes only inside that household. No path in it
+    updates or deletes a row it did not create. Loopback is the only host it will talk to
+    without `--allow-remote` and a typed confirmation, because a demo seed pointed at the
+    live site would leave synthetic households in production for ever — the cleanup chore
+    this project already carries from smoke tests.
+  - Gate: `dotnet test` **204 passed, 0 failed, 0 skipped** (seven new tests). Lint, mobile
+    typecheck and web build clean. Driven in a browser: 14 tablets → lost → 0 → found →
+    14, conservation exact, and the seeded demo household renders with fractional half-dose
+    plans, caution notes, the gap warning and a paused course.
+
 ### Sprint 2 — closed
 
 All three tasks are done, deployed, and recorded in Notion as `Production` / `Deployed`:
@@ -749,14 +791,19 @@ pause/resume (PR #39, migration 13) and both archive defects (PR #41, no migrati
 Notion sprint page carries the report and is marked `Done`; Sprint 3 stays `Planned` until
 a turn actually starts it.
 
-**Exact next action.** Sprint 3 is closed — all three tasks are done in one turn, which
-the migration rule allowed because only the first needed a migration.
+**Exact next action.** Sprints 3 and 4 are both closed. The acceptance table now stands at
+**32 DONE, 7 PARTIAL, 1 OPEN**, and row 35 was the last PARTIAL that was purely technical —
+every remaining PARTIAL needs either the mobile client or the owner.
 
-Next is **Sprint 4 · Envanter yaşam döngüsü ve demo verisi**, first slice: *reinstate a
-package marked lost*. `MedicationPackage.Reinstate()` exists in the domain and no endpoint
-calls it. Retiring a package writes a negative `Loss` ledger entry for whatever was left,
-so reinstating must write the symmetric positive entry — anything else breaks inventory
-conservation, which `verify-upgrade.sql` and the conservation tests both check. Confirm
-first whether that needs a migration; if it does, it is the only one in that turn and both
-migration-count assertions move from 14 to 15. The synthetic demo seed (acceptance row 35)
-is a separate turn and must never be pointed at production.
+Next is **Sprint 5 · Mobil eşitlik**, and it is the largest remaining block. The debt has
+been accumulating for three sprints: the Expo client has no reports, export or counting
+surface, no caution-note fields, no minimum-gap notice, and — the one that actually
+misleads somebody — **its SQLite snapshot has no `is_paused` column, so a plan the
+household set aside still fires local reminders on the phone.** Start there, because it is
+the only item on the list that tells a person something untrue.
+
+The ALTER path must be tested against an existing v1 database file, not only a fresh
+install: a migration that works on a clean device and corrupts an upgrade is exactly the
+failure a phone makes hardest to diagnose. Check whether the mobile schema change needs a
+server migration too; if it does, it is the only one in that turn and both migration-count
+assertions move from 14 to 15.

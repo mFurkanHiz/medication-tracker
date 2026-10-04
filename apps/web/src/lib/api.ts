@@ -251,6 +251,9 @@ export const api = {
   retirePackage: (household: string, pkg: string, state: string, reason?: string) =>
     post<void>(`/households/${household}/inventory/packages/${pkg}/retire`, { state, reason }),
 
+  reinstatePackage: (household: string, pkg: string, reason?: string) =>
+    post<void>(`/households/${household}/inventory/packages/${pkg}/reinstate`, { reason }),
+
   assignPackage: (household: string, pkg: string, personId: string | null) =>
     post<void>(`/households/${household}/inventory/packages/${pkg}/owner`, { personId }),
 

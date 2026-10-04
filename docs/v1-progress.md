@@ -668,6 +668,80 @@ Standing rules the owner set for this phase, which bind future turns:
   - Acceptance row 3's evidence line ("the active plan is deactivated and the cascade is
     audited") still holds: pausing deactivates and is audited as `CascadeDeactivated`.
 
+- 2026-10-04: **The household's own safe-use notes**, stored and shown (migration 14).
+  Sprint 3's first two tasks.
+  - Five free-text notes on the medication DEFINITION, not on a plan version: what not to
+    take it with, what food to avoid, what to do, what not to do, and anything else worth
+    a warning. "Do not take this with grapefruit" is a fact about the medicine; on a
+    version it would have to be retyped for every person taking it and re-entered on every
+    dose change, and the copies would drift.
+  - **The load-bearing part is what this refuses to do.** The software never derives a
+    word of it: nothing is parsed, matched against a drug database, cross-referenced with
+    another medicine, or checked before a dose is recorded. A tracker that started guessing
+    which medicines clash would be making a clinical claim it cannot stand behind, and once
+    it guessed right once it would be trusted to guess always — including by its silence.
+    The "Hanenin kendi notu" badge is that boundary made visible, and `AsNeededGuidanceTests`
+    has a sibling: `CautionNotesTests` asserts the notes cannot reach the recording path.
+  - The word "etkileşim" appears in exactly one place in the product, the footer, where it
+    is a denial: "Teşhis koymaz, doz önermez ve ilaç etkileşimi değerlendirmez." No field
+    label uses it.
+  - Migration 14 widens `medication_definition_change_events.previous_value` / `new_value`
+    from `varchar(4000)` to `text` in the SAME migration that adds the columns. The audit
+    snapshot is hand-serialised JSON of every field; five prose notes put it an order of
+    magnitude past 4000 characters. Shipping the columns without the widening would break
+    the audit write exactly when the trail finally had something worth recording.
+    `verify-upgrade.sql` now asserts the column types and that the upgrade invented no
+    notes on pre-existing rows, so a regenerated migration cannot quietly drop the widening.
+  - Shown on the medicine's own card AND on the Today dose row — "uyarı notları kolay
+    görünebilir yerde konumlansın", and Today is where somebody is reading with the box in
+    their hand. One shared projection (`CautionView`) feeds the workspace, Today and the
+    export, so the three cannot drift into different shapes; `null` when empty, so a client
+    never renders a warning panel with nothing in it.
+  - Export `SchemaVersion` 2 → 3: a reader must be able to tell a file with no warnings
+    from one written before warnings could be recorded.
+
+- 2026-10-04: **The minimum gap finally says something true.** Sprint 3's third task; no
+  migration.
+  - `minimumIntervalMinutes` was validated, stored, copied forward by the pause cascade,
+    exported and editable — and **no code on the recording path ever read it**. Verified by
+    tracing every reference, not from the earlier note. The form said "En az ara (dakika)"
+    and promised a guard that did not exist, on the field an as-needed painkiller needs
+    most. A promise nothing keeps is worse than a missing feature, because somebody relies
+    on it.
+  - It is now advisory and says so. Today carries `lastTakenAt`, `minimumIntervalMinutes`
+    and `nextDoseAllowedFrom`; the row reads "Kendi notunuza göre henüz erken … Uygulama
+    engellemiyor — gerçekte ne olduysa onu kaydedin", and both buttons stay live.
+  - **Advisory on purpose.** The gap is the household's own note, so acting on it is not
+    the software reaching a clinical conclusion — but refusing to record a dose somebody
+    actually took would make the ledger lie about the one thing it exists to remember.
+    Same rule as the pause slice: punishing somebody for recording the truth is the surest
+    way to teach them to stop. `MinimumGapTests` pins the refusal to refuse.
+  - The clock is keyed on person + medicine, not on the plan version, so editing a plan
+    cannot erase the dose taken an hour ago. A skipped dose starts no clock.
+  - The arithmetic is server-side (one place); whether the instant has passed is decided
+    on the screen, because that answer changes every second. `useNow` is built on
+    `useSyncExternalStore` with a quantised snapshot — reading the clock during render is
+    both impure and wrong: nothing would re-render when the gap passed, so the warning
+    would linger until something else refreshed the page.
+
+- 2026-10-04: **Found in passing — the test harness read a migrations history table the
+  application never writes.** `ApiTestHarness.NewDbContext()` built its own options with a
+  bare `UseNpgsql`, so EF used the default `public."__EFMigrationsHistory"` while the
+  application records `infrastructure.__ef_migrations_history`. The suite passed only
+  because CI always starts from an empty database: the harness would create the whole
+  schema and record it in a table production never reads. The moment anything migrated
+  with the application's own configuration — `dotnet ef database update`, or the
+  deployment's packaged SQL — the harness saw an empty history beside a full schema and
+  tried to create the world a second time. The harness now mirrors the application's
+  persistence configuration. This is the concrete diagnosis of the "eksik
+  `__EFMigrationsHistory` tablosu" item that was sitting on the project's open list.
+
+- Gate for all of the above: `dotnet test` **197 passed, 0 failed, 0 skipped** against a
+  real PostgreSQL (20 new tests). Lint, mobile typecheck and web build clean. Verified on
+  the rendered screens with Playwright: the Today row shows the warning block and the
+  "henüz erken" notice with `Alındı` still enabled, the medicine card carries the same
+  block, and the form section opens itself when notes already exist.
+
 ### Sprint 2 — closed
 
 All three tasks are done, deployed, and recorded in Notion as `Production` / `Deployed`:
@@ -675,11 +749,14 @@ pause/resume (PR #39, migration 13) and both archive defects (PR #41, no migrati
 Notion sprint page carries the report and is marked `Done`; Sprint 3 stays `Planned` until
 a turn actually starts it.
 
-**Exact next action.** Sprint 3 · Caution notes, first slice only: *store* the household's
-own warnings on the medication definition. One EF migration in that turn and no more — it
-must widen `medication_definition_change_events.previous_value` / `new_value` from
-`varchar(4000)` to `text` in the same migration, because a caution note is free prose and
-the audit row has to hold the whole before-and-after. Both
-`tests/migrations/verify-upgrade.sql` and `verify-production-shape.sql` hard-assert the
-migration count, so both move from 13 to 14. Showing the notes is a separate turn, and
-making `minimumIntervalMinutes` real or honest is the third.
+**Exact next action.** Sprint 3 is closed — all three tasks are done in one turn, which
+the migration rule allowed because only the first needed a migration.
+
+Next is **Sprint 4 · Envanter yaşam döngüsü ve demo verisi**, first slice: *reinstate a
+package marked lost*. `MedicationPackage.Reinstate()` exists in the domain and no endpoint
+calls it. Retiring a package writes a negative `Loss` ledger entry for whatever was left,
+so reinstating must write the symmetric positive entry — anything else breaks inventory
+conservation, which `verify-upgrade.sql` and the conservation tests both check. Confirm
+first whether that needs a migration; if it does, it is the only one in that turn and both
+migration-count assertions move from 14 to 15. The synthetic demo seed (acceptance row 35)
+is a separate turn and must never be pointed at production.

@@ -921,6 +921,40 @@ Standing rules the owner set for this phase, which bind future turns:
 - Gate: `dotnet test` **215 passed, 0 failed, 0 skipped**; lint, mobile typecheck, mobile
   migration check and web build clean.
 
+## After Sprint 6 — the web client has a test runner
+
+Not a V1 row, and not presented as one: `apps/web` had no test runner at all, so its
+logic was guarded only by `tsc`, lint and the API tests. The owner asked for one.
+
+- **Vitest with React Testing Library**, which is what the installed Next version's own
+  guidance recommends (`node_modules/next/dist/docs/01-app/02-guides/testing/vitest.md`).
+  One deviation on the installed Vite's own advice: `vite-tsconfig-paths` is replaced by
+  the native `resolve.tsconfigPaths`, one dependency fewer for the same `@/lib/...`
+  resolution. `pnpm test:web`, wired into CI after `pnpm lint` — unlike the accessibility
+  audit it needs no running stack, so it belongs there.
+- **49 tests across five files, chosen by where being wrong hurts rather than by
+  coverage.** Exact-quantity arithmetic and the fraction rendering a dose is read from;
+  the locale store's two promises its comment makes (a blocked `localStorage` falls back,
+  another tab's change arrives); the dictionaries' integrity beyond what the type can see
+  (no blank values, every API enum mapped to a key that resolves in both languages); the
+  `useNow` snapshot stability that caused an infinite re-render once before; and the
+  caution panel's two rules (nothing at all when empty, the household's line breaks kept).
+- **The first thing the runner found was a latent defect in `formatQuantity`.** An
+  unreduced whole amount rendered as a different number: `4/2` came out as **"20/2"**,
+  `6/3` as "20/3" — the whole part and a zero remainder printed side by side. Latent, not
+  live: `ExactQuantity` reduces on construction, so the API cannot send `4/2` today. That
+  is why it was never seen, not why it was safe; the formatter now reduces on its own.
+- Two things the test suite itself needed, written down so the next person does not
+  rediscover them: React Testing Library only registers its own cleanup when the runner
+  exposes a global `afterEach`, which Vitest does not, so without `src/test/setup.ts`
+  every render accumulates and the third test finds three panels; and jsdom hands out
+  `localStorage` through a Proxy, so a spy on the instance reports zero calls while the
+  code under test runs the real method — spy on `Storage.prototype`.
+- `useNow` moved from `Today.tsx` to `lib/use-now.ts`: it is a clock, not a dose concern,
+  and its one load-bearing property is only ever noticed when it breaks.
+- Gate: `pnpm test:web` 49 passed; lint, mobile typecheck and web build clean. The API
+  was not touched.
+
 ## Where this stands
 
 Sprints 2 through 6 are closed, each with its report on its Notion sprint page.
@@ -945,10 +979,11 @@ Row 38 (the final V1 commit must pass CI) closes itself on whatever commit turns
 last; it is not work, it is a condition.
 
 **Exact next action.** There is no next implementation slice that V1 requires. Do not
-invent one. Either take an owner decision from the list above, or — if the owner wants
-engineering work to continue while they decide — the best-value unrequired work is a test
-runner for `apps/web`, which has none: its logic is currently guarded only by `tsc`, lint
-and the API tests. That is technical debt, not a V1 row, and should be named as such.
+invent one. The web test runner that was the best-value unrequired work is now in place;
+what remains is the owner's list above. If the owner wants engineering work to continue
+while they decide, the honest candidates are a screen-reader pass of the web by a person
+(which CI cannot produce) and widening the web tests as screens change — neither is a V1
+row, and neither should be presented as one.
 
 Still open for the owner, unchanged: the mobile release-channel decision when mobile
 resumes; which production household is theirs, so the synthetic ones left by smoke tests

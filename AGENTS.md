@@ -47,6 +47,7 @@ Run the relevant checks before proposing a commit:
 ```text
 dotnet test MedicationTracker.slnx
 pnpm lint
+pnpm test:web
 pnpm typecheck:mobile
 pnpm build:web
 ```

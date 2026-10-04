@@ -35,7 +35,15 @@ export function formatQuantity(value: Quantity | null | undefined): string {
     return '—';
   }
 
-  const { numerator, denominator } = value;
+  // Reduced first, and not as tidiness. Without it an unreduced whole amount printed its
+  // whole part and a zero remainder side by side: 4/2 read as "20/2" and 6/3 as "20/3" —
+  // a different number entirely, on the screen somebody reads with a box in their hand.
+  //
+  // `ExactQuantity` reduces on construction, so the API cannot send 4/2 today. That is
+  // why this was never seen rather than why it was safe: the formatter was relying on an
+  // invariant it does not itself enforce, and the failure mode was silent and wrong.
+  const { numerator, denominator } = reduce(value.numerator, value.denominator);
+
   if (denominator === 1) {
     return String(numerator);
   }

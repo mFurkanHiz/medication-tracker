@@ -13,7 +13,7 @@ import {
 import { readToday, type LocalDueDose } from '../data/snapshot';
 import type { Session } from '../data/session';
 import { syncNow } from '../data/sync';
-import { errorKey } from '../lib/i18n';
+import { enumKey, errorKey } from '../lib/i18n';
 import { formatQuantity } from '../lib/quantity';
 import {
   hasPermissionAsync,
@@ -274,17 +274,35 @@ function DoseRow({
   const { t } = useTranslate();
   const outcome = dose.localOutcome ?? dose.serverOutcome;
   const recorded = outcome !== null;
+  const period = enumKey(dose.dayPeriod);
+  const meal = enumKey(dose.mealRelation);
 
   return (
     <Card>
       <View style={styles.doseHeader}>
+        {/* An as-needed dose always reads "Gerektiğinde", even when it carries a
+            preferred part of the day: the big label is read first and must not turn a
+            preference into an apparent appointment. A scheduled plan with a named period
+            and no clock used to fall through to an em dash — the phone knew the period
+            and showed nothing. */}
         <Text style={styles.time}>
-          {dose.localTime ? dose.localTime.slice(0, 5) : dose.kind === 'AsNeeded' ? t('asNeeded') : '—'}
+          {dose.kind === 'AsNeeded'
+            ? t('asNeeded')
+            : dose.localTime
+              ? dose.localTime.slice(0, 5)
+              : period
+                ? t(period)
+                : '—'}
         </Text>
         <View style={styles.doseBody}>
           <Text style={styles.medication}>{dose.medicationName}</Text>
+          {/* The server has always sent these and the phone has always cached them; it
+              simply never showed them. A household member on the phone was the only one
+              not told to take it on a full stomach. */}
           <Text style={styles.muted}>
             {dose.personName} · {formatQuantity(dose.dose)} {dose.unit.toLowerCase()}
+            {dose.kind === 'AsNeeded' && period ? ` · ${t('preferably')} ${t(period)}` : ''}
+            {meal ? ` · ${t(meal)}` : ''}
           </Text>
         </View>
       </View>

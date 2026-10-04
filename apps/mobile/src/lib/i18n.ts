@@ -32,6 +32,24 @@ export const tr = {
   recordedTaken: 'Alındı olarak kaydedildi',
   recordedSkipped: 'Atlandı olarak kaydedildi',
   asNeeded: 'Gerektiğinde',
+
+  // Gün dilimleri ve yemek ilişkisi. Web'de baştan beri vardı, telefonda hiç yoktu:
+  // sunucu bunları Bugün satırında gönderiyor, mobil istemci de saklıyordu ama
+  // göstermiyordu. 'Tercihen', gerektiğinde alınan bir ilacın tercih edilen zamanını
+  // randevu gibi okutmamak için.
+  morning: 'Sabah',
+  noon: 'Öğle',
+  afternoon: 'İkindi',
+  evening: 'Akşam',
+  night: 'Gece',
+  bedtime: 'Yatmadan önce',
+  fasting: 'Aç karnına',
+  fullStomach: 'Tok karnına',
+  beforeFood: 'Yemekten önce',
+  withFood: 'Yemekle birlikte',
+  afterFood: 'Yemekten sonra',
+  preferably: 'tercihen',
+
   notEnoughStock: 'Stok yetersiz',
   takenFrom: 'Şu kutudan alındı:',
   packageOrdinal: 'Kutu',
@@ -150,6 +168,20 @@ export const en: Record<MessageKey, string> = {
   recordedTaken: 'Recorded as taken',
   recordedSkipped: 'Recorded as skipped',
   asNeeded: 'As needed',
+
+  morning: 'Morning',
+  noon: 'Noon',
+  afternoon: 'Afternoon',
+  evening: 'Evening',
+  night: 'Night',
+  bedtime: 'Bedtime',
+  fasting: 'On an empty stomach',
+  fullStomach: 'On a full stomach',
+  beforeFood: 'Before food',
+  withFood: 'With food',
+  afterFood: 'After food',
+  preferably: 'preferably',
+
   notEnoughStock: 'Not enough stock',
   takenFrom: 'Taken from',
   packageOrdinal: 'Box',
@@ -242,6 +274,34 @@ export const LOCALES: readonly Locale[] = ['tr', 'en'];
 export type Translate = (key: MessageKey) => string;
 
 /** Maps a server refusal code onto a translated message. */
+/**
+ * Translation keys for the enum names the server returns.
+ *
+ * Mirrors the web client's `enumKey`. The names are what the API sends, and they are
+ * persisted as text server-side, so a rename there has to be reflected in both clients.
+ */
+export function enumKey(value: string | null | undefined): MessageKey | null {
+  if (!value) {
+    return null;
+  }
+
+  const map: Record<string, MessageKey> = {
+    Morning: 'morning',
+    Noon: 'noon',
+    Afternoon: 'afternoon',
+    Evening: 'evening',
+    Night: 'night',
+    Bedtime: 'bedtime',
+    Fasting: 'fasting',
+    FullStomach: 'fullStomach',
+    BeforeFood: 'beforeFood',
+    WithFood: 'withFood',
+    AfterFood: 'afterFood',
+  };
+
+  return map[value] ?? null;
+}
+
 export function errorKey(code: string): MessageKey {
   const map: Record<string, MessageKey> = {
     unauthenticated: 'errorUnauthenticated',

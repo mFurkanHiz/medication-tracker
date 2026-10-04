@@ -305,6 +305,82 @@ public static class InventoryEndpoints
             return Results.NoContent();
         });
 
+        // Marking a box lost was a one-way door: Reinstate() sat in the domain with no
+        // endpoint calling it, so "I found it again" had no answer anywhere in the product.
+        api.MapPost("/packages/{packageId:guid}/reinstate", async (
+            Guid householdId,
+            Guid packageId,
+            ReinstatePackageRequest? request,
+            HttpContext context,
+            MedicationTrackerDbContext db,
+            CancellationToken ct) =>
+        {
+            if (!await HouseholdAccess.IsMemberAsync(db, householdId, context, ct))
+            {
+                return ApiResults.Forbidden();
+            }
+
+            var package = await db.Packages.AsNoTracking().SingleOrDefaultAsync(
+                candidate => candidate.Id == packageId && candidate.HouseholdId == householdId, ct);
+
+            if (package is null)
+            {
+                return Results.NotFound();
+            }
+
+            if (package.RetiredAt is not { } retiredAt)
+            {
+                return ApiResults.Conflict("package_not_retired");
+            }
+
+            var accountId = HouseholdAccess.RequireAccountId(context);
+            var now = DateTimeOffset.UtcNow;
+
+            await using var transaction = await db.Database.BeginTransactionAsync(ct);
+            await InventoryReader.LockHouseholdAsync(db, householdId, ct);
+
+            var stock = await InventoryReader.LoadAsync(
+                db, householdId, package.MedicationDefinitionId, tracked: true, ct);
+
+            // The entry this retirement wrote, if it wrote one. Filtering from the
+            // package's own RetiredAt is what makes a box that has been lost, found and
+            // lost again come out right: only the current retirement's entry is at or
+            // after that instant, so an older pair can never be undone twice.
+            var retirement = await db.LedgerEntries.AsNoTracking()
+                .Where(entry => entry.HouseholdId == householdId
+                                && entry.PackageId == packageId
+                                && entry.RecordedAt >= retiredAt
+                                && (entry.EntryType == LedgerEntryType.Loss
+                                    || entry.EntryType == LedgerEntryType.Dispose))
+                .OrderByDescending(entry => entry.RecordedAt)
+                .FirstOrDefaultAsync(ct);
+
+            // A package retired while empty took nothing out of the total, so putting it
+            // back puts nothing in. Writing a zero entry would also be refused by
+            // ck_ledger_entries_non_zero, and rightly: a stock change that changes no
+            // stock is a bug, not a record.
+            if (retirement is not null)
+            {
+                var legacyItemId = await db.LegacyInventoryItems.AsNoTracking()
+                    .Where(item => item.MedicationDefinitionId == package.MedicationDefinitionId)
+                    .Select(item => item.Id)
+                    .SingleAsync(ct);
+
+                db.LedgerEntries.Add(InventoryLedgerEntry.Reinstatement(
+                    householdId, package.MedicationDefinitionId, legacyItemId, packageId,
+                    -retirement.Quantity, Guid.CreateVersion7(), retirement.Id, accountId, now, now,
+                    request?.Reason));
+            }
+
+            var tracked = stock.Packages.Single(candidate => candidate.Id == packageId);
+            tracked.Reinstate();
+
+            await db.SaveChangesAsync(ct);
+            await transaction.CommitAsync(ct);
+
+            return Results.NoContent();
+        });
+
         api.MapPut("/packages/{packageId:guid}", async (
             Guid householdId,
             Guid packageId,
@@ -621,6 +697,9 @@ public sealed record OpenedPackageInput(
     long? CapacityDenominator = null);
 
 public sealed record RetirePackageRequest(string State, string? Reason = null);
+
+/// <summary>Bringing a retired package back. The reason rides onto the ledger entry.</summary>
+public sealed record ReinstatePackageRequest(string? Reason = null);
 
 public sealed record UpdatePackageRequest(
     DateOnly? ExpiresOn = null,

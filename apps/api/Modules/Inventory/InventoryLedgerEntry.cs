@@ -215,6 +215,39 @@ public sealed class InventoryLedgerEntry
         new(Guid.CreateVersion7(), householdId, medicationDefinitionId, legacyInventoryItemId, packageId,
             signedAmount, entryType, correlationId, null, null, actorAccountId, reason, occurredAt, recordedAt);
 
+    /// <summary>
+    /// Puts back the stock a retirement removed, naming the entry it undoes.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Retiring a package writes a negative entry for whatever was left in it. Finding
+    /// that box again has to write the symmetric positive one, or the household's total
+    /// stays short by an amount that was never actually gone — and the ledger is the only
+    /// thing that knows how much stock there is.
+    /// </para>
+    /// <para>
+    /// The link back to the retirement entry is what makes the pair readable later.
+    /// Without it the history shows a loss and then an unexplained windfall, which is the
+    /// shape of a mistake rather than of a correction. Nothing is deleted or rewritten:
+    /// the loss really was recorded, and this says it was undone.
+    /// </para>
+    /// </remarks>
+    public static InventoryLedgerEntry Reinstatement(
+        Guid householdId,
+        Guid medicationDefinitionId,
+        Guid legacyInventoryItemId,
+        Guid? packageId,
+        ExactQuantity amount,
+        Guid correlationId,
+        Guid reversesEntryId,
+        Guid actorAccountId,
+        DateTimeOffset occurredAt,
+        DateTimeOffset recordedAt,
+        string? reason = null) =>
+        new(Guid.CreateVersion7(), householdId, medicationDefinitionId, legacyInventoryItemId, packageId,
+            Require(amount, positive: true), LedgerEntryType.Found, correlationId,
+            null, reversesEntryId, actorAccountId, reason, occurredAt, recordedAt);
+
     private static ExactQuantity Require(ExactQuantity amount, bool positive)
     {
         if (positive && !amount.IsPositive)

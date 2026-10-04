@@ -175,6 +175,11 @@ function MedicationRow({
     (entry) => entry.view.state === 'Sealed' || entry.view.state === 'Opened',
   );
 
+  // Retired boxes are listed too, so the count alone would hide them: a household that
+  // loses its only box reads "Kutuları göster (0)" and has no reason to open the panel —
+  // which is exactly where the button that brings it back lives.
+  const retired = medication.packages.length - visible.length;
+
   return (
     <Card as="li" className="flex flex-col gap-3">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -252,7 +257,13 @@ function MedicationRow({
         </Button>
       </div>
 
-      <Advanced label={`${t('showPackages')} (${visible.length})`}>
+      <Advanced
+        label={
+          retired > 0
+            ? `${t('showPackages')} (${visible.length} · ${retired} ${t('retiredPackages')})`
+            : `${t('showPackages')} (${visible.length})`
+        }
+      >
         <ul className="flex list-none flex-col gap-2 p-0">
           {medication.packages.map((entry) => (
             <PackageRow
@@ -443,7 +454,18 @@ function PackageRow({ household, pkg, activeLoanId, people, onChanged, onError }
             {t('retireDisposed')}
           </Button>
         </div>
-      ) : null}
+      ) : (
+        // The owner found a box he had written off and there was nowhere to say so:
+        // Reinstate() existed in the domain with no route and no button, so marking a
+        // package lost was a one-way door. The hint is here because the arithmetic is
+        // the part worth knowing — the amount comes back, and the loss stays on record.
+        <div className="mt-3 flex flex-col gap-2">
+          <Button variant="secondary" disabled={busy} onClick={() => void run(() => api.reinstatePackage(household, pkg.id))}>
+            {t('reinstatePackage')}
+          </Button>
+          <p className="text-sm text-ink-muted">{t('reinstateHint')}</p>
+        </div>
+      )}
     </li>
   );
 }

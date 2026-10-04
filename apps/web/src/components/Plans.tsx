@@ -93,22 +93,32 @@ export function Plans({ household, workspace, onChanged }: {
                     {t('editPlan')}
                   </Button>
 
-                  {/* Sits before the destructive one on purpose. "I have stopped for now"
-                      is the ordinary case; ending a plan outright is the rare one, and
-                      until today it was the only thing on offer. */}
-                  <Button
-                    variant="secondary"
-                    onClick={async () => {
-                      try {
-                        await api.setPlanPaused(household, plan.id, !plan.isPaused);
-                        onChanged();
-                      } catch (caught) {
-                        setError(t(caught instanceof ApiError ? errorKey(caught.code) : 'errorNetwork'));
-                      }
-                    }}
-                  >
-                    {plan.isPaused ? t('resumePlan') : t('pausePlan')}
-                  </Button>
+                  {/* Archiving the medication or the person pauses their plans, and the
+                      Today list filters both — so resuming here while either is still
+                      archived would look like it worked and change nothing. Say what has
+                      to happen first instead of offering a button that lies. */}
+                  {medication?.isArchived || person?.isArchived ? (
+                    <p className="self-center text-sm text-ink-muted">
+                      {medication?.isArchived ? t('planMedicationArchived') : t('planPersonArchived')}
+                    </p>
+                  ) : (
+                    /* Sits before the destructive one on purpose. "I have stopped for now"
+                       is the ordinary case; ending a plan outright is the rare one, and
+                       until today it was the only thing on offer. */
+                    <Button
+                      variant="secondary"
+                      onClick={async () => {
+                        try {
+                          await api.setPlanPaused(household, plan.id, !plan.isPaused);
+                          onChanged();
+                        } catch (caught) {
+                          setError(t(caught instanceof ApiError ? errorKey(caught.code) : 'errorNetwork'));
+                        }
+                      }}
+                    >
+                      {plan.isPaused ? t('resumePlan') : t('pausePlan')}
+                    </Button>
+                  )}
 
                   <Button
                     variant="danger"

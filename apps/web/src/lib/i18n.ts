@@ -111,9 +111,17 @@ export const tr = {
     'Stok, kutular ve geçmiş kayıtların hiçbiri silinmez. İlaç listeden kalkar, Bugün ekranında doz çıkmaz ve sayımda görünmez.',
   archiveStopsPlansBefore: 'Bu ilaç için duran',
   archiveStopsPlansAfter:
-    'kullanım planı sonlandırılır ve bu geri alınamaz. İlacı sonra geri getirebilirsiniz ama planları yeniden kurmanız gerekir.',
+    'kullanım planına ara verilir. Planlar silinmez: ilacı geri getirdikten sonra kaldıkları yerden devam ettirebilirsiniz.',
   archiveNoPlans: 'Bu ilaç için duran bir kullanım planı yok.',
-  archiveReversible: 'İlacın kendisi, stoğuyla birlikte, aşağıdaki “Arşivlenen” bölümünden geri getirilebilir.',
+  restorePerson: 'Geri getir',
+  archivePersonTitle: 'Kişiyi arşivle',
+  archivePersonKeeps:
+    'Geçmiş kayıtların hiçbiri silinmez. Kişi listelerden kalkar ve Bugün ekranında dozu çıkmaz.',
+  archivePersonPausesPlansBefore: 'Bu kişinin',
+  archivePersonPausesPlansAfter:
+    'kullanım planına ara verilir. Planlar silinmez: kişiyi geri getirdikten sonra devam ettirebilirsiniz.',
+  archivePersonNoPlans: 'Bu kişi için duran bir kullanım planı yok.',
+  archiveReversible: 'İlacın kendisi, stoğuyla birlikte, aşağıdaki “Arşivlendi” bölümünden geri getirilebilir.',
   restoreMedication: 'Arşivden çıkar',
 
   // Definition form
@@ -183,6 +191,8 @@ export const tr = {
   pausePlan: 'Şimdilik ara ver',
   resumePlan: 'Yeniden başla',
   planPaused: 'Ara verildi',
+  planMedicationArchived: 'Devam ettirmek için önce ilacı arşivden geri getirin.',
+  planPersonArchived: 'Devam ettirmek için önce kişiyi arşivden geri getirin.',
   medicationHasPausedPlan:
     'Bu ilaç için ara verilmiş bir plan var. Yeniden almaya başladıysanız buradan devam ettirebilirsiniz.',
 
@@ -463,10 +473,18 @@ export const en: Record<MessageKey, string> = {
   archiveMedication: 'Archive medication',
   archiveKeeps:
     'No stock, package or history is deleted. The medication leaves the list, stops producing doses on Today, and is excluded from counting.',
-  archiveStopsPlansBefore: 'Archiving stops',
+  archiveStopsPlansBefore: 'Archiving pauses',
   archiveStopsPlansAfter:
-    'standing plan(s) for this medication, and that cannot be undone. You can restore the medication later, but the plans must be set up again.',
+    'standing plan(s) for this medication. Nothing is deleted: once you restore the medication you can pick them up where they left off.',
   archiveNoPlans: 'There is no standing plan for this medication.',
+  restorePerson: 'Restore',
+  archivePersonTitle: 'Archive person',
+  archivePersonKeeps:
+    'No history is deleted. They leave the lists and their doses stop appearing on Today.',
+  archivePersonPausesPlansBefore: 'This pauses their',
+  archivePersonPausesPlansAfter:
+    'standing plan(s). Nothing is deleted: once you restore them you can pick the plans up again.',
+  archivePersonNoPlans: 'There is no standing plan for this person.',
   archiveReversible: 'The medication itself, with its stock, can be restored from the “Archived” section below.',
   restoreMedication: 'Restore medication',
 
@@ -534,6 +552,8 @@ export const en: Record<MessageKey, string> = {
   pausePlan: 'Pause for now',
   resumePlan: 'Start again',
   planPaused: 'Paused',
+  planMedicationArchived: 'Restore the medication from the archive before resuming.',
+  planPersonArchived: 'Restore the person from the archive before resuming.',
   medicationHasPausedPlan:
     'There is a paused plan for this medication. If you have started taking it again, you can resume it here.',
 

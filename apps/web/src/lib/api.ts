@@ -228,6 +228,9 @@ export const api = {
   archiveDefinition: (household: string, definition: string) =>
     del<void>(`/households/${household}/medication-definitions/${definition}`),
 
+  restorePerson: (household: string, person: string) =>
+    post<void>(`/households/${household}/people/${person}/restore`),
+
   restoreDefinition: (household: string, definition: string) =>
     post<void>(`/households/${household}/medication-definitions/${definition}/restore`),
 

@@ -778,11 +778,24 @@ public sealed class PackageFirstApiTests
             .AnyAsync(e => e.Id == administrationId));
         Assert.Equal("47", await TotalAsync(client, household, definition));
 
-        // The active plan was deactivated rather than left pointing at archived stock.
-        var plan = await db.TreatmentPlanVersions.AsNoTracking()
+        // The active plan was deactivated rather than left pointing at archived stock —
+        // by being paused, not deleted. It used to be soft-deleted with nothing able to
+        // bring it back, so archiving destroyed the dose, times and instruction note.
+        var original = await db.TreatmentPlanVersions.AsNoTracking()
             .SingleAsync(version => version.Id == planVersion);
-        Assert.NotNull((await db.TreatmentPlans.AsNoTracking()
-            .SingleAsync(p => p.Id == plan.TreatmentPlanId)).DeletedAt);
+
+        var planRow = await db.TreatmentPlans.AsNoTracking()
+            .SingleAsync(p => p.Id == original.TreatmentPlanId);
+        Assert.Null(planRow.DeletedAt);
+
+        var governing = await db.TreatmentPlanVersions.AsNoTracking()
+            .Where(version => version.TreatmentPlanId == original.TreatmentPlanId)
+            .OrderByDescending(version => version.VersionNumber)
+            .FirstAsync();
+        Assert.True(governing.IsPaused);
+
+        // And the version that governed before the archive is untouched.
+        Assert.False(original.IsPaused);
 
         // The box the dose came from still exists with its history.
         Assert.True(await db.Packages.AsNoTracking().AnyAsync(package => package.Id == packages.BoxA));

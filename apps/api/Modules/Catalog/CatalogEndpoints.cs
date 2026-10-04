@@ -4,6 +4,7 @@ using MedicationTracker.Api.Domain.Catalog;
 using MedicationTracker.Api.Domain.Quantities;
 using MedicationTracker.Api.Modules.Audit;
 using MedicationTracker.Api.Modules.Inventory;
+using MedicationTracker.Api.Modules.Treatments;
 using MedicationTracker.Api.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -156,19 +157,19 @@ public static class CatalogEndpoints
 
             // An archived medication must not leave an active plan pointing at it, but
             // historical administrations keep their links.
-            var plans = await db.TreatmentPlans
-                .Where(plan => plan.MedicationDefinitionId == definitionId
-                               && plan.HouseholdId == householdId
-                               && plan.DeletedAt == null)
-                .ToListAsync(ct);
-
-            foreach (var plan in plans)
-            {
-                plan.Delete(now);
-                db.TreatmentPlanChangeEvents.Add(new TreatmentPlanChangeEvent(
-                    Guid.CreateVersion7(), householdId, plan.Id, accountId,
-                    ChangeKind.CascadeDeactivated, null, null, now));
-            }
+            //
+            // This used to soft-delete those plans, and nothing could bring one back, so
+            // archiving silently destroyed the dose, the times, the weekdays and the
+            // instruction note. Pausing says the same thing without the loss: the plans
+            // stop, the adherence replay stops counting them, and restoring the medication
+            // leaves them there to be resumed one at a time.
+            await PlanDeactivation.PauseAsync(
+                db,
+                householdId,
+                plan => plan.MedicationDefinitionId == definitionId,
+                accountId,
+                now,
+                ct);
 
             db.MedicationDefinitionChangeEvents.Add(new MedicationDefinitionChangeEvent(
                 Guid.CreateVersion7(), householdId, definition.Id, accountId,

@@ -406,9 +406,16 @@ public static class AdministrationEndpoints
                               on plan.Id equals version.TreatmentPlanId
                           join definition in db.MedicationDefinitions.AsNoTracking()
                               on plan.MedicationDefinitionId equals definition.Id
+                          join person in db.People.AsNoTracking()
+                              on plan.PersonId equals person.Id
                           where plan.HouseholdId == householdId
                                 && plan.DeletedAt == null
                                 && definition.ArchivedAt == null
+
+                                // Archiving a person pauses their plans, so this is belt
+                                // and braces — but it is the half that works on data
+                                // archived before that cascade existed, with no backfill.
+                                && person.ArchivedAt == null
                                 && (version.EffectiveFrom == null || version.EffectiveFrom <= day)
                                 && (version.EffectiveTo == null || version.EffectiveTo >= day)
                           select new { plan, version }).ToListAsync(ct);

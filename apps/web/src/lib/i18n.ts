@@ -2,6 +2,8 @@
 
 import { createContext, useContext } from 'react';
 
+import type { CautionNotes } from './types';
+
 /**
  * Every user-visible string lives here, in both locales.
  *
@@ -140,6 +142,34 @@ export const tr = {
   category: 'Kategori',
   tags: 'Etiketler',
   notes: 'Notlar',
+
+  // Güvenli kullanım notları. Hanenin kendi yazdığı notlar; uygulama bunları saklar ve
+  // gösterir, kendisi hiçbir değerlendirme yapmaz. Etiketlerde "etkileşim" sözcüğü
+  // bilerek kullanılmıyor: o sözcük, yazılımın bir yargıya vardığını ima eder.
+  cautionNotes: 'Güvenli kullanım notları',
+  cautionNotesHint:
+    'Doktorunuzun, eczacınızın ya da prospektüsün söylediklerini kendi sözlerinizle '
+    + 'yazın. Uygulama bu notları saklar ve ilacı alacağınız yerde gösterir; kendisi '
+    + 'hiçbir değerlendirme yapmaz.',
+  cautionNotesOwn: 'Hanenin kendi notu',
+  cautionDoNotTakeWith: 'Birlikte alınmaması gerekenler',
+  cautionDoNotTakeWithHint: 'Örneğin başka bir ilaç ya da takviye.',
+  cautionFoodsToAvoid: 'Kaçınılacak yiyecek ve içecekler',
+  cautionThingsToDo: 'Yapılması gerekenler',
+  cautionThingsToDoHint: 'Örneğin "bir bardak dolusu su ile al".',
+  cautionThingsToAvoid: 'Yapılmaması gerekenler',
+  cautionThingsToAvoidHint: 'Örneğin "aldıktan sonra yarım saat uzanma".',
+  cautionWarning: 'Diğer uyarılar',
+
+  // "En az ara" alanı artık gerçekten bir şey yapıyor: erken olduğunu söylüyor. Ama
+  // ENGELLEMİYOR. Gerçekten alınmış bir dozu kaydetmeyi reddetmek defteri yalancı yapar,
+  // ve insanı gerçeği kaydettiği için cezalandırmak ona kaydetmeyi bırakmayı öğretir.
+  tooSoon: 'Kendi notunuza göre henüz erken',
+  tooSoonStillRecordable: 'Uygulama engellemiyor — gerçekte ne olduysa onu kaydedin.',
+  lastTakenLabel: 'Son alınan',
+  earliestNextLabel: 'En erken',
+  minimumGapShort: 'En az ara',
+  minutesShort: 'dk',
 
   // Add stock form
   fullPackageCount: 'Tam kutu sayısı',
@@ -504,6 +534,28 @@ export const en: Record<MessageKey, string> = {
   tags: 'Tags',
   notes: 'Notes',
 
+  cautionNotes: 'Safe-use notes',
+  cautionNotesHint:
+    'Write what your doctor, your pharmacist or the leaflet told you, in your own '
+    + 'words. The app stores these notes and shows them where you take the medicine; '
+    + 'it never assesses anything itself.',
+  cautionNotesOwn: "Your household's own note",
+  cautionDoNotTakeWith: 'Do not take together with',
+  cautionDoNotTakeWithHint: 'Another medicine or a supplement, for example.',
+  cautionFoodsToAvoid: 'Food and drink to avoid',
+  cautionThingsToDo: 'Things to do',
+  cautionThingsToDoHint: 'For example "take it with a full glass of water".',
+  cautionThingsToAvoid: 'Things to avoid',
+  cautionThingsToAvoidHint: 'For example "do not lie down for half an hour after it".',
+  cautionWarning: 'Other warnings',
+
+  tooSoon: 'Sooner than your own note allows',
+  tooSoonStillRecordable: 'The app is not blocking you — record whatever actually happened.',
+  lastTakenLabel: 'Last taken',
+  earliestNextLabel: 'Earliest next',
+  minimumGapShort: 'Minimum gap',
+  minutesShort: 'min',
+
   fullPackageCount: 'Full packages',
   packageCapacity: 'Package capacity',
   openedPackage: 'Opened package',
@@ -773,6 +825,38 @@ export function errorKey(code: string): MessageKey {
   };
 
   return map[code] ?? 'errorGeneric';
+}
+
+/**
+ * The caution notes a household actually wrote, labelled and in a fixed order.
+ *
+ * One list builder for every screen that shows them, so the Today row and the medicine's
+ * own card cannot drift into labelling the same note two different ways. Blank notes are
+ * dropped rather than rendered empty.
+ *
+ * The order is deliberate: what not to take it with comes first, because that is the one
+ * a person needs before they swallow anything, and a general warning comes last because
+ * it is the one they most often already know.
+ */
+export function cautionList(
+  cautions: CautionNotes | null | undefined,
+  t: (key: MessageKey) => string,
+): { label: string; value: string }[] {
+  if (!cautions) {
+    return [];
+  }
+
+  const ordered: [MessageKey, string | null][] = [
+    ['cautionDoNotTakeWith', cautions.doNotTakeWith],
+    ['cautionFoodsToAvoid', cautions.foodsToAvoid],
+    ['cautionThingsToDo', cautions.thingsToDo],
+    ['cautionThingsToAvoid', cautions.thingsToAvoid],
+    ['cautionWarning', cautions.warning],
+  ];
+
+  return ordered
+    .filter((entry): entry is [MessageKey, string] => (entry[1] ?? '').trim() !== '')
+    .map(([key, value]) => ({ label: t(key), value: value.trim() }));
 }
 
 /** Translation keys for the enum names the API returns. */

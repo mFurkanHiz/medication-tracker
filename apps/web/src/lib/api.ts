@@ -137,6 +137,11 @@ export type MedicationDefinitionInput = {
   category?: string | null;
   tags?: string[];
   notes?: string | null;
+  cautionDoNotTakeWith?: string | null;
+  cautionFoodsToAvoid?: string | null;
+  cautionThingsToDo?: string | null;
+  cautionThingsToAvoid?: string | null;
+  cautionWarning?: string | null;
 };
 
 export type AddStockInput = {

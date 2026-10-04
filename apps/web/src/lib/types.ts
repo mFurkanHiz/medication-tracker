@@ -48,6 +48,22 @@ export type RefillPolicy = {
   note: string | null;
 };
 
+/**
+ * What the household was told about taking a medicine safely, in their own words.
+ *
+ * Null when they have recorded nothing, so the screen can decide whether to show the
+ * block at all with one check. The software never derives any of this: it is prose
+ * somebody copied off a box or heard from a pharmacist, and it is stored and shown
+ * rather than evaluated.
+ */
+export type CautionNotes = {
+  doNotTakeWith: string | null;
+  foodsToAvoid: string | null;
+  thingsToDo: string | null;
+  thingsToAvoid: string | null;
+  warning: string | null;
+};
+
 export type MedicationDefinition = {
   id: string;
   name: string;
@@ -61,6 +77,7 @@ export type MedicationDefinition = {
   category: string | null;
   tags: string[];
   notes: string | null;
+  cautions: CautionNotes | null;
   isArchived: boolean;
   /** Package balances plus loose stock. */
   total: Quantity;
@@ -115,6 +132,13 @@ export type DueDose = {
   localTime: string | null;
   dayPeriod: string | null;
   mealRelation: string | null;
+  /** The medicine's own safe-use notes, so the dose row can show them in place. */
+  cautions: CautionNotes | null;
+  /** The household's own minimum gap between doses, in minutes. Advisory, never a block. */
+  minimumIntervalMinutes: number | null;
+  lastTakenAt: string | null;
+  /** lastTakenAt plus the gap. Whether it has passed is for the screen to decide. */
+  nextDoseAllowedFrom: string | null;
   scheduledFor: string | null;
   availableTotal: Quantity;
   /** Lets the interface warn before the user taps, without mentioning packages. */

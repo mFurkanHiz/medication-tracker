@@ -2,13 +2,16 @@
 
 import { useEffect, useState } from 'react';
 import { ApiError, api, type AddStockInput, type MedicationDefinitionInput } from '@/lib/api';
-import { enumKey, errorKey, useLocale } from '@/lib/i18n';
+import { cautionList, enumKey, errorKey, useLocale } from '@/lib/i18n';
 import { addQuantities, formatQuantity, parseQuantity, type Quantity } from '@/lib/quantity';
 import type {
   Forecast, MedicationDefinition, MedicationPackage, Person, TreatmentPlan, Workspace,
 } from '@/lib/types';
 import { unitLabel } from './Today';
-import { Advanced, Badge, Button, Card, Dialog, EmptyState, Field, Input, Notice, Select, Spinner } from './ui';
+import {
+  Advanced, Badge, Button, Card, CautionPanel, Dialog, EmptyState, Field, Input, Notice, Select, Spinner,
+  Textarea,
+} from './ui';
 
 const FORMS = [
   'Tablet', 'Capsule', 'OralLiquid', 'Drops', 'Sachet', 'Suppository', 'Injection',
@@ -193,6 +196,16 @@ function MedicationRow({
           </p>
         </div>
       </div>
+
+      {/* The owner asked for this plainly: "uyarı notları kolay görünebilir yerde
+          konumlansın". So it sits on the medicine's own card, open, above everything
+          else here — not behind a disclosure, and not below the stock figure. A note
+          you have to go looking for is a note you read after the dose. */}
+      <CautionPanel
+        title={t('cautionNotes')}
+        ownLabel={t('cautionNotesOwn')}
+        notes={cautionList(medication.cautions, t)}
+      />
 
       {forecast ? <ForecastBanner forecast={forecast} /> : null}
 
@@ -543,6 +556,11 @@ function DefinitionDialog({ household, definition, onClose, onSaved }: {
   const [category, setCategory] = useState(definition?.category ?? '');
   const [tags, setTags] = useState((definition?.tags ?? []).join(', '));
   const [notes, setNotes] = useState(definition?.notes ?? '');
+  const [doNotTakeWith, setDoNotTakeWith] = useState(definition?.cautions?.doNotTakeWith ?? '');
+  const [foodsToAvoid, setFoodsToAvoid] = useState(definition?.cautions?.foodsToAvoid ?? '');
+  const [thingsToDo, setThingsToDo] = useState(definition?.cautions?.thingsToDo ?? '');
+  const [thingsToAvoid, setThingsToAvoid] = useState(definition?.cautions?.thingsToAvoid ?? '');
+  const [warning, setWarning] = useState(definition?.cautions?.warning ?? '');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -569,6 +587,14 @@ function DefinitionDialog({ household, definition, onClose, onSaved }: {
       category: category.trim() || null,
       tags: splitList(tags),
       notes: notes.trim() || null,
+
+      // Blank is sent as null, not as "". An empty string would come back and render as
+      // a warning with nothing in it, which is how a warning block stops being read.
+      cautionDoNotTakeWith: doNotTakeWith.trim() || null,
+      cautionFoodsToAvoid: foodsToAvoid.trim() || null,
+      cautionThingsToDo: thingsToDo.trim() || null,
+      cautionThingsToAvoid: thingsToAvoid.trim() || null,
+      cautionWarning: warning.trim() || null,
     };
 
     setBusy(true);
@@ -641,6 +667,66 @@ function DefinitionDialog({ household, definition, onClose, onSaved }: {
             <Input id={id} aria-describedby={describedBy} value={capacity} onChange={(e) => setCapacity(e.target.value)} />
           )}
         </Field>
+
+        {/* Not filed under "advanced options": safety notes are not an advanced
+            concern, they are the reason somebody opens this form a second time. Its own
+            section keeps the everyday add-a-medicine flow down to a few fields while
+            still being findable, and it opens itself when notes already exist so
+            editing one never means hunting for it. */}
+        <Advanced label={t('cautionNotes')} defaultOpen={definition?.cautions != null}>
+          <div className="flex flex-col gap-4">
+            <p className="text-sm text-ink-muted">{t('cautionNotesHint')}</p>
+
+            <Field label={t('cautionDoNotTakeWith')} hint={t('cautionDoNotTakeWithHint')} optional={t('optional')}>
+              {({ id, describedBy }) => (
+                <Textarea
+                  id={id}
+                  aria-describedby={describedBy}
+                  rows={2}
+                  value={doNotTakeWith}
+                  onChange={(e) => setDoNotTakeWith(e.target.value)}
+                />
+              )}
+            </Field>
+            <Field label={t('cautionFoodsToAvoid')} optional={t('optional')}>
+              {({ id }) => (
+                <Textarea
+                  id={id}
+                  rows={2}
+                  value={foodsToAvoid}
+                  onChange={(e) => setFoodsToAvoid(e.target.value)}
+                />
+              )}
+            </Field>
+            <Field label={t('cautionThingsToDo')} hint={t('cautionThingsToDoHint')} optional={t('optional')}>
+              {({ id, describedBy }) => (
+                <Textarea
+                  id={id}
+                  aria-describedby={describedBy}
+                  rows={2}
+                  value={thingsToDo}
+                  onChange={(e) => setThingsToDo(e.target.value)}
+                />
+              )}
+            </Field>
+            <Field label={t('cautionThingsToAvoid')} hint={t('cautionThingsToAvoidHint')} optional={t('optional')}>
+              {({ id, describedBy }) => (
+                <Textarea
+                  id={id}
+                  aria-describedby={describedBy}
+                  rows={2}
+                  value={thingsToAvoid}
+                  onChange={(e) => setThingsToAvoid(e.target.value)}
+                />
+              )}
+            </Field>
+            <Field label={t('cautionWarning')} optional={t('optional')}>
+              {({ id }) => (
+                <Textarea id={id} rows={2} value={warning} onChange={(e) => setWarning(e.target.value)} />
+              )}
+            </Field>
+          </div>
+        </Advanced>
 
         <Advanced label={t('advancedOptions')}>
           <div className="flex flex-col gap-4">

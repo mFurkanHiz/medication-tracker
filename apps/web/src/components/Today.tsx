@@ -1,11 +1,13 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
 import { ApiError, api } from '@/lib/api';
-import { enumKey, errorKey, useLocale } from '@/lib/i18n';
+import { cautionList, enumKey, errorKey, useLocale } from '@/lib/i18n';
 import { formatQuantity, parseQuantity } from '@/lib/quantity';
 import type { AllocationDetail, DoseSource, DueDose, Today as TodayModel, Workspace } from '@/lib/types';
-import { Advanced, Badge, Button, Card, Dialog, EmptyState, Field, Input, Notice, Select, Spinner } from './ui';
+import {
+  Advanced, Badge, Button, Card, CautionPanel, Dialog, EmptyState, Field, Input, Notice, Select, Spinner,
+} from './ui';
 
 /**
  * The daily flow.
@@ -26,6 +28,9 @@ export function Today({ household, workspace, onChanged }: {
   const [detail, setDetail] = useState<DueDose | null>(null);
   const [lastRecorded, setLastRecorded] = useState<{ id: string; label: string } | null>(null);
   const [correcting, setCorrecting] = useState<string | null>(null);
+
+  // One clock for the screen rather than one interval per row.
+  const now = useNow();
 
   const load = useCallback(
     () =>
@@ -104,6 +109,7 @@ export function Today({ household, workspace, onChanged }: {
               key={`${dose.planVersionId}-${dose.scheduledFor ?? 'prn'}`}
               dose={dose}
               workspace={workspace}
+              now={now}
               busy={busy === dose.planVersionId}
               onTaken={() => void record(dose, 'Taken')}
               onSkipped={() => void record(dose, 'Skipped')}
@@ -142,20 +148,66 @@ export function Today({ household, workspace, onChanged }: {
   );
 }
 
-function DoseRow({ dose, workspace, busy, onTaken, onSkipped, onDetails }: {
+/**
+ * The current time, re-read on an interval.
+ *
+ * A dose row has to be able to say "too soon" and then stop saying it. Reading the clock
+ * straight through during render is both impure and wrong: nothing would re-render when
+ * the gap finally passed, so the warning would sit there until something else happened to
+ * refresh the screen — and waiting out a six-hour gap is exactly when somebody leaves
+ * this page open and looks again.
+ *
+ * Null until the first effect runs, so the first paint claims nothing. Starting from zero
+ * would make every gap look expired for one frame and flash a warning that then vanishes.
+ * Thirty seconds is ample for a gap measured in hours.
+ */
+function useNow(intervalMs = 30_000) {
+  const subscribe = useCallback(
+    (onChange: () => void) => {
+      const timer = window.setInterval(onChange, intervalMs);
+      return () => window.clearInterval(timer);
+    },
+    [intervalMs],
+  );
+
+  // Quantised to the interval on purpose. useSyncExternalStore compares snapshots, so a
+  // reading that changed on every call would re-render for ever. The cost is that `now`
+  // can trail real time by up to one interval, which only ever makes the warning linger
+  // a few seconds longer than strictly necessary — the safe direction for this.
+  const tick = useSyncExternalStore(
+    subscribe,
+    () => Math.floor(Date.now() / intervalMs),
+    () => null,
+  );
+
+  return tick === null ? null : tick * intervalMs;
+}
+
+function DoseRow({ dose, workspace, now, busy, onTaken, onSkipped, onDetails }: {
   dose: DueDose;
   workspace: Workspace;
+  /** Milliseconds since the epoch, or null before the screen's clock has started. */
+  now: number | null;
   busy: boolean;
   onTaken: () => void;
   onSkipped: () => void;
   onDetails: () => void;
 }) {
-  const { t } = useLocale();
+  const { locale, t } = useLocale();
   const medication = workspace.medications.find((m) => m.id === dose.medicationDefinitionId);
   const person = workspace.people.find((p) => p.id === dose.personId);
   const period = enumKey(dose.dayPeriod);
   const meal = enumKey(dose.mealRelation);
   const recorded = dose.recordedOutcome !== null;
+
+  const clock = (value: string) =>
+    new Date(value).toLocaleTimeString(locale === 'tr' ? 'tr-TR' : 'en-GB', { timeStyle: 'short' });
+
+  // The household's own minimum gap. Whether it has passed is decided here rather than on
+  // the server, because the answer changes every second and this is where it is read.
+  const nextAllowed = dose.nextDoseAllowedFrom;
+  const tooSoon =
+    now !== null && !recorded && nextAllowed !== null && new Date(nextAllowed).getTime() > now;
 
   return (
     <Card as="li" className="flex flex-wrap items-center gap-4">
@@ -188,6 +240,43 @@ function DoseRow({ dose, workspace, busy, onTaken, onSkipped, onDetails }: {
           ) : null}
           {!recorded && !dose.hasEnoughStock ? <Badge tone="danger">{t('notEnoughStock')}</Badge> : null}
         </div>
+      </div>
+
+      {/* Full width, so it breaks the row and lands between what the dose is and the
+          buttons that record it. This is the one screen where somebody is holding the
+          box, so the note has to be readable before the tap — not on another page.
+
+          Shown on a recorded dose too. "Do not lie down for half an hour" is at its most
+          useful in the minutes after the dose, so hiding it once the row is marked taken
+          would remove it exactly when it starts to matter. */}
+      {/* "En az ara (dakika)" used to promise a guard that nothing enforced. It now
+          says something true: that this is sooner than the household's own note allows,
+          and that the app is not going to stop them anyway.
+
+          Not a block, on purpose. The gap is the household's own note, so acting on it is
+          not the software reaching a clinical conclusion — but refusing to record a dose
+          somebody actually took would make the ledger lie about the one thing it exists
+          to remember. Both buttons stay live. */}
+      {tooSoon && nextAllowed ? (
+        <div className="w-full rounded-xl border border-line bg-warning-soft px-3 py-2">
+          <p className="text-sm font-bold text-warning">{t('tooSoon')}</p>
+          <p className="mt-0.5 text-sm font-medium text-ink">
+            {dose.lastTakenAt ? `${t('lastTakenLabel')} ${clock(dose.lastTakenAt)} · ` : ''}
+            {dose.minimumIntervalMinutes !== null
+              ? `${t('minimumGapShort')} ${dose.minimumIntervalMinutes} ${t('minutesShort')} · `
+              : ''}
+            {t('earliestNextLabel')} {clock(nextAllowed)}
+          </p>
+          <p className="mt-0.5 text-xs text-ink-muted">{t('tooSoonStillRecordable')}</p>
+        </div>
+      ) : null}
+
+      <div className="w-full">
+        <CautionPanel
+          title={t('cautionNotes')}
+          ownLabel={t('cautionNotesOwn')}
+          notes={cautionList(dose.cautions, t)}
+        />
       </div>
 
       <div className="flex w-full flex-wrap gap-2 sm:w-auto">

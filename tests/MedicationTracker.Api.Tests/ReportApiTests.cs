@@ -220,8 +220,11 @@ public sealed class ReportApiTests
 
         var export = JsonDocument.Parse(await response.Content.ReadAsStringAsync()).RootElement;
 
-        // Bumped to 2 when plan versions gained isPaused.
-        Assert.Equal(2, export.GetProperty("schemaVersion").GetInt32());
+        // Bumped to 2 when plan versions gained isPaused, and to 3 when medication
+        // definitions gained the household's caution notes. The number has to move with
+        // the shape, or a reader cannot tell a file with no warnings in it from one
+        // written before warnings could be recorded at all.
+        Assert.Equal(3, export.GetProperty("schemaVersion").GetInt32());
         Assert.Equal(household, export.GetProperty("householdId").GetGuid());
         Assert.Empty(export.GetProperty("truncatedCollections").EnumerateArray());
 

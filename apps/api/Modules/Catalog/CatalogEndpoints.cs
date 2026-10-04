@@ -58,7 +58,8 @@ public static class CatalogEndpoints
                 parsed.DefaultPackageCapacity,
                 request.Category,
                 parsed.Tags,
-                request.Notes);
+                request.Notes,
+                parsed.Cautions);
 
             db.MedicationDefinitions.Add(definition);
 
@@ -119,7 +120,8 @@ public static class CatalogEndpoints
                 parsed.DefaultPackageCapacity,
                 request.Category,
                 parsed.Tags,
-                request.Notes);
+                request.Notes,
+                parsed.Cautions);
 
             db.MedicationDefinitionChangeEvents.Add(new MedicationDefinitionChangeEvent(
                 Guid.CreateVersion7(), householdId, definition.Id, HouseholdAccess.RequireAccountId(context),
@@ -279,8 +281,23 @@ public static class CatalogEndpoints
             return false;
         }
 
+        // The household's own safety notes. Checked here so an over-long one is a 400
+        // naming the field rather than an exception from the entity.
+        field = "cautions";
+        var cautions = new CautionNotes(
+            request.CautionDoNotTakeWith,
+            request.CautionFoodsToAvoid,
+            request.CautionThingsToDo,
+            request.CautionThingsToAvoid,
+            request.CautionWarning);
+
+        if (!cautions.IsValid())
+        {
+            return false;
+        }
+
         field = string.Empty;
-        parsed = new ParsedDefinition(form, unit, ingredients, tags, capacity);
+        parsed = new ParsedDefinition(form, unit, ingredients, tags, capacity, cautions.Normalized());
         return true;
     }
 
@@ -312,6 +329,11 @@ public static class CatalogEndpoints
         definition.Category,
         definition.Tags,
         definition.Notes,
+        definition.CautionDoNotTakeWith,
+        definition.CautionFoodsToAvoid,
+        definition.CautionThingsToDo,
+        definition.CautionThingsToAvoid,
+        definition.CautionWarning,
         definition.IsArchived,
     });
 
@@ -320,7 +342,8 @@ public static class CatalogEndpoints
         MedicationUnit Unit,
         string[] ActiveIngredients,
         string[] Tags,
-        ExactQuantity? DefaultPackageCapacity);
+        ExactQuantity? DefaultPackageCapacity,
+        CautionNotes Cautions);
 }
 
 /// <summary>
@@ -339,4 +362,9 @@ public sealed record MedicationDefinitionRequest(
     long? DefaultPackageCapacityDenominator = null,
     string? Category = null,
     string[]? Tags = null,
-    string? Notes = null);
+    string? Notes = null,
+    string? CautionDoNotTakeWith = null,
+    string? CautionFoodsToAvoid = null,
+    string? CautionThingsToDo = null,
+    string? CautionThingsToAvoid = null,
+    string? CautionWarning = null);

@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text.Json;
 using MedicationTracker.Api.Application;
 using MedicationTracker.Api.Domain.Quantities;
+using MedicationTracker.Api.Modules.Catalog;
 using MedicationTracker.Api.Modules.Inventory;
 using MedicationTracker.Api.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -48,7 +49,7 @@ public static class ExportEndpoints
     /// <summary>
     /// Bumped whenever the shape changes, so a file read back later can be understood.
     /// </summary>
-    public const int SchemaVersion = 2;
+    public const int SchemaVersion = 3;
 
     /// <summary>
     /// Rows taken from any one collection. A household holds orders of magnitude less
@@ -232,6 +233,7 @@ public static class ExportEndpoints
                 definition.Category,
                 definition.Tags,
                 definition.Notes,
+                cautions = CautionView.Of(definition),
                 definition.IsArchived,
                 total = InventoryEndpoints.Quantity(
                     totals.TryGetValue(definition.Id, out var total) ? total : ExactQuantity.Zero),

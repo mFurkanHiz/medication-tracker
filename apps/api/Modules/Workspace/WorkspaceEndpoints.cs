@@ -1,5 +1,6 @@
 using MedicationTracker.Api.Application;
 using MedicationTracker.Api.Domain.Inventory;
+using MedicationTracker.Api.Modules.Catalog;
 using MedicationTracker.Api.Domain.Quantities;
 using MedicationTracker.Api.Modules.Inventory;
 using MedicationTracker.Api.Modules.Sync;
@@ -130,6 +131,7 @@ public static class WorkspaceEndpoints
                     category = definition.Category,
                     tags = definition.Tags,
                     notes = definition.Notes,
+                    cautions = CautionView.Of(definition),
                     isArchived = definition.IsArchived,
 
                     // The default list shows a total and a package count; the packages
@@ -538,6 +540,7 @@ public static class WorkspaceEndpoints
         IReadOnlyDictionary<Guid, ExactQuantity> packageBalances,
         Guid packageId) =>
         packageBalances.TryGetValue(packageId, out var balance) ? balance : ExactQuantity.Zero;
+
 }
 
 public sealed record BulkInventoryCountRequest(

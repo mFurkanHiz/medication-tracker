@@ -3,6 +3,7 @@ using MedicationTracker.Api.Domain.Administrations;
 using MedicationTracker.Api.Domain.Inventory;
 using MedicationTracker.Api.Domain.Quantities;
 using MedicationTracker.Api.Domain.Scheduling;
+using MedicationTracker.Api.Modules.Catalog;
 using MedicationTracker.Api.Modules.Inventory;
 using MedicationTracker.Api.Modules.Treatments;
 using MedicationTracker.Api.Persistence;
@@ -35,6 +36,7 @@ public static class AdministrationEndpoints
             var day = date ?? DateOnly.FromDateTime(DateTime.UtcNow);
             var versions = await CurrentVersionsAsync(db, householdId, day, ct);
             var totals = await InventoryReader.TotalsAsync(db, householdId, ct);
+            var lastTaken = await LastTakenAsync(db, householdId, ct);
 
             var due = new List<object>();
             foreach (var row in versions)
@@ -72,6 +74,27 @@ public static class AdministrationEndpoints
                     localTime = row.Version.LocalTime,
                     dayPeriod = row.Version.DayPeriod?.ToString(),
                     mealRelation = row.Version.MealRelation?.ToString(),
+
+                    // What the household wrote about taking this safely. Shown here
+                    // because this is the screen somebody reads with the box already in
+                    // their hand; a warning filed away on another page is a warning that
+                    // arrives after the dose.
+                    cautions = CautionView.Of(row.Definition),
+
+                    // The household's own minimum gap, and what it works out to. Until
+                    // now this field was validated, stored, copied forward and exported
+                    // while nothing on the recording path ever read it: the form said
+                    // "en az ara" and promised a guard that did not exist.
+                    //
+                    // It is advisory, deliberately. The gap is the household's own note,
+                    // so acting on it is not the software reaching a clinical conclusion
+                    // — but refusing to record a dose somebody actually took would make
+                    // the ledger lie, and punishing people for recording the truth is
+                    // the surest way to teach them to stop. So the screen says "sooner
+                    // than your own note allows" and still records whatever happened.
+                    minimumIntervalMinutes = row.Version.MinimumIntervalMinutes,
+                    lastTakenAt = LastTakenFor(lastTaken, row.Plan),
+                    nextDoseAllowedFrom = NextDoseAllowedFrom(lastTaken, row.Plan, row.Version),
                     scheduledFor,
                     availableTotal = InventoryEndpoints.Quantity(available),
 
@@ -395,7 +418,7 @@ public static class AdministrationEndpoints
             : new ResolvedTarget(Error: Results.NotFound());
     }
 
-    private static async Task<List<(TreatmentPlan Plan, TreatmentPlanVersion Version)>> CurrentVersionsAsync(
+    private static async Task<List<(TreatmentPlan Plan, TreatmentPlanVersion Version, MedicationDefinition Definition)>> CurrentVersionsAsync(
         MedicationTrackerDbContext db,
         Guid householdId,
         DateOnly day,
@@ -418,7 +441,7 @@ public static class AdministrationEndpoints
                                 && person.ArchivedAt == null
                                 && (version.EffectiveFrom == null || version.EffectiveFrom <= day)
                                 && (version.EffectiveTo == null || version.EffectiveTo >= day)
-                          select new { plan, version }).ToListAsync(ct);
+                          select new { plan, version, definition }).ToListAsync(ct);
 
         // The highest version number covering the day wins, so an edit takes effect
         // without disturbing versions that governed earlier days.
@@ -430,9 +453,58 @@ public static class AdministrationEndpoints
             .GroupBy(row => row.plan.Id)
             .Select(group => group.OrderByDescending(row => row.version.VersionNumber).First())
             .Where(row => !row.version.IsPaused)
-            .Select(row => (row.plan, row.version))
+            .Select(row => (row.plan, row.version, row.definition))
             .ToList();
     }
+
+    /// <summary>
+    /// When each person last actually took each medicine, as one query for the household.
+    /// </summary>
+    /// <remarks>
+    /// Keyed on person and medicine rather than on the plan, because the gap is a fact
+    /// about the substance in the body. A dose recorded off-plan, or under a plan version
+    /// that has since been replaced, still counts: anything else would let an edit to the
+    /// schedule erase the dose somebody took an hour ago.
+    ///
+    /// <c>Skipped</c> is excluded — a dose not taken starts no clock.
+    /// </remarks>
+    private static async Task<Dictionary<(Guid PersonId, Guid DefinitionId), DateTimeOffset>> LastTakenAsync(
+        MedicationTrackerDbContext db,
+        Guid householdId,
+        CancellationToken ct) =>
+        (await db.AdministrationEvents.AsNoTracking()
+            .Where(e => e.HouseholdId == householdId && e.Outcome != AdministrationOutcome.Skipped)
+            .GroupBy(e => new { e.PersonId, e.MedicationDefinitionId })
+            .Select(group => new
+            {
+                group.Key.PersonId,
+                group.Key.MedicationDefinitionId,
+                LastTakenAt = group.Max(e => e.OccurredAt),
+            })
+            .ToListAsync(ct))
+        .ToDictionary(row => (row.PersonId, row.MedicationDefinitionId), row => row.LastTakenAt);
+
+    private static DateTimeOffset? LastTakenFor(
+        IReadOnlyDictionary<(Guid PersonId, Guid DefinitionId), DateTimeOffset> lastTaken,
+        TreatmentPlan plan) =>
+        lastTaken.TryGetValue((plan.PersonId, plan.MedicationDefinitionId), out var at) ? at : null;
+
+    /// <summary>
+    /// The earliest instant the household's own note allows, or <c>null</c> when they set
+    /// no gap or nothing has been taken yet.
+    /// </summary>
+    /// <remarks>
+    /// Computed here rather than on each client so the arithmetic lives in one place,
+    /// while whether that instant has passed stays a question for the screen — it changes
+    /// every second, and the answer belongs where it is rendered.
+    /// </remarks>
+    private static DateTimeOffset? NextDoseAllowedFrom(
+        IReadOnlyDictionary<(Guid PersonId, Guid DefinitionId), DateTimeOffset> lastTaken,
+        TreatmentPlan plan,
+        TreatmentPlanVersion version) =>
+        version.MinimumIntervalMinutes is { } minutes && LastTakenFor(lastTaken, plan) is { } at
+            ? at.AddMinutes(minutes)
+            : null;
 
     private static int? Label(IReadOnlyDictionary<Guid, int> ordinals, Guid? packageId) =>
         packageId is { } id && ordinals.TryGetValue(id, out var ordinal) ? ordinal : null;

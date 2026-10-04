@@ -155,6 +155,48 @@ export function Notice({
   );
 }
 
+/**
+ * The household's own safe-use notes, shown where somebody is about to take the medicine.
+ *
+ * Warning tone rather than danger: these are instructions, not emergencies, and a screen
+ * that shouts at every dose stops being read. The "own note" badge is not decoration —
+ * it is the product boundary made visible. The app never derives a word of this, and a
+ * reader has to be able to tell at a glance that they are looking at what their household
+ * wrote rather than at a verdict the software reached.
+ *
+ * Renders nothing when there is nothing to say, so no empty block ever appears to teach
+ * people that the block is noise.
+ */
+export function CautionPanel({ title, ownLabel, notes }: {
+  title: string;
+  ownLabel: string;
+  notes: { label: string; value: string }[];
+}) {
+  if (notes.length === 0) {
+    return null;
+  }
+
+  return (
+    <section aria-label={title} className="rounded-xl border border-line bg-warning-soft px-3 py-3">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+        <h3 className="text-sm font-bold text-warning">{title}</h3>
+        <Badge tone="quiet">{ownLabel}</Badge>
+      </div>
+
+      <dl className="mt-2 flex flex-col gap-2">
+        {notes.map((note) => (
+          <div key={note.label}>
+            <dt className="text-xs font-semibold text-ink-muted">{note.label}</dt>
+            {/* The household's own line breaks are kept: "no citrus / no grapefruit"
+                written on two lines is a list, and running it together loses that. */}
+            <dd className="whitespace-pre-line text-sm font-medium text-ink">{note.value}</dd>
+          </div>
+        ))}
+      </dl>
+    </section>
+  );
+}
+
 export function EmptyState({ title, hint, action }: { title: string; hint?: string; action?: ReactNode }) {
   return (
     <div className="rounded-2xl border border-dashed border-line-strong px-6 py-12 text-center">
@@ -229,9 +271,13 @@ export function Dialog({
 }
 
 /** A disclosure for advanced controls, so the default surface stays uncluttered. */
-export function Advanced({ label, children }: { label: string; children: ReactNode }) {
+export function Advanced({ label, children, defaultOpen = false }: {
+  label: string;
+  children: ReactNode;
+  defaultOpen?: boolean;
+}) {
   return (
-    <details className="rounded-xl border border-line bg-surface-sunken/50">
+    <details open={defaultOpen} className="rounded-xl border border-line bg-surface-sunken/50">
       <summary className="cursor-pointer px-3 py-2 text-sm font-semibold">{label}</summary>
       <div className="border-t border-line px-3 py-3">{children}</div>
     </details>

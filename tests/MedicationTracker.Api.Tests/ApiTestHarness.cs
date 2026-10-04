@@ -137,9 +137,27 @@ public sealed class ApiTestHarness : WebApplicationFactory<Program>
     /// disposing it cannot tear down a scope the application is still using, and so each
     /// assertion reads committed state rather than a request's change tracker.
     /// </remarks>
+    /// <summary>
+    /// A context configured the way the application configures its own.
+    /// </summary>
+    /// <remarks>
+    /// The migrations history table is the part that matters. The application records it
+    /// as <c>infrastructure.__ef_migrations_history</c>; a bare <c>UseNpgsql</c> reads
+    /// EF's default <c>public."__EFMigrationsHistory"</c> instead. With the two
+    /// disagreeing, the suite passed only because CI always starts from an empty
+    /// database: the harness would create the whole schema and record it in a table
+    /// production never reads. The moment anything migrated with the application's own
+    /// configuration — <c>dotnet ef database update</c>, or the deployment's packaged
+    /// SQL — the harness saw an empty history beside a full schema and tried to create
+    /// the world a second time.
+    /// </remarks>
     public MedicationTrackerDbContext NewDbContext() =>
         new(new DbContextOptionsBuilder<MedicationTrackerDbContext>()
-            .UseNpgsql(ConnectionString)
+            .UseNpgsql(
+                ConnectionString,
+                npgsql => npgsql.MigrationsHistoryTable(
+                    "__ef_migrations_history",
+                    PersistenceServiceCollectionExtensions.MigrationsHistorySchema))
             .Options);
 }
 

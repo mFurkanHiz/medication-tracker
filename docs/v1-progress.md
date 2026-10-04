@@ -825,19 +825,20 @@ Standing rules the owner set for this phase, which bind future turns:
     and the cached query are the evidence; a real Android device is still the acceptance
     gate (rows 28 and 29, owner-held).
 
-### Sprint 2 — closed
+## Where this stands
 
-All three tasks are done, deployed, and recorded in Notion as `Production` / `Deployed`:
-pause/resume (PR #39, migration 13) and both archive defects (PR #41, no migration). The
-Notion sprint page carries the report and is marked `Done`; Sprint 3 stays `Planned` until
-a turn actually starts it.
-
-**Exact next action.** Sprints 3 and 4 are both closed. The acceptance table now stands at
-**32 DONE, 7 PARTIAL, 1 OPEN**, and row 35 was the last PARTIAL that was purely technical —
-every remaining PARTIAL needs either the mobile client or the owner.
+Sprints 2, 3 and 4 are closed, each with its report on its Notion sprint page. The
+acceptance table stands at **32 DONE, 7 PARTIAL, 1 OPEN**; row 35 was the last PARTIAL
+that was purely technical, so every remaining PARTIAL now needs either the mobile client
+or the owner.
 
 Sprint 5 is **in progress**: the pause defect and the guidance display are done. The
 mobile schema is at version 2 and `pnpm check:mobile-migration` guards its upgrade path.
+
+**Blocked on the owner, not on code:** mobile has no release channel — no store release,
+no EAS build, no internal distribution. A phone fix that lands on `main` therefore reaches
+nobody, and rows 28 and 29 cannot close until that decision is made. Do not treat a green
+mobile CI run as a mobile release.
 
 **Exact next action.** The next mobile slice is **caution notes and the minimum-gap notice
 on the Today row**. Both already come down from the server on the Today response (Sprint 3

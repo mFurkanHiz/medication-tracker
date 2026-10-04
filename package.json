@@ -11,6 +11,7 @@
     "typecheck:mobile": "pnpm --filter mobile exec tsc --noEmit",
     "test:api": "dotnet test MedicationTracker.slnx",
     "seed:demo": "node tools/demo-seed.mjs",
-    "check:mobile-migration": "node tools/check-mobile-migration.mjs"
+    "check:mobile-migration": "node tools/check-mobile-migration.mjs",
+    "check:a11y": "node tools/check-accessibility.mjs"
   }
 }

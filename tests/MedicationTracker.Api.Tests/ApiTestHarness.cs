@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 
 namespace MedicationTracker.Api.Tests;
 
@@ -38,16 +39,80 @@ public sealed class ApiTestHarness : WebApplicationFactory<Program>
     private static readonly SemaphoreSlim SchemaGate = new(1, 1);
     private static bool _schemaApplied;
 
+    private readonly Dictionary<string, string?> _settings;
+    private readonly CapturedLogs? _logs;
+
+    /// <param name="settings">
+    /// Configuration to layer over the application's own, for the few tests that need to
+    /// change how the application behaves rather than what it stores — the rate limits,
+    /// for instance, which are set absurdly high for every other test so the suite's own
+    /// traffic never trips them.
+    /// </param>
+    /// <param name="captureLogs">
+    /// Collects everything the application logs, at <see cref="LogLevel.Trace"/> and
+    /// across every category, into <see cref="Logs"/>.
+    /// </param>
+    public ApiTestHarness(
+        IReadOnlyDictionary<string, string?>? settings = null,
+        bool captureLogs = false)
+    {
+        // A fixed window of a minute means a shared partition: the suite runs hundreds of
+        // requests in seconds, all from TestServer with no remote address, so the
+        // production figure would make unrelated tests fail each other. Raised here rather
+        // than in the application, where the real figure belongs.
+        _settings = new Dictionary<string, string?>
+        {
+            ["ConnectionStrings:Database"] = ConnectionString,
+            ["RateLimit:ApiPermitsPerMinute"] = "1000000",
+            ["RateLimit:AuthPermitsPerMinute"] = "1000000",
+        };
+
+        foreach (var (key, value) in settings ?? new Dictionary<string, string?>())
+        {
+            _settings[key] = value;
+        }
+
+        _logs = captureLogs ? new CapturedLogs() : null;
+
+        if (captureLogs)
+        {
+            // SetMinimumLevel is not enough on its own: the category rules the application
+            // ships in appsettings.json take precedence over it, so a capture that only
+            // called SetMinimumLevel would silently miss every category the application
+            // filters — including the EF command category, which is the one that would
+            // carry parameter values. This layer is added last, so it wins, and the capture
+            // really is everything at Trace.
+            _settings["Logging:LogLevel:Default"] = "Trace";
+            _settings["Logging:LogLevel:Microsoft.AspNetCore"] = "Trace";
+            _settings["Logging:LogLevel:Microsoft.EntityFrameworkCore"] = "Trace";
+            _settings["Logging:LogLevel:Microsoft.EntityFrameworkCore.Database.Command"] = "Trace";
+        }
+    }
+
+    /// <summary>Everything the application logged, when the harness was asked to capture.</summary>
+    public CapturedLogs Logs =>
+        _logs ?? throw new InvalidOperationException("Construct the harness with captureLogs: true.");
+
     public static string? ConnectionString =>
         Environment.GetEnvironmentVariable("MEDICATION_TRACKER_TEST_POSTGRES");
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.ConfigureAppConfiguration((_, configuration) =>
-            configuration.AddInMemoryCollection(new Dictionary<string, string?>
+            configuration.AddInMemoryCollection(_settings));
+
+        if (_logs is not null)
+        {
+            builder.ConfigureLogging(logging =>
             {
-                ["ConnectionStrings:Database"] = ConnectionString,
-            }));
+                // Trace, and no category filtered out. A redaction test that only looked at
+                // the levels production happens to emit today would stop being evidence the
+                // moment somebody raised a level to debug something.
+                logging.ClearProviders();
+                logging.SetMinimumLevel(LogLevel.Trace);
+                logging.AddProvider(new CapturingLoggerProvider(_logs));
+            });
+        }
     }
 
     /// <summary>
@@ -238,5 +303,79 @@ public static class ApiTestExtensions
         var body = await response.Content.ReadAsStringAsync();
         throw new InvalidOperationException(
             $"{response.RequestMessage?.Method} {path} returned {(int)response.StatusCode}: {body}");
+    }
+}
+
+/// <summary>
+/// Everything the application logged during a test, as plain text.
+/// </summary>
+/// <remarks>
+/// Flat and stringly-typed on purpose. A log leak is a leak of the rendered line — the
+/// thing that lands in the container log on a shared host and gets read by whoever can
+/// read that host — so the assertion has to be made against the rendered line, not against
+/// a structured event the test reassembles to its own liking.
+/// </remarks>
+public sealed class CapturedLogs
+{
+    private readonly List<string> _lines = [];
+    private readonly Lock _gate = new();
+
+    internal void Add(string line)
+    {
+        lock (_gate)
+        {
+            _lines.Add(line);
+        }
+    }
+
+    public IReadOnlyList<string> Lines
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return [.. _lines];
+            }
+        }
+    }
+
+    /// <summary>Every logged line containing <paramref name="value"/>, case-insensitively.</summary>
+    public IReadOnlyList<string> Mentioning(string value) =>
+        [.. Lines.Where(line => line.Contains(value, StringComparison.OrdinalIgnoreCase))];
+}
+
+internal sealed class CapturingLoggerProvider(CapturedLogs logs) : ILoggerProvider
+{
+    public ILogger CreateLogger(string categoryName) => new CapturingLogger(categoryName, logs);
+
+    public void Dispose()
+    {
+    }
+
+    private sealed class CapturingLogger(string category, CapturedLogs logs) : ILogger
+    {
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter)
+        {
+            // The exception is appended because an exception message is the likeliest way a
+            // value reaches a log without anybody deciding to log it: a validation failure
+            // that embeds what was rejected, a database error that quotes the row.
+            var line = $"{logLevel} {category}: {formatter(state, exception)}";
+
+            if (exception is not null)
+            {
+                line += $" | {exception}";
+            }
+
+            logs.Add(line);
+        }
     }
 }

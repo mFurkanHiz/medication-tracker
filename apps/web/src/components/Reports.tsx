@@ -103,7 +103,7 @@ export function Reports({ household, workspace }: { household: string; workspace
         <div className="flex flex-wrap items-end justify-between gap-3">
           <h2 className="text-lg font-bold">{t('reportsAdherence')}</h2>
 
-          <Field label={t('reportPeriod')} className="min-w-52">
+          <Field label={t('reportPeriod')} className="min-w-[min(13rem,100%)]">
             {({ id }) => (
               <Select id={id} value={period} onChange={(event) => setPeriod(event.target.value)}>
                 {PERIODS.map((option) => (
@@ -189,7 +189,7 @@ export function Reports({ household, workspace }: { household: string; workspace
           <ul className="flex list-none flex-col gap-2 p-0">
             {inventory.rows.map((row) => (
               <Card as="li" key={row.medicationDefinitionId} className="flex flex-wrap items-center gap-3">
-                <div className="min-w-48 flex-1">
+                <div className="min-w-[min(12rem,100%)] flex-1">
                   <p className="font-semibold">
                     {row.name}
                     {row.strength ? <span className="text-ink-muted"> · {row.strength}</span> : null}

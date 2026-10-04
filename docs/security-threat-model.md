@@ -66,17 +66,27 @@ and asserts 403 on each, then asserts the target household's stock is unchanged.
 | Allocation history cannot be rewritten | Append-only ledger; superseded allocations retained and marked inactive |
 | Count history cannot be rewritten | Corrections append a linked revision; only the newest revision may be revised |
 | At most one pinned package per medication | Filtered unique index, not application convention |
+| Health data cannot leak into the application log | `LogRedactionTests` drives a real day's work — register, add a person, a medicine with the household's own caution note, stock, a plan, a recorded dose, Today, workspace, export — while capturing **every** log category at `Trace`, and asserts that none of the person's name, the medicine's name, the caution note, the e-mail address, the password or the session token appears in any line. `Microsoft.EntityFrameworkCore.Database.Command` is additionally pinned to `Warning` in `appsettings.json`, so the category that would carry parameter values is not emitted in production at all |
+| An unauthenticated caller cannot drive unbounded database work | A global per-address limiter on every `/api` path, in front of the session lookup, proven by `RateLimitTests`. Health checks are exempt so a container probe cannot be throttled into reporting a healthy deployment unhealthy |
 
 ### Outstanding
 
-- **Export authorisation is unimplemented**, because export itself is unimplemented. It
-  must be covered by a cross-household test when it lands.
-- **Log redaction is unverified.** No audit has confirmed that medication names, person
-  names or quantities stay out of application logs.
+- **The application connects to PostgreSQL as the cluster superuser.**
+  `compose.production.yml` sets `POSTGRES_USER: medication_tracker`, which the official
+  postgres image creates as the bootstrap **superuser**, and the connection string uses
+  that same account. A leaked `DATABASE_PASSWORD` or a successful injection is therefore
+  not a "read the household tables" problem but a "the database container is yours" one:
+  a superuser connection can drop any database in the cluster and `COPY ... FROM PROGRAM`
+  runs commands as the postgres process.
+  `deploy/least-privilege-database-role.sql` creates a `NOSUPERUSER` replacement that
+  still owns the eight application schemas, so migrations keep working, and it has been
+  verified against a throwaway database — including that `COPY ... TO PROGRAM` is refused.
+  **Applying it is the owner's decision**: it changes the credential the live API
+  authenticates with and needs a password only the owner holds. Found 2026-10-04 while
+  closing the two items above.
 - **Mobile secure storage and notification privacy** remain unreviewed on a physical
-  device.
-- **Rate limiting covers only the auth endpoints.** Whether dose recording and sync need
-  their own limits is undecided.
+  device. Deferred with the client (ADR 0015): there is no shipped mobile build whose
+  storage could be reviewed.
 - **Attachments do not exist yet**, so their controls are untested.
 
 ## Required reviews before production

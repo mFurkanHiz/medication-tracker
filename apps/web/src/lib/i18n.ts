@@ -1,6 +1,7 @@
 'use client';
 
 import { createContext, useContext } from 'react';
+import { APP_DESCRIPTION, APP_NAME } from './document-metadata';
 
 import type { CautionNotes } from './types';
 
@@ -11,8 +12,8 @@ import type { CautionNotes } from './types';
  * its English counterpart fails the build rather than shipping an untranslated screen.
  */
 export const tr = {
-  appName: 'İlaç Takip',
-  appDescription: 'Ev ilaç düzeni, kutu bazlı stok ve denetlenebilir kullanım geçmişi',
+  appName: APP_NAME.tr,
+  appDescription: APP_DESCRIPTION.tr,
 
   // Authentication
   signInTitle: 'Hesabınıza girin',
@@ -415,8 +416,8 @@ export const tr = {
 export type MessageKey = keyof typeof tr;
 
 export const en: Record<MessageKey, string> = {
-  appName: 'Medication Tracker',
-  appDescription: 'Household medication organisation, package-level stock, and an auditable history',
+  appName: APP_NAME.en,
+  appDescription: APP_DESCRIPTION.en,
 
   signInTitle: 'Sign in to your account',
   signUpTitle: 'Create an account',

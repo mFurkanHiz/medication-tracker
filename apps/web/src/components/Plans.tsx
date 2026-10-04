@@ -63,7 +63,7 @@ export function Plans({ household, workspace, onChanged }: {
             return (
               <Card as="li" key={plan.id} className="flex flex-col gap-3">
                 <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="min-w-48 flex-1">
+                  <div className="min-w-[min(12rem,100%)] flex-1">
                     <h3 className="text-lg font-bold">{medication?.name ?? '—'}</h3>
                     <p className="text-sm text-ink-muted">
                       {person?.name ?? '—'} · {formatQuantity(plan.dose)}{' '}

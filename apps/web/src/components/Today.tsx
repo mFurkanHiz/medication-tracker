@@ -215,7 +215,7 @@ function DoseRow({ dose, workspace, now, busy, onTaken, onSkipped, onDetails }: 
           preferred part of the day. The big label is what the person reads first, and it
           must not turn a preference into an apparent appointment. The preference goes on
           the quiet line below, where it reads as the advice it is. */}
-      <p className="min-w-20 text-2xl font-bold text-accent-ink" aria-label={t('exactTime')}>
+      <p className="min-w-[min(5rem,100%)] text-2xl font-bold text-accent-ink" aria-label={t('exactTime')}>
         {dose.kind === 'AsNeeded'
           ? t('asNeeded')
           : dose.localTime
@@ -225,7 +225,7 @@ function DoseRow({ dose, workspace, now, busy, onTaken, onSkipped, onDetails }: 
               : t('asNeeded')}
       </p>
 
-      <div className="min-w-48 flex-1">
+      <div className="min-w-[min(12rem,100%)] flex-1">
         <h3 className="text-lg font-bold">{medication?.name ?? '—'}</h3>
         <p className="text-sm text-ink-muted">
           {person?.name ?? '—'} · {formatQuantity(dose.dose)} {medication ? unitLabel(medication.unit) : ''}

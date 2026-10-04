@@ -59,7 +59,7 @@ export function People({ household, workspace, onChanged }: {
             });
           }}
         >
-          <Field label={t('personName')} className="min-w-48 flex-1">
+          <Field label={t('personName')} className="min-w-[min(12rem,100%)] flex-1">
             {({ id }) => <Input id={id} value={name} onChange={(e) => setName(e.target.value)} />}
           </Field>
           <Button type="submit" disabled={busy || name.trim() === ''}>
@@ -89,7 +89,7 @@ export function People({ household, workspace, onChanged }: {
                     });
                   }}
                 >
-                  <Field label={t('personName')} className="min-w-40 flex-1">
+                  <Field label={t('personName')} className="min-w-[min(10rem,100%)] flex-1">
                     {({ id }) => (
                       <Input
                         id={id}

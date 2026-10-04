@@ -1,10 +1,15 @@
 import type { Metadata } from 'next';
 import './globals.css';
-import { tr } from '@/lib/i18n';
+import { APP_DESCRIPTION, APP_NAME } from '@/lib/document-metadata';
 
+/**
+ * Read from a module that is not `'use client'`, deliberately. Sourcing these from
+ * `i18n.ts` compiled, type-checked and emitted no `<title>` at all — see
+ * `document-metadata.ts`.
+ */
 export const metadata: Metadata = {
-  title: tr.appName,
-  description: tr.appDescription,
+  title: APP_NAME.tr,
+  description: APP_DESCRIPTION.tr,
 };
 
 /**

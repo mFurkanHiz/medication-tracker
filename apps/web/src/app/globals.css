@@ -9,16 +9,38 @@
   --surface-raised: #fffdf8;
   --surface-sunken: #e9e5da;
   --ink: #17322d;
-  --ink-muted: #5c6f69;
-  --ink-faint: #8a9690;
+
+  /*
+   * Darkened on 2026-10-04 after the first accessibility audit: at their previous values
+   * --ink-muted reached only 4.1:1 on the sunken surface and the soft tints, and
+   * --ink-faint 2.4:1 on every background in this palette, against the 4.5:1 WCAG AA asks
+   * for body text. --ink-faint carries the product-boundary disclaimer in the footer,
+   * which is the one line that must stay readable.
+   *
+   * --ink-muted was taken further than AA strictly needs (6.6:1). Lifting faint to 4.5:1
+   * on its own would have landed it within a hair of muted and flattened the three-step
+   * hierarchy into two; the step is kept by moving both. Relative luminance now runs
+   * 0.027 / 0.073 / 0.128 for ink / muted / faint.
+   */
+  --ink-muted: #424f4b;
+  --ink-faint: #5e6662;
   --line: #d9d3c6;
   --line-strong: #b6c2bb;
+  /*
+   * Left alone, and the audit is why rather than taste: as text this would be 3.4:1, but
+   * nothing uses it as text. It is the primary button's background, and every text use in
+   * the client is already --accent-ink (5.8:1 on every background in this palette).
+   * Darkening it would have changed the product's one brand colour to fix a contrast
+   * problem it does not have.
+   */
   --accent: #c8532f;
   --accent-soft: #f6e0d7;
   --accent-ink: #8f3a1f;
-  --positive: #2f7a63;
+  /* 4.0:1 before. Also only ever text and one border. */
+  --positive: #2b6f5a;
   --positive-soft: #d8e9e1;
-  --warning: #9a6514;
+  /* 3.8:1 before; never used as a background, so only the text colour moves. */
+  --warning: #8a5a12;
   --warning-soft: #f8ecd3;
   --danger: #a2322c;
   --danger-soft: #f7dcda;

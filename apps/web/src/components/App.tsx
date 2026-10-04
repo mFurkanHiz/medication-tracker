@@ -108,7 +108,14 @@ export function App() {
             {t('appName')}
           </p>
 
-          <div className="flex items-center gap-2">
+          {/*
+            * Wraps, because it did not. At twice the root font size on a 375px screen the
+            * locale group and the sign-out button together measured 391px and pushed the
+            * document to 423px, so every screen scrolled sideways for exactly the reader
+            * who had turned the text up to read it. The <header> above already wrapped;
+            * this row inside it did not, which is why the overflow survived.
+            */}
+          <div className="flex flex-wrap items-center justify-end gap-2">
             <div role="group" aria-label={t('appName')} className="flex gap-1">
               {LOCALES.map((option) => (
                 <Button

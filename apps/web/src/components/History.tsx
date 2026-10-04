@@ -99,7 +99,7 @@ export function History({ household, workspace, onChanged }: {
             const lateness = event.latenessMinutes;
             return (
               <Card as="li" key={event.id} className="flex flex-wrap items-center gap-3">
-                <div className="min-w-48 flex-1">
+                <div className="min-w-[min(12rem,100%)] flex-1">
                   <p className="font-semibold">{medicationName(event.medicationDefinitionId)}</p>
                   <p className="text-sm text-ink-muted">
                     {personName(event.personId)}
@@ -146,7 +146,7 @@ export function History({ household, workspace, onChanged }: {
             const positive = entry.quantity.numerator > 0;
             return (
               <Card as="li" key={entry.id} className="flex flex-wrap items-center gap-3">
-                <div className="min-w-48 flex-1">
+                <div className="min-w-[min(12rem,100%)] flex-1">
                   <p className="font-semibold">{medicationName(entry.medicationDefinitionId)}</p>
                   <p className="text-sm text-ink-muted">
                     {kind ? t(kind) : entry.entryType}

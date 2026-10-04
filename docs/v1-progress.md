@@ -857,35 +857,99 @@ Standing rules the owner set for this phase, which bind future turns:
     (caution notes and the gap notice on the phone, and reports/export/counting, which is
     a surface the phone never had) goes with the client to a later version.
 
+## Sprint 6 — security and accessibility
+
+- **Row 37, server half — rate limiting was not merely incomplete.** The threat model
+  recorded "rate limiting covers only the auth endpoints, whether dose recording and sync
+  need their own limits is undecided". Mapping the pipeline settled it: `Authenticate` runs
+  on every `/api` path and, whenever a 64-character token arrives in a cookie or a bearer
+  header, looks it up in `identity.sessions` **before** any authorisation decision. An
+  unauthenticated caller could drive one database round trip per request, unbounded,
+  against a PostgreSQL this project shares a host with.
+  - The limiter is now global rather than per-endpoint, because the endpoint somebody
+    forgets to annotate is the one nobody reviewed. It partitions by remote address
+    deliberately: a session-derived key is more precise for a household behind NAT but can
+    be rotated every request, which defeats the limit entirely.
+  - The figure is generous on purpose, and `RateLimitTests` says why: a phone offline for
+    a fortnight drains its outbox one request at a time, and a sync that failed because of
+    our own limiter would look to the household like lost doses. Health checks are exempt
+    so a container probe cannot be throttled into reporting a healthy deployment unhealthy.
+  - 429 now carries `Retry-After`. Both limits are configuration, read **per partition**
+    rather than at startup — `builder.Configuration` is already built at that line, so an
+    eager read silently ignores a layer added later and would look correct while using the
+    default. That cost a debugging round.
+- **Row 37, log redaction — the first version of the test proved nothing.** It passed with
+  `EnableSensitiveDataLogging` switched on, because `SetMinimumLevel` does not override the
+  category rules in `appsettings.json`, so the EF command category never reached the
+  capture. The harness now layers `Trace` over those rules; with sensitive logging on the
+  test fails naming the e-mail address and the person's name, and off it passes. A
+  redaction test that has never been seen to fail is a comment.
+- **Row 37 is not closed, and the reason is a third finding.** `compose.production.yml`
+  sets `POSTGRES_USER: medication_tracker`, which the postgres image creates as the
+  cluster's bootstrap **superuser**, and the connection string uses that account. A leaked
+  `DATABASE_PASSWORD` or a successful injection is therefore not a "read the household
+  tables" problem but a "the database container is yours" one.
+  `deploy/least-privilege-database-role.sql` creates a `NOSUPERUSER` replacement that
+  still owns the eight application schemas so migrations keep working, verified against a
+  throwaway database — the role has none of SUPERUSER, CREATEDB, CREATEROLE or BYPASSRLS,
+  it can `CREATE TABLE` and `INSERT` in its own schemas, and `COPY ... TO PROGRAM` is
+  refused. **Owner-gated:** applying it changes the credential the live API authenticates
+  with and needs a password only the owner holds.
+- **Row 34 — the audit found three real defects rather than confirming the markup.**
+  `pnpm check:a11y` drives the real screens in a real browser with axe-core against WCAG
+  2.0/2.1/2.2 A and AA, in both locales, at 375px and 1280px, then re-measures every screen
+  at twice the root font size.
+  - **Every page shipped with no `<title>`.** `layout.tsx` read it from the `'use client'`
+    i18n module, which Next cannot evaluate while rendering metadata — and rather than
+    failing the build it emitted nothing. The code read correct. Fixed by moving the two
+    document strings into `document-metadata.ts`, which `i18n.ts` also imports, so the
+    title cannot drift from the heading.
+  - **Contrast below AA.** Computed across the whole palette rather than only where axe
+    happened to hit: `--ink-faint` was 2.4:1 on every background and carried the
+    product-boundary disclaimer, `--ink-muted` 4.1:1 on the sunken surface and soft tints,
+    `--warning` 3.8:1. Lifting faint alone would have landed it within a hair of muted and
+    flattened the hierarchy, so both moved. `--accent` was left alone: nothing uses it as
+    text, and darkening the one brand colour to fix a problem `--accent-ink` already solves
+    would have been the wrong trade.
+  - **Every screen scrolled sideways at 200% text.** Eleven rem-based `min-w-*` utilities
+    exceeded a 375px viewport once the root font doubled — the layout broke for exactly the
+    reader who had enlarged the text to read it. Each is now capped at the container.
+  - Result: **37 checks, 0 violations**, and the layout holds at twice the root font size.
+  - Deliberately **not** in CI: it needs the whole stack on one origin, and axe-core plus a
+    browser driver are not repository dependencies, so every CI install would pay for a
+    driver it never uses. It is a command, and the audit it produced is recorded here.
+- Gate: `dotnet test` **215 passed, 0 failed, 0 skipped**; lint, mobile typecheck, mobile
+  migration check and web build clean.
+
 ## Where this stands
 
-Sprints 2, 3, 4 and 5 are closed, each with its report on its Notion sprint page.
+Sprints 2 through 6 are closed, each with its report on its Notion sprint page.
 
-The acceptance table stands at **32 DONE, 5 PARTIAL, 2 DEFERRED, 1 OPEN** of 40 rows.
+The acceptance table stands at **33 DONE, 4 PARTIAL, 2 DEFERRED, 1 OPEN** of 40 rows.
 `DEFERRED` is an owner decision recorded on a date, not a criterion met: **V1 is a web
 release with mobile infrastructure in place and does not deliver the offline mobile
-client** (ADR 0015). Do not reword it into something that reads as delivered.
+client** (ADR 0015).
 
-**V1's remaining work is now web and operational, and none of it is blocked on mobile:**
+**Nothing V1 still needs is ordinary coding work. All four remaining rows wait on the
+owner:**
 
-1. Row 34 — the web accessibility audit. Relative units, labelled controls,
-   `aria-describedby` hints, a permanent focus ring and a reduced-motion rule are in
-   place and were checked in a browser at 375px, but no formal audit has been run.
-2. Row 37 — log redaction is unverified and rate limiting is still auth-only. Both are
-   server work. See `docs/security-threat-model.md`.
-3. Row 39 — the deployment preflight needs the owner's approval; the migration half is
-   already complete and tested on blank and production-shaped baselines.
-4. Row 38 — the final V1 commit must pass CI again.
-5. Row 30 — the owner's visual judgement on the web surface. Nothing agreed is missing.
-6. Row 40 — the owner runs the acceptance flow and approves. Last gate, and mandatory.
+1. Row 37 — least privilege. `deploy/least-privilege-database-role.sql` is written and
+   verified; applying it changes the live API's database credential and needs a password
+   only the owner holds.
+2. Row 39 — the deployment preflight needs the owner's approval. The migration half is
+   complete and tested on blank and production-shaped baselines.
+3. Row 30 — the owner's visual judgement on the web surface. Nothing agreed is missing.
+4. Row 40 — the owner runs the acceptance flow and approves. Last gate, and mandatory.
 
-**Exact next action.** Start Sprint 6 with row 37's server half, because it is the only
-remaining item that is both entirely in this repository's hands and a real exposure
-rather than a judgement: verify that no request log, error response or audit row can
-carry a credential, a session token or an e-mail address, and extend rate limiting
-beyond the auth endpoints. Then the web accessibility audit (row 34). The owner-held
-rows (39's preflight approval, 40's acceptance) come last and cannot be done for them.
+Row 38 (the final V1 commit must pass CI) closes itself on whatever commit turns out to be
+last; it is not work, it is a condition.
 
-Still open for the owner, unchanged by this scope change: the mobile release-channel
-decision when mobile resumes; which production household is theirs, so the synthetic
-ones left by smoke tests can be cleaned; and the `VPS_SSH_KEY` rotation.
+**Exact next action.** There is no next implementation slice that V1 requires. Do not
+invent one. Either take an owner decision from the list above, or — if the owner wants
+engineering work to continue while they decide — the best-value unrequired work is a test
+runner for `apps/web`, which has none: its logic is currently guarded only by `tsc`, lint
+and the API tests. That is technical debt, not a V1 row, and should be named as such.
+
+Still open for the owner, unchanged: the mobile release-channel decision when mobile
+resumes; which production household is theirs, so the synthetic ones left by smoke tests
+can be cleaned; and the `VPS_SSH_KEY` rotation.

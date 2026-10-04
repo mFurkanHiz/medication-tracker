@@ -351,7 +351,7 @@ function CountRow({ medication, entries, onEntry, byPackage, onByPackage }: {
       {/* Top-aligned: the field carries a hint underneath, so aligning on the bottom
           edge would push the medication's name down away from its own card. */}
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-48 flex-1">
+        <div className="min-w-[min(12rem,100%)] flex-1">
           <p className="font-semibold">
             {medication.name}
             {medication.strength ? (

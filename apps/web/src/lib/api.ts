@@ -260,6 +260,12 @@ export const api = {
   updatePlan: (household: string, plan: string, input: PlanInput) =>
     put<{ versionId: string; versionNumber: number }>(`/households/${household}/plans/${plan}`, input),
 
+  setPlanPaused: (household: string, plan: string, isPaused: boolean) =>
+    post<{ versionId: string; versionNumber: number; isPaused: boolean }>(
+      `/households/${household}/plans/${plan}/paused`,
+      { isPaused },
+    ),
+
   deletePlan: (household: string, plan: string) =>
     del<void>(`/households/${household}/plans/${plan}`),
 

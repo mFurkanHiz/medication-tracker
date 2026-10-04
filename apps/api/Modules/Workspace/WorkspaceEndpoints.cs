@@ -97,6 +97,10 @@ public static class WorkspaceEndpoints
                     mealRelation = row.version.MealRelation?.ToString(),
                     minimumIntervalMinutes = row.version.MinimumIntervalMinutes,
                     instructions = row.version.Instructions,
+
+                    // Exposed, not filtered: a paused plan has to stay visible or there is
+                    // nothing left to resume it from.
+                    isPaused = row.version.IsPaused,
                 })
                 .ToList();
 

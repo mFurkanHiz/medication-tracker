@@ -110,6 +110,7 @@ public static class ReportEndpoints
                                version.EffectiveTo,
                                version.LocalTime,
                                version.TimeZoneId,
+                               version.IsPaused,
                            }).ToListAsync(ct);
 
         // Either half can put a record in the period: the dose, for the outcome counts,
@@ -160,7 +161,8 @@ public static class ReportEndpoints
                         row.Kind, row.Pattern, row.WeekdayMask, row.IntervalDays,
                         row.EffectiveFrom, row.EffectiveTo),
                     row.LocalTime,
-                    planZone));
+                    planZone,
+                    row.IsPaused));
             }
 
             // Padded by a day on each side so a plan kept in a different time zone from

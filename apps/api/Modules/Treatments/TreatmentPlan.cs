@@ -88,7 +88,8 @@ public sealed class TreatmentPlanVersion
         DayPeriod? dayPeriod = null,
         MealRelation? mealRelation = null,
         int? minimumIntervalMinutes = null,
-        string? instructions = null)
+        string? instructions = null,
+        bool isPaused = false)
     {
         ArgumentNullException.ThrowIfNull(recurrence);
         ArgumentException.ThrowIfNullOrWhiteSpace(timeZoneId);
@@ -137,6 +138,7 @@ public sealed class TreatmentPlanVersion
         MealRelation = mealRelation;
         MinimumIntervalMinutes = minimumIntervalMinutes;
         Instructions = string.IsNullOrWhiteSpace(instructions) ? null : instructions.Trim();
+        IsPaused = isPaused;
         CreatedAt = createdAt;
         CreatedByAccountId = createdByAccountId;
     }
@@ -179,6 +181,28 @@ public sealed class TreatmentPlanVersion
     public int? MinimumIntervalMinutes { get; private set; }
 
     public string? Instructions { get; private set; }
+
+    /// <summary>
+    /// Whether the household has set this plan aside for now.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Pausing is not ending. Ending a plan is a soft delete with no way back, and that is
+    /// the wrong tool for "I have stopped taking this for a while" — which is the ordinary
+    /// case, not the exception.
+    /// </para>
+    /// <para>
+    /// It lives on the VERSION rather than on the plan, and pausing appends a version like
+    /// any other edit, so the periods before and after a pause stay exactly as they were.
+    /// A flag on the aggregate would have rewritten history every time somebody paused.
+    /// </para>
+    /// <para>
+    /// A paused version still covers its days. That is deliberate: the adherence replay
+    /// skips it by this flag, so the paused stretch produces no slots and therefore no
+    /// missed doses, while the days themselves remain governed and auditable.
+    /// </para>
+    /// </remarks>
+    public bool IsPaused { get; private set; }
 
     public DateTimeOffset CreatedAt { get; private set; }
 

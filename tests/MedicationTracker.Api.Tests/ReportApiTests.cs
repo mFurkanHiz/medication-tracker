@@ -220,7 +220,8 @@ public sealed class ReportApiTests
 
         var export = JsonDocument.Parse(await response.Content.ReadAsStringAsync()).RootElement;
 
-        Assert.Equal(1, export.GetProperty("schemaVersion").GetInt32());
+        // Bumped to 2 when plan versions gained isPaused.
+        Assert.Equal(2, export.GetProperty("schemaVersion").GetInt32());
         Assert.Equal(household, export.GetProperty("householdId").GetGuid());
         Assert.Empty(export.GetProperty("truncatedCollections").EnumerateArray());
 

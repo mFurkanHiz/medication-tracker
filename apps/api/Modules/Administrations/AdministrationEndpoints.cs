@@ -415,9 +415,14 @@ public static class AdministrationEndpoints
 
         // The highest version number covering the day wins, so an edit takes effect
         // without disturbing versions that governed earlier days.
+        //
+        // The pause is applied AFTER that choice, never as a filter in the query. Filtering
+        // it out earlier would let an older, unpaused version win the group and quietly
+        // resurrect the schedule the household just set aside.
         return rows
             .GroupBy(row => row.plan.Id)
             .Select(group => group.OrderByDescending(row => row.version.VersionNumber).First())
+            .Where(row => !row.version.IsPaused)
             .Select(row => (row.plan, row.version))
             .ToList();
     }

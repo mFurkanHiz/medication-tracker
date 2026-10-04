@@ -140,6 +140,11 @@ public static class RefillEndpoints
         var plans = versions
             .GroupBy(row => row.Id)
             .Select(group => group.OrderByDescending(row => row.version.VersionNumber).First().version)
+
+            // A paused plan is not consuming anything, so projecting its doses would
+            // forecast a shortage that is not coming. Applied after the newest version is
+            // chosen, for the same reason the Today list applies it there.
+            .Where(version => !version.IsPaused)
             .Select(version => new PlannedConsumption(version.Recurrence, version.Dose))
             .ToList();
 

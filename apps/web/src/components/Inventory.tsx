@@ -4,7 +4,9 @@ import { useEffect, useState } from 'react';
 import { ApiError, api, type AddStockInput, type MedicationDefinitionInput } from '@/lib/api';
 import { enumKey, errorKey, useLocale } from '@/lib/i18n';
 import { addQuantities, formatQuantity, parseQuantity, type Quantity } from '@/lib/quantity';
-import type { Forecast, MedicationDefinition, MedicationPackage, Person, Workspace } from '@/lib/types';
+import type {
+  Forecast, MedicationDefinition, MedicationPackage, Person, TreatmentPlan, Workspace,
+} from '@/lib/types';
 import { unitLabel } from './Today';
 import { Advanced, Badge, Button, Card, Dialog, EmptyState, Field, Input, Notice, Select, Spinner } from './ui';
 
@@ -55,10 +57,13 @@ export function Inventory({ household, workspace, onChanged }: {
               key={medication.id}
               household={household}
               medication={medication}
-              people={workspace.people}
               activePlanCount={
                 workspace.plans.filter((plan) => plan.medicationDefinitionId === medication.id).length
               }
+              pausedPlans={workspace.plans.filter(
+                (plan) => plan.medicationDefinitionId === medication.id && plan.isPaused,
+              )}
+              people={workspace.people}
               onEdit={() => setEditing(medication)}
               onAddStock={() => setAddingStockTo(medication)}
               onRefill={() => setRefillFor(medication)}
@@ -135,13 +140,16 @@ export function Inventory({ household, workspace, onChanged }: {
 }
 
 function MedicationRow({
-  household, medication, people, activePlanCount, onEdit, onAddStock, onRefill, onChanged, onError,
+  household, medication, people, activePlanCount, pausedPlans,
+  onEdit, onAddStock, onRefill, onChanged, onError,
 }: {
   household: string;
   medication: MedicationDefinition;
   people: Person[];
   /** How many standing plans archiving would stop. The user is told before, not after. */
   activePlanCount: number;
+  /** Plans for this medication the household has set aside, resumable from right here. */
+  pausedPlans: TreatmentPlan[];
   onEdit: () => void;
   onAddStock: () => void;
   onRefill: () => void;
@@ -187,6 +195,37 @@ function MedicationRow({
       </div>
 
       {forecast ? <ForecastBanner forecast={forecast} /> : null}
+
+      {/* The owner asked to be able to start again "ilacın sayfasından" — from the
+          medication's own page — and he is right that this is where you look. You go to
+          the medicine when you pick it back up, not to a list of plans. The forecast
+          banner stays above it: a paused plan is no reason to hide that the box is empty. */}
+      {pausedPlans.length > 0 ? (
+        <div className="flex flex-col gap-2 rounded-xl border border-line bg-surface-sunken px-3 py-3">
+          <p className="text-sm text-ink-muted">{t('medicationHasPausedPlan')}</p>
+          <div className="flex flex-wrap gap-2">
+            {pausedPlans.map((plan) => {
+              const person = people.find((candidate) => candidate.id === plan.personId);
+              return (
+                <Button
+                  key={plan.id}
+                  variant="secondary"
+                  onClick={async () => {
+                    try {
+                      await api.setPlanPaused(household, plan.id, false);
+                      onChanged();
+                    } catch (caught) {
+                      onError(t(caught instanceof ApiError ? errorKey(caught.code) : 'errorNetwork'));
+                    }
+                  }}
+                >
+                  {t('resumePlan')}{person ? ` — ${person.name}` : ''}
+                </Button>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
 
       <div className="flex flex-wrap gap-2">
         <Button variant="secondary" onClick={onAddStock}>

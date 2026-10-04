@@ -784,6 +784,47 @@ Standing rules the owner set for this phase, which bind future turns:
     14, conservation exact, and the seeded demo household renders with fractional half-dose
     plans, caution notes, the gap warning and a paused course.
 
+- 2026-10-04: **The phone stops reminding for a plan the household set aside**, and
+  **shows the guidance it was already holding**. Sprint 5's first two slices; mobile
+  schema version 2.
+  - This was the only item on the mobile list that told somebody something untrue. The
+    household pauses a course on the web, the server stops producing doses, and the phone
+    carries on firing local notifications — because the Expo SQLite snapshot had no
+    `is_paused` column to carry the decision across.
+  - **The migration structure is the load-bearing part.** A fresh install is CREATED at
+    the current shape, so it must not then replay the step migrations: `CREATE_SCHEMA`
+    already contains what they add, and an ALTER onto an existing column throws. That is
+    the half that only breaks on a clean device — which is the half a developer always
+    tests.
+  - The scheduler and the schedule signature now share one predicate (`schedulable`).
+    They must not drift: the signature decides whether to reconcile at all, so if it
+    still counted a plan the loop had stopped scheduling, pausing would leave the
+    signature unchanged, the reconcile would early-return, and the phone would keep
+    reminding for a plan nobody is taking.
+  - The reminder query also filters archived people, matching the server fix from the
+    archive slice. The phone filtered the medication but not the person.
+  - **Mobile had no test runner, so one was built for the thing that matters.**
+    `tools/check-mobile-migration.mjs` compiles the real `migrateDatabase` and drives it
+    against real SQLite (`node:sqlite`) down both paths: a fresh install, and a version 1
+    database holding a plan row that must survive with its values intact and default to
+    not paused — a phone that upgrades offline must not go silent by treating every plan
+    as set aside. Proven to work by reintroducing the fresh-install bug and watching it
+    fail with `duplicate column name: is_paused`, which is exactly what a user's phone
+    would have hit. Wired into CI beside the mobile typecheck.
+  - A server migration gets CI on a production-shaped baseline. A phone migration has no
+    such net: it runs once, on somebody's device, over records the server has not seen.
+  - Second slice, no schema change: the Today row now renders `dayPeriod` and
+    `mealRelation`. The server has always sent them and the phone has always cached them
+    in `due_doses`; only the rendering was missing. It also fixes the same defect the web
+    had before the plan-timing slice — a scheduled plan with a named period and no clock
+    showed an em dash while the phone knew the period.
+  - Gate: `dotnet test` **204 passed, 0 failed, 0 skipped**; lint, mobile typecheck, web
+    build and the new migration check all clean.
+  - **Not visually verified.** `react-native-web` is not installed, so the mobile screen
+    cannot be rendered in CI or in an agent container. Typecheck, the typed dictionary
+    and the cached query are the evidence; a real Android device is still the acceptance
+    gate (rows 28 and 29, owner-held).
+
 ### Sprint 2 — closed
 
 All three tasks are done, deployed, and recorded in Notion as `Production` / `Deployed`:
@@ -795,15 +836,21 @@ a turn actually starts it.
 **32 DONE, 7 PARTIAL, 1 OPEN**, and row 35 was the last PARTIAL that was purely technical —
 every remaining PARTIAL needs either the mobile client or the owner.
 
-Next is **Sprint 5 · Mobil eşitlik**, and it is the largest remaining block. The debt has
-been accumulating for three sprints: the Expo client has no reports, export or counting
-surface, no caution-note fields, no minimum-gap notice, and — the one that actually
-misleads somebody — **its SQLite snapshot has no `is_paused` column, so a plan the
-household set aside still fires local reminders on the phone.** Start there, because it is
-the only item on the list that tells a person something untrue.
+Sprint 5 is **in progress**: the pause defect and the guidance display are done. The
+mobile schema is at version 2 and `pnpm check:mobile-migration` guards its upgrade path.
 
-The ALTER path must be tested against an existing v1 database file, not only a fresh
-install: a migration that works on a clean device and corrupts an upgrade is exactly the
-failure a phone makes hardest to diagnose. Check whether the mobile schema change needs a
-server migration too; if it does, it is the only one in that turn and both migration-count
-assertions move from 14 to 15.
+**Exact next action.** The next mobile slice is **caution notes and the minimum-gap notice
+on the Today row**. Both already come down from the server on the Today response (Sprint 3
+added them), so this is a snapshot change plus rendering: mobile schema version **3**, one
+step migration adding the caution columns and the gap fields to `due_doses`. Add the new
+`MIGRATE_2_TO_3` step beside the existing one — the check asserts the number of step
+migrations matches `SCHEMA_VERSION - 1`, so it will fail until that step exists, which is
+the intended reminder.
+
+After that, the last mobile block is **reports, export and counting**, which is a surface
+that does not exist on the phone at all rather than a defect — bigger, but nothing in it
+is currently misleading anybody.
+
+Note for whoever picks this up: the mobile screen cannot be rendered in an agent container
+(`react-native-web` is not installed), so mobile slices end at typecheck plus the migration
+check. Visual confirmation is the owner's device.

@@ -13,7 +13,7 @@ import {
 import { readToday, type LocalDueDose } from '../data/snapshot';
 import type { Session } from '../data/session';
 import { syncNow } from '../data/sync';
-import { errorKey } from '../lib/i18n';
+import { enumKey, errorKey } from '../lib/i18n';
 import { formatQuantity } from '../lib/quantity';
 import {
   hasPermissionAsync,
@@ -274,17 +274,35 @@ function DoseRow({
   const { t } = useTranslate();
   const outcome = dose.localOutcome ?? dose.serverOutcome;
   const recorded = outcome !== null;
+  const period = enumKey(dose.dayPeriod);
+  const meal = enumKey(dose.mealRelation);
 
   return (
     <Card>
       <View style={styles.doseHeader}>
+        {/* An as-needed dose always reads "Gerektiğinde", even when it carries a
+            preferred part of the day: the big label is read first and must not turn a
+            preference into an apparent appointment. A scheduled plan with a named period
+            and no clock used to fall through to an em dash — the phone knew the period
+            and showed nothing. */}
         <Text style={styles.time}>
-          {dose.localTime ? dose.localTime.slice(0, 5) : dose.kind === 'AsNeeded' ? t('asNeeded') : '—'}
+          {dose.kind === 'AsNeeded'
+            ? t('asNeeded')
+            : dose.localTime
+              ? dose.localTime.slice(0, 5)
+              : period
+                ? t(period)
+                : '—'}
         </Text>
         <View style={styles.doseBody}>
           <Text style={styles.medication}>{dose.medicationName}</Text>
+          {/* The server has always sent these and the phone has always cached them; it
+              simply never showed them. A household member on the phone was the only one
+              not told to take it on a full stomach. */}
           <Text style={styles.muted}>
             {dose.personName} · {formatQuantity(dose.dose)} {dose.unit.toLowerCase()}
+            {dose.kind === 'AsNeeded' && period ? ` · ${t('preferably')} ${t(period)}` : ''}
+            {meal ? ` · ${t(meal)}` : ''}
           </Text>
         </View>
       </View>
@@ -332,6 +350,7 @@ async function readReminderPlans(db: ReturnType<typeof useSQLiteContext>): Promi
     effectiveTo: string | null;
     localTime: string | null;
     timeZoneId: string;
+    isPaused: number;
   }>(
     `SELECT pl.version_id AS planVersionId,
             m.name        AS medicationName,
@@ -344,11 +363,17 @@ async function readReminderPlans(db: ReturnType<typeof useSQLiteContext>): Promi
             pl.effective_from AS effectiveFrom,
             pl.effective_to AS effectiveTo,
             pl.local_time AS localTime,
-            pl.time_zone_id AS timeZoneId
+            pl.time_zone_id AS timeZoneId,
+            pl.is_paused AS isPaused
        FROM plans pl
        LEFT JOIN medications m ON m.id = pl.medication_id
        LEFT JOIN people p      ON p.id = pl.person_id
-      WHERE m.is_archived = 0 OR m.is_archived IS NULL`,
+      -- An archived person's plans were kept out of the server's Today list in the same
+      -- slice that made archiving pause them. The phone filtered the medication but not
+      -- the person, so a household member who had been archived could still be reminded
+      -- by name from a snapshot taken before that cascade existed.
+      WHERE (m.is_archived = 0 OR m.is_archived IS NULL)
+        AND (p.is_archived = 0 OR p.is_archived IS NULL)`,
   );
 
   return rows.map((row) => ({
@@ -363,6 +388,7 @@ async function readReminderPlans(db: ReturnType<typeof useSQLiteContext>): Promi
     effectiveFrom: row.effectiveFrom,
     effectiveTo: row.effectiveTo,
     localTime: row.localTime,
+    isPaused: row.isPaused === 1,
     timeZoneId: row.timeZoneId,
   }));
 }

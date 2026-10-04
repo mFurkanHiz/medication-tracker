@@ -14,7 +14,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
  */
 
 /** Bumped only for a change that needs a migration; see {@link migrateDatabase}. */
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 /**
  * The database file name.
@@ -41,10 +41,19 @@ export async function migrateDatabase(db: SQLiteDatabase): Promise<void> {
   }
 
   if (version === 0) {
+    // A new install is created at the current shape. It must NOT then run the step
+    // migrations below: CREATE_SCHEMA already contains everything they add, and an
+    // ALTER that adds an existing column fails outright. This is the half that only
+    // breaks on a clean device, which is the half a developer always tests.
     await db.execAsync(CREATE_SCHEMA);
+  } else {
+    // Everything here runs against a database that is already on somebody's phone,
+    // holding records the server may not have yet. Each step is additive, guarded on
+    // the version it upgrades from, and ordered oldest first.
+    if (version < 2) {
+      await db.execAsync(MIGRATE_1_TO_2);
+    }
   }
-
-  // Future versions append their ALTERs here, guarded on `version`.
 
   await db.execAsync(`PRAGMA user_version = ${SCHEMA_VERSION};`);
 }
@@ -105,7 +114,10 @@ CREATE TABLE plans (
   effective_to TEXT,
   local_time TEXT,
   time_zone_id TEXT NOT NULL,
-  day_period TEXT
+  day_period TEXT,
+  -- A plan the household deliberately set aside. Without this the phone kept its
+  -- reminders: the one defect on the mobile list that told somebody something untrue.
+  is_paused INTEGER NOT NULL DEFAULT 0
 );
 
 -- What the server said is due, for the day last refreshed.
@@ -189,6 +201,18 @@ CREATE TABLE reminders (
 );
 
 CREATE INDEX ix_reminders_plan ON reminders (plan_version_id);
+`;
+
+/**
+ * v1 → v2: a paused plan stops reminding.
+ *
+ * Additive and defaulted, so an existing row is already correct — a plan nobody paused
+ * is not paused. The next sync overwrites the whole snapshot with the server's answer
+ * anyway; the default only has to be right for the minutes in between, and a phone that
+ * upgrades offline must not start treating every plan as paused.
+ */
+const MIGRATE_1_TO_2 = `
+ALTER TABLE plans ADD COLUMN is_paused INTEGER NOT NULL DEFAULT 0;
 `;
 
 /** Keys used in {@link snapshot_meta}. */

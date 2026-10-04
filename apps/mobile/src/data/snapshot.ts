@@ -140,8 +140,8 @@ async function writePlans(db: SQLiteDatabase, workspace: WorkspaceResponse): Pro
       `INSERT INTO plans (
          id, version_id, person_id, medication_id, dose_numerator, dose_denominator,
          kind, pattern, weekday_mask, interval_days, effective_from, effective_to,
-         local_time, time_zone_id, day_period
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         local_time, time_zone_id, day_period, is_paused
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       plan.id,
       plan.versionId,
       plan.personId,
@@ -157,6 +157,7 @@ async function writePlans(db: SQLiteDatabase, workspace: WorkspaceResponse): Pro
       plan.localTime,
       plan.timeZoneId,
       plan.dayPeriod,
+      plan.isPaused ? 1 : 0,
     );
   }
 }

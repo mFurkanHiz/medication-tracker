@@ -10,6 +10,7 @@
     "lint": "node apps/web/node_modules/eslint/bin/eslint.js apps/web/src --config apps/web/eslint.config.mjs",
     "typecheck:mobile": "pnpm --filter mobile exec tsc --noEmit",
     "test:api": "dotnet test MedicationTracker.slnx",
-    "seed:demo": "node tools/demo-seed.mjs"
+    "seed:demo": "node tools/demo-seed.mjs",
+    "check:mobile-migration": "node tools/check-mobile-migration.mjs"
   }
 }

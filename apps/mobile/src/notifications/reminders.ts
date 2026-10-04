@@ -64,6 +64,8 @@ export type ReminderPlan = {
   /** `HH:mm:ss`. Null means a named period only, which gets no reminder. */
   localTime: string | null;
   timeZoneId: string;
+  /** Set aside by the household. A paused plan promises no doses, so it asks for none. */
+  isPaused: boolean;
 };
 
 export type ReminderStatus = {
@@ -161,7 +163,7 @@ export async function reconcileReminders(
   let skippedWithoutTime = 0;
 
   for (const plan of plans) {
-    if (plan.kind === 'AsNeeded') {
+    if (!schedulable(plan)) {
       continue;
     }
 
@@ -262,6 +264,19 @@ async function schedule(
     // One plan failing to schedule must not stop the rest; the next reconcile retries.
     return 0;
   }
+}
+
+/**
+ * Whether this plan should hold notifications at all.
+ *
+ * Used by BOTH the scheduling loop and {@link signatureFor}, deliberately. The signature
+ * decides whether to reconcile at all, so if the two disagreed about a plan the schedule
+ * could never be corrected: pausing a plan would leave the signature unchanged, the
+ * reconcile would early-return, and the phone would keep reminding for a plan the
+ * household had put down. One predicate means they cannot drift apart.
+ */
+function schedulable(plan: ReminderPlan): boolean {
+  return plan.kind === 'Scheduled' && !plan.isPaused;
 }
 
 function withoutTime(plan: ReminderPlan): boolean {
@@ -456,7 +471,7 @@ export function resolveDeviceZone(): string {
  */
 function signatureFor(plans: readonly ReminderPlan[]): string {
   return plans
-    .filter((plan) => plan.kind === 'Scheduled')
+    .filter(schedulable)
     .map((plan) =>
       [
         plan.planVersionId,

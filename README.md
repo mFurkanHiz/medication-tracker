@@ -126,6 +126,7 @@ tests          automated .NET tests
 dotnet test MedicationTracker.slnx
 pnpm install
 pnpm lint
+pnpm test:web
 pnpm typecheck:mobile
 pnpm build:web
 ```

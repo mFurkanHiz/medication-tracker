@@ -633,7 +633,7 @@ Standing rules the owner set for this phase, which bind future turns:
     against an existing v1 database file rather than only a fresh install.
 
 - 2026-10-04: **Archiving is no longer a one-way door**, for a medication or a person
-  (PR pending; no migration). This closes the rest of Sprint 2.
+  (PR #41, squashed to `a34acf6`; no migration). This closes the rest of Sprint 2.
   - Archiving a medication soft-deleted every plan for it, and nothing can revive a deleted
     plan (`PUT /plans/{planId}` filters `DeletedAt == null`; there is no un-delete). So
     archiving destroyed the dose, times, weekdays and instruction note. Archiving a person
@@ -660,12 +660,26 @@ Standing rules the owner set for this phase, which bind future turns:
   - Gate: `dotnet test` **177 passed, 0 failed, 0 skipped** against a real PostgreSQL (six
     new tests; the existing archive test was updated, since the behaviour it pinned was the
     defect). Lint, mobile typecheck, web build clean. Verified on the rendered screens.
+  - Deployed: CI run 37214592904 green, deploy job 111472861171 success, `GET / -> 200` and
+    `GET /api/auth/session -> 401` through nginx. The shared box was left alone:
+    `Deploy complete. deploy-production.sh left 21 container(s) from other projects
+    untouched.` Only `medication-tracker-api-1` and `-web-1` were recreated; the database
+    container was never restarted (up three weeks, healthy).
   - Acceptance row 3's evidence line ("the active plan is deactivated and the cascade is
     audited") still holds: pausing deactivates and is audited as `CascadeDeactivated`.
 
 ### Sprint 2 — closed
 
-All three tasks are done: pause/resume (PR #39), and both archive defects (this entry).
-The sprint report goes to Notion. Next sprint is **3 · Caution notes**: store the
-household's own warnings, show them where somebody holding the box will see them, and make
-the inert `minimumIntervalMinutes` field either real or honest.
+All three tasks are done, deployed, and recorded in Notion as `Production` / `Deployed`:
+pause/resume (PR #39, migration 13) and both archive defects (PR #41, no migration). The
+Notion sprint page carries the report and is marked `Done`; Sprint 3 stays `Planned` until
+a turn actually starts it.
+
+**Exact next action.** Sprint 3 · Caution notes, first slice only: *store* the household's
+own warnings on the medication definition. One EF migration in that turn and no more — it
+must widen `medication_definition_change_events.previous_value` / `new_value` from
+`varchar(4000)` to `text` in the same migration, because a caution note is free prose and
+the audit row has to hold the whole before-and-after. Both
+`tests/migrations/verify-upgrade.sql` and `verify-production-shape.sql` hard-assert the
+migration count, so both move from 13 to 14. Showing the notes is a separate turn, and
+making `minimumIntervalMinutes` real or honest is the third.

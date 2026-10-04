@@ -552,11 +552,8 @@ one: two EF migrations authored in the same turn both regenerate the model snaps
 same baseline and conflict, and `tests/migrations/verify-upgrade.sql` and
 `verify-production-shape.sql` each hard-assert the migration count, currently 12.
 
-1. **Pause and resume a plan** (migration). The owner: "artık almadığımızı da
-   belirtebilmeliyiz... sonra da ilacın sayfasından artık almaya başladığımızı da". Today
-   only "Planı sonlandır" exists and it is an irreversible soft delete. Needs an `IsPaused`
-   flag on the version plus filters in `WorkspaceEndpoints` and `RefillEndpoints.ProjectAsync`,
-   both of which take the newest version with no effective-date filter.
+1. ~~**Pause and resume a plan**~~ — **DONE**, 2026-10-04, PR #39 (migration 13). See the
+   evidence entry below.
 2. **Caution notes** (migration, split in two). Medicines not to combine, foods to avoid,
    things to do and not do, shown somewhere prominent. They belong on the definition, must be
    plainly the household's own notes, and must never be styled as a computed warning: the
@@ -578,3 +575,59 @@ same baseline and conflict, and `tests/migrations/verify-upgrade.sql` and
 7. **Mobile parity.** The Expo client ships no meal-relation or day-period labels and its
    SQLite plans table has no `meal_relation` and no `instructions` column, so a household
    member on the phone sees none of this turn's guidance.
+
+## Sprint plan, from 2026-10-04
+
+The owner asked for sprints and set the target version at **1.0.0**. Five sprints are
+recorded in Notion (Project Management → Sprints), each carrying its tasks, all tagged
+`Version = 1.0.0`:
+
+| Sprint | Scope |
+| --- | --- |
+| 2 · Plan lifecycle (**active**) | pause/resume · archive-vs-paused · the person-archive defect |
+| 3 · Caution notes | store them · show them · make the minimum-gap field real |
+| 4 · Inventory lifecycle and demo data | reinstate a lost package · synthetic demo seed (row 35) |
+| 5 · Mobile parity | reports/export/counting on the phone · meal relation, day period, instructions |
+| 6 · Security, accessibility and acceptance | rows 34, 37, 28, 29, 38, 40 |
+
+Standing rules the owner set for this phase, which bind future turns:
+
+- **A report is written at the end of every sprint**, whether or not the owner has tested
+  yet. He plans to test per sprint but may batch several and come back later; defects he
+  finds then go to the front of the next sprint.
+- **Never two EF migrations in one turn.** Each regenerates
+  `MedicationTrackerDbContextModelSnapshot.cs` from the same baseline and the second
+  conflicts. `tests/migrations/verify-upgrade.sql` and `verify-production-shape.sql` each
+  hard-assert the migration count, so every migration turn moves both.
+- Finishing a sprint is **not** acceptance. AGENTS.md is explicit: a tag, a deploy, a green
+  CI run or a sprint closure does not by itself mean V1 is complete. Only the owner closes
+  row 40.
+
+- 2026-10-04: **Plan pause and resume** (PR #39, migration 13). `IsPaused` lives on the plan
+  VERSION, so pausing appends a version like any other edit and the periods either side of a
+  break keep their own meaning. The load-bearing part is not the flag but the replay:
+  `ScheduledSlots.Within` skips a paused version exactly as it skips an as-needed one, so a
+  deliberate break cannot read as a run of missed doses. Punishing somebody for recording the
+  truth is the surest way to teach them to stop recording it.
+  - A flag was needed rather than an `effectiveTo` bound because three readers take the newest
+    version with **no** effective-date filter: `WorkspaceEndpoints`, `RefillEndpoints.ProjectAsync`
+    and the Today list. Today and the forecast now drop a paused plan; the workspace exposes
+    the flag instead, because a paused plan must stay listed or there is nothing to resume.
+  - In all three, the pause is applied **after** the governing version is chosen. Filtering
+    earlier would let an older, unpaused version win the group and silently resurrect the
+    schedule the household had just set aside.
+  - Two traps closed: `PUT` did not carry the pause forward, so editing a paused plan would
+    have quietly resumed it; and pausing twice now returns the existing version rather than
+    appending a second identical one, so a client retry does not read as two decisions.
+  - Resuming is offered on the medication's own page as well as the plan card — "ilacın
+    sayfasından", as the owner put it, which is where you look when you pick a medicine back
+    up. The forecast banner stays above it rather than being replaced.
+  - Found in passing and fixed: the plan audit snapshot never recorded `Instructions`, so
+    editing the instruction note audited as a no-op.
+  - Gate: `dotnet test` **171 passed, 0 failed, 0 skipped** against a real PostgreSQL (seven
+    new tests, four integration). Lint, mobile typecheck, web build clean. Verified on the
+    rendered screens: running → paused → Today empty → resumed from the medication page →
+    dose back at 08:00.
+  - **Mobile is not covered.** The Expo SQLite snapshot has no `is_paused` column, so a paused
+    plan still fires local reminders on the phone. Sprint 5, and the ALTER path must be tested
+    against an existing v1 database file rather than only a fresh install.

@@ -332,6 +332,7 @@ async function readReminderPlans(db: ReturnType<typeof useSQLiteContext>): Promi
     effectiveTo: string | null;
     localTime: string | null;
     timeZoneId: string;
+    isPaused: number;
   }>(
     `SELECT pl.version_id AS planVersionId,
             m.name        AS medicationName,
@@ -344,11 +345,17 @@ async function readReminderPlans(db: ReturnType<typeof useSQLiteContext>): Promi
             pl.effective_from AS effectiveFrom,
             pl.effective_to AS effectiveTo,
             pl.local_time AS localTime,
-            pl.time_zone_id AS timeZoneId
+            pl.time_zone_id AS timeZoneId,
+            pl.is_paused AS isPaused
        FROM plans pl
        LEFT JOIN medications m ON m.id = pl.medication_id
        LEFT JOIN people p      ON p.id = pl.person_id
-      WHERE m.is_archived = 0 OR m.is_archived IS NULL`,
+      -- An archived person's plans were kept out of the server's Today list in the same
+      -- slice that made archiving pause them. The phone filtered the medication but not
+      -- the person, so a household member who had been archived could still be reminded
+      -- by name from a snapshot taken before that cascade existed.
+      WHERE (m.is_archived = 0 OR m.is_archived IS NULL)
+        AND (p.is_archived = 0 OR p.is_archived IS NULL)`,
   );
 
   return rows.map((row) => ({
@@ -363,6 +370,7 @@ async function readReminderPlans(db: ReturnType<typeof useSQLiteContext>): Promi
     effectiveFrom: row.effectiveFrom,
     effectiveTo: row.effectiveTo,
     localTime: row.localTime,
+    isPaused: row.isPaused === 1,
     timeZoneId: row.timeZoneId,
   }));
 }

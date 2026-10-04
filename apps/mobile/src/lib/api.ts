@@ -118,6 +118,8 @@ export type WorkspaceResponse = {
     localTime: string | null;
     timeZoneId: string;
     dayPeriod: string | null;
+    /** Set aside by the household. The server still lists it, so it can be resumed. */
+    isPaused: boolean;
   }[];
 };
 

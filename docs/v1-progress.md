@@ -631,3 +631,41 @@ Standing rules the owner set for this phase, which bind future turns:
   - **Mobile is not covered.** The Expo SQLite snapshot has no `is_paused` column, so a paused
     plan still fires local reminders on the phone. Sprint 5, and the ALTER path must be tested
     against an existing v1 database file rather than only a fresh install.
+
+- 2026-10-04: **Archiving is no longer a one-way door**, for a medication or a person
+  (PR pending; no migration). This closes the rest of Sprint 2.
+  - Archiving a medication soft-deleted every plan for it, and nothing can revive a deleted
+    plan (`PUT /plans/{planId}` filters `DeletedAt == null`; there is no un-delete). So
+    archiving destroyed the dose, times, weekdays and instruction note. Archiving a person
+    was worse: no cascade, no audit row, no restore route — `Person.Restore()` had existed
+    with nothing calling it — and because nothing filtered on the person's archive state,
+    their plans kept producing doses on Today for ever, named and unmarked.
+  - Both now pause the plans through one shared cascade (`PlanDeactivation.PauseAsync`). A
+    medication and a person being put away are the same event from a plan's point of view,
+    so they must not drift apart. A plan the household had already paused is left alone:
+    appending another paused version would record a decision nobody made.
+  - Restoring does not resume. Bringing a medicine back out of the cupboard, or a person
+    back into the household, is not a statement that the course has started again.
+  - The Today list now also filters archived people directly — belt and braces for new
+    archives, and the half that works on rows archived before the cascade existed, with no
+    backfill.
+  - Interface: the archive confirmation no longer promises something irreversible, so it
+    says what actually happens and is not styled as danger; and a plan whose medication or
+    person is still archived offers no resume button, because Today filters both and the
+    button would have looked like it worked while changing nothing.
+  - **Wider than the task as written**, which asked only that a *paused* plan not be
+    silently destroyed. Leaving active plans deleted would have meant two different fates
+    for two kinds of plan — harder to explain than either uniform rule, and it would have
+    left the data-loss footgun in place. Recorded here rather than done quietly.
+  - Gate: `dotnet test` **177 passed, 0 failed, 0 skipped** against a real PostgreSQL (six
+    new tests; the existing archive test was updated, since the behaviour it pinned was the
+    defect). Lint, mobile typecheck, web build clean. Verified on the rendered screens.
+  - Acceptance row 3's evidence line ("the active plan is deactivated and the cascade is
+    audited") still holds: pausing deactivates and is audited as `CascadeDeactivated`.
+
+### Sprint 2 — closed
+
+All three tasks are done: pause/resume (PR #39), and both archive defects (this entry).
+The sprint report goes to Notion. Next sprint is **3 · Caution notes**: store the
+household's own warnings, show them where somebody holding the box will see them, and make
+the inert `minimumIntervalMinutes` field either real or honest.

@@ -308,8 +308,11 @@ function MedicationRow({
           <div className="flex flex-col gap-3 text-sm">
             <p>{t('archiveKeeps')}</p>
 
+            {/* No longer a danger notice, because it is no longer destructive: archiving
+                pauses the plans instead of deleting them, so the only thing the household
+                loses is the doses it had already decided to stop taking. */}
             {activePlanCount > 0 ? (
-              <Notice tone="danger">
+              <Notice tone="warning">
                 {t('archiveStopsPlansBefore')} {activePlanCount} {t('archiveStopsPlansAfter')}
               </Notice>
             ) : (

@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { ApiError, api } from '@/lib/api';
 import { errorKey, useLocale } from '@/lib/i18n';
 import type { Workspace } from '@/lib/types';
-import { Advanced, Badge, Button, Card, EmptyState, Field, Input, Notice } from './ui';
+import { Advanced, Badge, Button, Card, Dialog, EmptyState, Field, Input, Notice } from './ui';
 
 /**
  * The people whose medication the household organises.
@@ -23,6 +23,7 @@ export function People({ household, workspace, onChanged }: {
   const [renaming, setRenaming] = useState<{ id: string; value: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [confirmingArchive, setConfirmingArchive] = useState<{ id: string; name: string } | null>(null);
 
   const active = workspace.people.filter((person) => !person.isArchived);
   const archived = workspace.people.filter((person) => person.isArchived);
@@ -118,7 +119,7 @@ export function People({ household, workspace, onChanged }: {
                     <Button
                       variant="danger"
                       disabled={busy}
-                      onClick={() => void run(() => api.archivePerson(household, person.id))}
+                      onClick={() => setConfirmingArchive({ id: person.id, name: person.name })}
                     >
                       {t('archivePerson')}
                     </Button>
@@ -130,13 +131,71 @@ export function People({ household, workspace, onChanged }: {
         </ul>
       )}
 
+      {/* Archiving a person used to fire on the first click, had no cascade at all, and
+          could not be undone — their plans simply kept producing doses for ever. It now
+          says what it does, and counts the plans it will set aside. */}
+      {confirmingArchive ? (
+        <Dialog
+          open
+          onClose={() => setConfirmingArchive(null)}
+          title={`${t('archivePersonTitle')} — ${confirmingArchive.name}`}
+          footer={
+            <>
+              <Button variant="secondary" onClick={() => setConfirmingArchive(null)}>
+                {t('cancel')}
+              </Button>
+              <Button
+                variant="danger"
+                disabled={busy}
+                onClick={async () => {
+                  const target = confirmingArchive.id;
+                  setConfirmingArchive(null);
+                  await run(() => api.archivePerson(household, target));
+                }}
+              >
+                {t('archivePerson')}
+              </Button>
+            </>
+          }
+        >
+          <div className="flex flex-col gap-3 text-sm">
+            <p>{t('archivePersonKeeps')}</p>
+
+            {(() => {
+              const theirs = workspace.plans.filter(
+                (plan) => plan.personId === confirmingArchive.id && !plan.isPaused,
+              ).length;
+
+              return theirs > 0 ? (
+                <Notice tone="warning">
+                  {t('archivePersonPausesPlansBefore')} {theirs}{' '}
+                  {t('archivePersonPausesPlansAfter')}
+                </Notice>
+              ) : (
+                <p className="text-ink-muted">{t('archivePersonNoPlans')}</p>
+              );
+            })()}
+          </div>
+        </Dialog>
+      ) : null}
+
       {archived.length > 0 ? (
         <Advanced label={`${t('archived')} (${archived.length})`}>
           <ul className="flex list-none flex-col gap-2 p-0">
             {archived.map((person) => (
-              <li key={person.id} className="flex items-center gap-2">
+              <li key={person.id} className="flex flex-wrap items-center gap-2">
                 <span>{person.name}</span>
                 <Badge tone="quiet">{t('archived')}</Badge>
+
+                {/* Person.Restore() existed in the domain from the start and no route
+                    ever called it, so this list was a dead end. */}
+                <Button
+                  variant="quiet"
+                  disabled={busy}
+                  onClick={() => void run(() => api.restorePerson(household, person.id))}
+                >
+                  {t('restorePerson')}
+                </Button>
               </li>
             ))}
           </ul>

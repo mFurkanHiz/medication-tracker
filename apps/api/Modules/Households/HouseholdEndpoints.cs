@@ -1,5 +1,6 @@
 using MedicationTracker.Api.Application;
 using MedicationTracker.Api.Modules.People;
+using MedicationTracker.Api.Modules.Treatments;
 using MedicationTracker.Api.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -112,7 +113,53 @@ public static class HouseholdEndpoints
 
             // Archive rather than delete: packages, plans and administrations still
             // point at this person and their history must stay readable.
-            person.Archive(DateTimeOffset.UtcNow);
+            var now = DateTimeOffset.UtcNow;
+            person.Archive(now);
+
+            // Archiving a person had no cascade at all, so their plans kept producing
+            // doses on Today for ever — with their name on the row and nothing to say
+            // they had been archived. Their plans are now set aside with them, which also
+            // keeps the paused stretch out of the adherence report instead of accruing
+            // missed doses nobody could have taken.
+            await PlanDeactivation.PauseAsync(
+                db,
+                householdId,
+                plan => plan.PersonId == personId,
+                HouseholdAccess.RequireAccountId(context),
+                now,
+                ct);
+
+            await db.SaveChangesAsync(ct);
+            return Results.NoContent();
+        });
+
+        // Person.Restore() existed in the domain from the beginning and no route ever
+        // called it, so archiving a person was a one-way door — worse than the medication
+        // one, which at least had this.
+        api.MapPost("/households/{householdId:guid}/people/{personId:guid}/restore", async (
+            Guid householdId,
+            Guid personId,
+            HttpContext context,
+            MedicationTrackerDbContext db,
+            CancellationToken ct) =>
+        {
+            if (!await HouseholdAccess.IsMemberAsync(db, householdId, context, ct))
+            {
+                return ApiResults.Forbidden();
+            }
+
+            var person = await db.People.SingleOrDefaultAsync(
+                candidate => candidate.Id == personId && candidate.HouseholdId == householdId, ct);
+
+            if (person is null)
+            {
+                return Results.NotFound();
+            }
+
+            // Their plans stay paused. Bringing somebody back into the household is not a
+            // statement that they have started taking their medicines again; resuming each
+            // plan is a separate decision, and it is theirs to make.
+            person.Restore();
             await db.SaveChangesAsync(ct);
             return Results.NoContent();
         });

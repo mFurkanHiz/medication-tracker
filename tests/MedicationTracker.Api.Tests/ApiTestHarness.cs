@@ -166,6 +166,13 @@ public static class ApiTestExtensions
         return await response.ReadJsonOrEmpty();
     }
 
+    public static async Task<JsonElement> DeleteOk(this HttpClient client, string path)
+    {
+        var response = await client.DeleteAsync(path);
+        await response.EnsureSuccessOrThrow(path);
+        return await response.ReadJsonOrEmpty();
+    }
+
     public static async Task<JsonElement> PutOk(this HttpClient client, string path, object body)
     {
         var response = await client.PutAsJsonAsync(path, body);

@@ -1,4 +1,4 @@
--- Asserts the live production upgrade path, 10 → 11 → 12 → 13 → 14 → 15, preserved everything.
+-- Asserts the live production upgrade path, 10 → 11 → 12 → 13 → 14 → 15 → 16, preserved everything.
 --
 -- Production runs ten migrations, so applying the packaged SQL there runs BOTH the
 -- schedule migration and the package-first rebuild in one pass. This file checks the
@@ -19,8 +19,8 @@ DECLARE
     zero_acquisition CONSTANT uuid := 'f4f4f4f4-f4f4-4f4f-8f4f-f4f4f4f4f4f4';
 BEGIN
     -- Both the schedule migration and the rebuild must have been applied by one pass.
-    IF (SELECT count(*) FROM infrastructure.__ef_migrations_history) <> 15 THEN
-        RAISE EXCEPTION 'Expected fifteen migrations after the production-path upgrade, found %',
+    IF (SELECT count(*) FROM infrastructure.__ef_migrations_history) <> 16 THEN
+        RAISE EXCEPTION 'Expected sixteen migrations after the production-path upgrade, found %',
             (SELECT count(*) FROM infrastructure.__ef_migrations_history);
     END IF;
 

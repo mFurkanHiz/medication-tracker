@@ -1,4 +1,5 @@
 using MedicationTracker.Api.Application;
+using MedicationTracker.Api.Domain.Catalog;
 using MedicationTracker.Api.Domain.Quantities;
 using MedicationTracker.Api.Domain.Refill;
 using MedicationTracker.Api.Domain.Scheduling;
@@ -65,7 +66,9 @@ public static class RefillEndpoints
                 db.RefillPolicies.Add(policy);
             }
 
-            policy.Update(threshold, request.LowStockDays, request.NextEligibleRefillOn, request.Note, now, accountId);
+            policy.Update(
+                threshold, request.LowStockDays, request.NextEligibleRefillOn, request.ExpectedDepletionOn,
+                request.Note, now, accountId);
 
             await db.SaveChangesAsync(ct);
             return Results.NoContent();
@@ -91,6 +94,9 @@ public static class RefillEndpoints
             }
 
             var forecast = await ProjectAsync(db, householdId, definitionId, from, ct);
+            var suggestions = await SuggestAsync(db, householdId, definitionId, from, ct);
+            var policy = await db.RefillPolicies.AsNoTracking().SingleOrDefaultAsync(
+                candidate => candidate.MedicationDefinitionId == definitionId, ct);
 
             return Results.Ok(new
             {
@@ -107,6 +113,15 @@ public static class RefillEndpoints
                 // eligibility are separate facts.
                 hasRefillGap = forecast.HasRefillGap,
                 refillGapDays = forecast.RefillGapDays,
+
+                // The two dates the household may fill with one press, and the stock the
+                // official one was computed from. Suggestions, not inferences: nothing is
+                // stored until the household saves it.
+                canSuggest = suggestions.IsComputable,
+                suggestedNextEligibleRefillOn = suggestions.OfficialRunsOutOn,
+                suggestedDepletionOn = suggestions.ActualRunsOutOn,
+                coveredBalance = InventoryEndpoints.Quantity(suggestions.CoveredBalance),
+                expectedDepletionOn = policy?.ExpectedDepletionOn,
             });
         });
 
@@ -126,27 +141,7 @@ public static class RefillEndpoints
     {
         var stock = await InventoryReader.LoadAsync(db, householdId, definitionId, tracked: false, ct);
         var day = from ?? DateOnly.FromDateTime(DateTime.UtcNow);
-
-        var versions = await (from plan in db.TreatmentPlans.AsNoTracking()
-                              join version in db.TreatmentPlanVersions.AsNoTracking()
-                                  on plan.Id equals version.TreatmentPlanId
-                              where plan.HouseholdId == householdId
-                                    && plan.MedicationDefinitionId == definitionId
-                                    && plan.DeletedAt == null
-                              select new { plan.Id, version }).ToListAsync(ct);
-
-        // Only the newest version of each plan describes future consumption; older
-        // versions describe the past and must not be counted again.
-        var plans = versions
-            .GroupBy(row => row.Id)
-            .Select(group => group.OrderByDescending(row => row.version.VersionNumber).First().version)
-
-            // A paused plan is not consuming anything, so projecting its doses would
-            // forecast a shortage that is not coming. Applied after the newest version is
-            // chosen, for the same reason the Today list applies it there.
-            .Where(version => !version.IsPaused)
-            .Select(version => new PlannedConsumption(version.Recurrence, version.Dose))
-            .ToList();
+        var plans = await PlannedConsumptionAsync(db, householdId, definitionId, ct);
 
         var policy = await db.RefillPolicies.AsNoTracking().SingleOrDefaultAsync(
             candidate => candidate.MedicationDefinitionId == definitionId, ct);
@@ -157,11 +152,83 @@ public static class RefillEndpoints
 
         return RefillForecast.Project(stock.Total, plans, day, settings);
     }
+
+    /// <summary>
+    /// The two dates the household may fill with one press: when the insurance-covered
+    /// stock runs out, and when all stock does — both at the planned use, with an
+    /// as-needed plan counted as one dose a day (<see cref="RefillForecast.SupplyRunsOutOn"/>).
+    /// </summary>
+    internal static async Task<SupplySuggestions> SuggestAsync(
+        MedicationTrackerDbContext db,
+        Guid householdId,
+        Guid definitionId,
+        DateOnly? from,
+        CancellationToken ct)
+    {
+        var definition = await db.MedicationDefinitions.AsNoTracking()
+            .SingleAsync(candidate => candidate.Id == definitionId && candidate.HouseholdId == householdId, ct);
+        var stock = await InventoryReader.LoadAsync(db, householdId, definitionId, tracked: false, ct);
+        var day = from ?? DateOnly.FromDateTime(DateTime.UtcNow);
+
+        // A box may say who paid for it; loose stock has no box and follows the medicine.
+        var covered = ExactQuantity.Sum(stock.Packages
+                .Where(package => package.IsCoveredGiven(definition.Coverage))
+                .Select(package => stock.BalanceOf(package.Id)))
+            + (definition.Coverage == Coverage.SelfPaid ? ExactQuantity.Zero : stock.LooseBalance);
+
+        var plans = await PlannedConsumptionAsync(db, householdId, definitionId, ct);
+
+        return new SupplySuggestions(
+            IsComputable: plans.Count > 0,
+            OfficialRunsOutOn: RefillForecast.SupplyRunsOutOn(covered, plans, day),
+            ActualRunsOutOn: RefillForecast.SupplyRunsOutOn(stock.Total, plans, day),
+            CoveredBalance: covered);
+    }
+
+    /// <summary>
+    /// What every running plan for this medication will consume, as the newest version
+    /// of each. Older versions describe the past and must not be counted again; a paused
+    /// plan is not consuming anything, and is dropped after the newest version is chosen
+    /// for the same reason the Today list applies it there.
+    /// </summary>
+    private static async Task<List<PlannedConsumption>> PlannedConsumptionAsync(
+        MedicationTrackerDbContext db,
+        Guid householdId,
+        Guid definitionId,
+        CancellationToken ct)
+    {
+        var versions = await (from plan in db.TreatmentPlans.AsNoTracking()
+                              join version in db.TreatmentPlanVersions.AsNoTracking()
+                                  on plan.Id equals version.TreatmentPlanId
+                              where plan.HouseholdId == householdId
+                                    && plan.MedicationDefinitionId == definitionId
+                                    && plan.DeletedAt == null
+                              select new { plan.Id, version }).ToListAsync(ct);
+
+        return versions
+            .GroupBy(row => row.Id)
+            .Select(group => group.OrderByDescending(row => row.version.VersionNumber).First().version)
+            .Where(version => !version.IsPaused)
+            .Select(version => new PlannedConsumption(version.Recurrence, version.Dose))
+            .ToList();
+    }
 }
+
+/// <summary>
+/// Suggested dates for the refill settings. <see cref="IsComputable"/> is false when no
+/// plan consumes the medication; a null date with a computable plan means the stock
+/// outlasts the projection horizon.
+/// </summary>
+internal sealed record SupplySuggestions(
+    bool IsComputable,
+    DateOnly? OfficialRunsOutOn,
+    DateOnly? ActualRunsOutOn,
+    ExactQuantity CoveredBalance);
 
 public sealed record RefillPolicyRequest(
     long? LowStockThresholdNumerator = null,
     long? LowStockThresholdDenominator = null,
     int? LowStockDays = null,
     DateOnly? NextEligibleRefillOn = null,
+    DateOnly? ExpectedDepletionOn = null,
     string? Note = null);

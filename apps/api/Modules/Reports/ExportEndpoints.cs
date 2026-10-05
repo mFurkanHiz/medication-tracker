@@ -233,6 +233,7 @@ public static class ExportEndpoints
                 definition.Category,
                 definition.Tags,
                 definition.Notes,
+                coverage = definition.Coverage.ToString(),
                 cautions = CautionView.Of(definition),
                 definition.IsArchived,
                 total = InventoryEndpoints.Quantity(
@@ -284,6 +285,7 @@ public static class ExportEndpoints
                     : null,
                 policy.LowStockDays,
                 policy.NextEligibleRefillOn,
+                policy.ExpectedDepletionOn,
                 policy.Note,
             }),
 

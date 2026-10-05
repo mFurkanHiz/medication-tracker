@@ -50,6 +50,7 @@ public sealed class MedicationDefinitionConfiguration : IEntityTypeConfiguration
         b.Property(x => x.DefaultPackageCapacityDenominator).HasColumnName("default_package_capacity_denominator");
         b.Property(x => x.Category).HasColumnName("category").HasMaxLength(100);
         b.Property(x => x.Tags).HasColumnName("tags").HasColumnType("text[]");
+        b.Property(x => x.Coverage).HasColumnName("coverage").HasConversion<string>().HasMaxLength(20).IsRequired().HasDefaultValueSql("'Unspecified'");
         b.Property(x => x.Notes).HasColumnName("notes").HasMaxLength(2000);
         b.Property(x => x.CautionDoNotTakeWith).HasColumnName("caution_do_not_take_with").HasColumnType("text");
         b.Property(x => x.CautionFoodsToAvoid).HasColumnName("caution_foods_to_avoid").HasColumnType("text");

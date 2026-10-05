@@ -67,3 +67,27 @@ public static class FormDefaults
         _ => MedicationUnit.Dose,
     };
 }
+
+/// <summary>
+/// Who paid for a medicine: the household's health insurance, or the household itself.
+/// </summary>
+/// <remarks>
+/// <para>
+/// The owner asked for this so the official refill date can be suggested from the stock
+/// the insurance actually dispensed, which is what the pharmacy's clock runs on. A box
+/// may carry its own value; the medicine's value is the default for every box without
+/// one, loose stock included.
+/// </para>
+/// <para>
+/// The owner also asked for a name that reads as neither "informal" nor "illegal": a
+/// self-paid box is an ordinary purchase, not a lesser one. Unspecified behaves as
+/// covered, because that is the common case and nobody should have to answer the
+/// question to get a forecast.
+/// </para>
+/// </remarks>
+public enum Coverage
+{
+    Unspecified = 0,
+    InsuranceCovered = 1,
+    SelfPaid = 2,
+}

@@ -39,7 +39,8 @@ public sealed class MedicationDefinition
         string? category = null,
         string[]? tags = null,
         string? notes = null,
-        CautionNotes cautions = default)
+        CautionNotes cautions = default,
+        Coverage coverage = Coverage.Unspecified)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
 
@@ -58,6 +59,7 @@ public sealed class MedicationDefinition
         Notes = Clean(notes);
         SetDefaultPackageCapacity(defaultPackageCapacity);
         SetCautions(cautions);
+        Coverage = coverage;
     }
 
     public Guid Id { get; private set; }
@@ -103,6 +105,12 @@ public sealed class MedicationDefinition
     public string? Category { get; private set; }
 
     public string[] Tags { get; private set; } = [];
+
+    /// <summary>
+    /// Who paid for this medicine by default. A box may say otherwise for itself;
+    /// <see cref="Domain.Catalog.Coverage.Unspecified"/> behaves as covered.
+    /// </summary>
+    public Coverage Coverage { get; private set; }
 
     public string? Notes { get; private set; }
 
@@ -169,7 +177,8 @@ public sealed class MedicationDefinition
         string? category,
         string[] tags,
         string? notes,
-        CautionNotes cautions)
+        CautionNotes cautions,
+        Coverage coverage = Coverage.Unspecified)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         ArgumentNullException.ThrowIfNull(activeIngredients);
@@ -187,6 +196,7 @@ public sealed class MedicationDefinition
         Notes = Clean(notes);
         SetDefaultPackageCapacity(defaultPackageCapacity);
         SetCautions(cautions);
+        Coverage = coverage;
     }
 
     /// <summary>

@@ -14,8 +14,9 @@ namespace MedicationTracker.Api.Modules.Refill;
 /// needs to warn about.
 /// </para>
 /// <para>
-/// Both values are entered by the user from their own prescription. The product never
-/// infers an eligibility date and never contacts a pharmacy or health system.
+/// Both values are entered by the user. The product never contacts a pharmacy or health
+/// system; on request it suggests a date from the stock on hand and the planned use (see
+/// <c>RefillForecast.SupplyRunsOutOn</c>), and the household confirms it by saving.
 /// </para>
 /// </remarks>
 public sealed class MedicationRefillPolicy
@@ -64,6 +65,13 @@ public sealed class MedicationRefillPolicy
     /// </summary>
     public DateOnly? NextEligibleRefillOn { get; private set; }
 
+    /// <summary>
+    /// When the household expects all of its stock to run out, as they recorded it. The
+    /// forecast computes a projection; this is the date they chose to write down, which
+    /// may be the projection or their own correction of it.
+    /// </summary>
+    public DateOnly? ExpectedDepletionOn { get; private set; }
+
     public string? Note { get; private set; }
 
     public DateTimeOffset UpdatedAt { get; private set; }
@@ -74,6 +82,7 @@ public sealed class MedicationRefillPolicy
         ExactQuantity? lowStockThreshold,
         int? lowStockDays,
         DateOnly? nextEligibleRefillOn,
+        DateOnly? expectedDepletionOn,
         string? note,
         DateTimeOffset updatedAt,
         Guid updatedByAccountId)
@@ -96,6 +105,7 @@ public sealed class MedicationRefillPolicy
         LowStockThresholdDenominator = lowStockThreshold?.Denominator;
         LowStockDays = lowStockDays;
         NextEligibleRefillOn = nextEligibleRefillOn;
+        ExpectedDepletionOn = expectedDepletionOn;
         Note = string.IsNullOrWhiteSpace(note) ? null : note.Trim();
         UpdatedAt = updatedAt;
         UpdatedByAccountId = updatedByAccountId;

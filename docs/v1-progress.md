@@ -5,16 +5,17 @@ reconstructing the product history from a long conversation.
 
 ## Current state
 
-- Owner-accepted V1: **accepted by the owner on 2026-10-05 ("kabul"), not yet complete.**
-  The table stands at 36 DONE, 2 PARTIAL, 2 DEFERRED, 0 OPEN; the two PARTIAL rows are 37
-  (least privilege, delegated to the agent) and 38 (the final commit's CI, a condition).
-  The release is cut as `v1.0.1` when row 37 lands — the owner kept the retired `v1.0.0`
-  tag untouched (ADR 0017). `docs/v1-acceptance.md` is the authority on scope; ADR 0013
+- Owner-accepted V1: **accepted by the owner on 2026-10-05 ("kabul"); one row left.**
+  The table stands at 37 DONE, 1 PARTIAL, 2 DEFERRED, 0 OPEN; the PARTIAL row is 38, the
+  final commit's CI, which closes on the commit the release is cut from. Row 37 landed in
+  production on 2026-10-05 (run `37337177964`): the API connects as a confined role. The
+  release is cut as `v1.0.1` next — the owner kept the retired `v1.0.0` tag untouched
+  (ADR 0017). `docs/v1-acceptance.md` is the authority on scope; ADR 0013
   explains the rebuild, ADR 0015 the owner-approved mobile deferral.
 - Production tracks `main`: every merge deploys by itself, so the live revision is
-  whatever `main` last squashed to — `c4c9240` (PR #56, CI run `37316264856`) as of
-  2026-10-05, with migrations 1–18 applied. Documentation-only merges do not redeploy
-  (`paths-ignore` on push).
+  whatever `main` last squashed to — `8775cf1` (PR #59, CI run `37337177804`) as of
+  2026-10-05, with migrations 1–18 applied and the API on the confined database role.
+  Documentation-only merges do not redeploy (`paths-ignore` on push).
 - **The owner's live-test round of 2026-10-05 is closed.** Sprint 7 shipped every note
   and decision (D1–D6) in seven slices (PR #50–#55, migrations 15–18), then the general
   review the owner asked for and the mobile preparation (PR #56). Notes, evaluation and
@@ -52,14 +53,11 @@ Domain, application, persistence and API layers for the package-first model:
 These are `OPEN` or `PARTIAL` in the acceptance contract and have **not** been narrowed
 or moved out of V1. None is ordinary coding work:
 
-1. **Row 37 — least privilege.** `deploy/least-privilege-database-role.sql` is written and
-   verified. The owner delegated its application on 2026-10-05 ("işi hep sen yaparsın"):
-   a commit-triggered Actions job that generates the role's password on the server,
-   rewrites the API's connection string, restarts only this project's `api` container and
-   verifies the API no longer connects as a superuser. The next slice.
+1. **Row 38 — the final V1 commit passes CI.** A condition, not work: it closes on the
+   commit `v1.0.1` is cut from.
 
-Rows 30, 39 and 40 were accepted by the owner on 2026-10-05 ("kabul"). Row 38 closes
-itself on whatever commit turns out to be last.
+Row 37 landed in production on 2026-10-05 (run `37337177964`, delegated by the owner).
+Rows 30, 39 and 40 were accepted by the owner the same day ("kabul").
 
 From the live test nothing is open: the defect and every candidate change shipped in
 Sprint 7. Open beyond V1 and decided at acceptance: the retired `v1.0.0` tag (ADR 0017,
@@ -67,18 +65,16 @@ retire and recreate it, or name the first accepted release `v1.0.1`).
 
 ## Next exact action
 
-1. **Row 37 is in flight (PR #59).** When it merges, the *Apply least privilege* workflow
-   runs on the same push and prints its proof. Then a follow-up PR removes
-   `deploy/least-privilege.request` and records the run number on row 37 and in the
-   threat model. If the run fails, the script restores the previous environment file and
-   the API stays on the old credential: read the log, fix, re-run (a dispatch with the
-   confirmation, or the request file again).
-2. **Cut `v1.0.1`** once row 37 is in and CI on that commit is green (row 38): the root
-   `VERSION` file, `GET /api/version`, the web footer, the tag on the accepted commit, and
-   the acceptance table's summary updated to complete. Retired `v1.0.0` stays.
-3. **Mobile continues** on the owner's computer: the install per
+1. **Cut `v1.0.1`** (ADR 0017; the owner's name for the first accepted release): the root
+   `VERSION` file, `GET /api/version`, the web footer, release notes listing migrations
+   1–18, the tag on the accepted commit once its CI is green (row 38), and the acceptance
+   table's summary set to complete. Retired `v1.0.0` stays where it is.
+2. **Mobile continues** on the owner's computer: the install per
    `docs/mobile-device-install.md`, then the physical-device acceptance rows (28, 29) and
    `mobile-v1.0.1` at parity.
+3. **Rotation, when wanted:** re-running the *Apply least privilege* workflow (dispatch
+   with the confirmation, or the request file again) gives the confined role a new
+   password and restarts only the api container.
 
 Any defect the owner reports from the live site or the phone takes precedence over new
 scope.
@@ -1188,8 +1184,17 @@ connections are the confined role and none remain as the superuser. The SQL gain
 `ALTER DEFAULT PRIVILEGES` per schema because the deployment keeps applying migrations as
 the superuser inside the container. Rehearsed on a local production-shaped database:
 every proof above, plus idempotency, rotation and a migration re-run after the ownership
-change. The production run follows the merge; its evidence goes on row 37 in the
-follow-up that removes the request file.
+change.
+
+**Applied in production on 2026-10-05.** PR #59 merged as `8775cf1`; the *Apply least
+privilege* workflow ran first on that push (run `37337177964`) and printed: the role
+reads `households.households`; `rolsuper = f`, `COPY ... TO PROGRAM` refused, `pg_shadow`
+refused; only `medication-tracker-api-1` recreated; `pg_stat_activity` shows
+`medication_tracker_app 1` and no superuser connection; previous environment file kept
+under `.deploy/env-history`; 23 containers of other projects untouched; `GET / -> 200`,
+`GET /api/auth/session -> 401`. The deploy of the same push (run `37337177804`) then ran
+behind it and the site stayed up on the confined credential. The request file was
+removed in the follow-up PR, which ran the workflow once more to find nothing to do.
 
 ### What the cloud session could not do
 
@@ -1209,13 +1214,11 @@ The acceptance table stands at **36 DONE, 2 PARTIAL, 2 DEFERRED, 0 OPEN** of 40 
 release with mobile infrastructure in place and does not deliver the offline mobile
 client** (ADR 0015). The owner accepted rows 30, 39 and 40 on 2026-10-05.
 
-**What remains is the agent's:** row 37 (least privilege in production, delegated) and
-then the `v1.0.1` cut; row 38 closes itself on the last commit.
+**What remains is the agent's:** the `v1.0.1` cut; row 38 closes itself on that commit.
+Row 37 landed in production on 2026-10-05.
 
-**Exact next action.** Row 37, as the *Next exact action* section at the top describes:
-the commit-triggered Actions job that moves the live API off the superuser credential
-without the password ever leaving the server. Then the `v1.0.1` cut. Mobile continues on
-the owner's computer in parallel.
+**Exact next action.** Cut `v1.0.1`, as the *Next exact action* section at the top
+describes. Mobile continues on the owner's computer in parallel.
 
 Still open for the owner, unchanged: which production household is theirs, so the
 synthetic ones left by smoke tests can be cleaned; and the `VPS_SSH_KEY` rotation.

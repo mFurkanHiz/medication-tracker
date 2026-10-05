@@ -5,10 +5,12 @@ reconstructing the product history from a long conversation.
 
 ## Current state
 
-- Owner-accepted V1: **NOT COMPLETE**. The acceptance table stands at 33 DONE, 4 PARTIAL,
-  2 DEFERRED, 1 OPEN; every remaining row waits on the owner (see *Where this stands*).
-  `docs/v1-acceptance.md` is the authority on scope; ADR 0013 explains the rebuild, ADR
-  0015 the owner-approved mobile deferral.
+- Owner-accepted V1: **accepted by the owner on 2026-10-05 ("kabul"), not yet complete.**
+  The table stands at 36 DONE, 2 PARTIAL, 2 DEFERRED, 0 OPEN; the two PARTIAL rows are 37
+  (least privilege, delegated to the agent) and 38 (the final commit's CI, a condition).
+  The release is cut as `v1.0.1` when row 37 lands — the owner kept the retired `v1.0.0`
+  tag untouched (ADR 0017). `docs/v1-acceptance.md` is the authority on scope; ADR 0013
+  explains the rebuild, ADR 0015 the owner-approved mobile deferral.
 - Production tracks `main`: every merge deploys by itself, so the live revision is
   whatever `main` last squashed to — `c4c9240` (PR #56, CI run `37316264856`) as of
   2026-10-05, with migrations 1–18 applied. Documentation-only merges do not redeploy
@@ -19,10 +21,11 @@ reconstructing the product history from a long conversation.
   decisions: `docs/owner-feedback-2026-10-05.md`. Three review findings are Backlog
   (box-to-box transfer, the count-batch race answering 500, the heavy per-card
   disclosure), not defects.
-- The mobile client is deferred past V1 with its infrastructure and API contract kept
-  (ADR 0015, `MobileContractTests`). Its resumption is planned in
-  `docs/mobile-resume-plan.md` under the ADR 0017 versioning and starts when the owner
-  says so; step 0, the release channel, is the owner's.
+- The mobile client resumed on 2026-10-05 on the owner's word ("Mobile başla"). The
+  owner chose USB from their own computer over EAS Build; the first slice (schema v3 and
+  the server's due-day rule on the phone, PR #58) is in; the install itself runs from a
+  session on the owner's computer (`docs/mobile-device-install.md`), which a cloud
+  session cannot do. Plan and progress: `docs/mobile-resume-plan.md`.
 
 ## What the rebuild has delivered
 
@@ -50,14 +53,13 @@ These are `OPEN` or `PARTIAL` in the acceptance contract and have **not** been n
 or moved out of V1. None is ordinary coding work:
 
 1. **Row 37 — least privilege.** `deploy/least-privilege-database-role.sql` is written and
-   verified; applying it changes the live API's database credential and needs a password
-   only the owner holds.
-2. **Row 39 — deployment preflight** needs the owner's approval.
-3. **Row 30 — the owner's visual judgement** on the web surface.
-4. **Row 40 — the owner's acceptance run** and explicit 1.0.0 approval. The owner's
-   "şimdilik güzel gözüküyor" of 2026-10-05 is a test note, not an acceptance.
+   verified. The owner delegated its application on 2026-10-05 ("işi hep sen yaparsın"):
+   a commit-triggered Actions job that generates the role's password on the server,
+   rewrites the API's connection string, restarts only this project's `api` container and
+   verifies the API no longer connects as a superuser. The next slice.
 
-Row 38 closes itself on whatever commit turns out to be last.
+Rows 30, 39 and 40 were accepted by the owner on 2026-10-05 ("kabul"). Row 38 closes
+itself on whatever commit turns out to be last.
 
 From the live test nothing is open: the defect and every candidate change shipped in
 Sprint 7. Open beyond V1 and decided at acceptance: the retired `v1.0.0` tag (ADR 0017,
@@ -65,21 +67,24 @@ retire and recreate it, or name the first accepted release `v1.0.1`).
 
 ## Next exact action
 
-**Resume the mobile client when the owner says start — not before.** The owner's
-sequence after Sprint 7 is mobile, then later features; they said "mobile şimdi başlama"
-and will say when. Follow `docs/mobile-resume-plan.md`:
+1. **Apply least privilege in production (row 37).** A commit-triggered Actions job, in
+   the style of `deploy/purge-care-data.request`: on the VPS, generate a password with
+   the server's own randomness, run `deploy/least-privilege-database-role.sql` inside the
+   database container as the bootstrap superuser, back up and rewrite
+   `/opt/medication-tracker/.env.production` so the API's connection string uses the new
+   role, restart only this project's `api` container, wait for its health, and prove from
+   inside the container that `current_user` is the new role and `rolsuper` is false.
+   Idempotent, with the previous env file kept for rollback. Touches nothing outside the
+   `medication-tracker` compose project. The password never leaves the server.
+2. **Cut `v1.0.1`** once row 37 is in and CI on that commit is green (row 38): the root
+   `VERSION` file, `GET /api/version`, the web footer, the tag on the accepted commit, and
+   the acceptance table's summary updated to complete. Retired `v1.0.0` stays.
+3. **Mobile continues** on the owner's computer: the install per
+   `docs/mobile-device-install.md`, then the physical-device acceptance rows (28, 29) and
+   `mobile-v1.0.1` at parity.
 
-0. The release channel (Expo account, EAS Build, internal distribution) is the owner's;
-   without it no mobile slice reaches a phone (Sprint 5's lesson).
-1. First agent slice: bring the phone's governing-version rule to parity with the server
-   (PR #52 changed it: the highest-numbered version that has started governs the day, and
-   nothing once it has ended). A phone on the old rule can remind on the wrong day.
-2. Then the monthly patterns, `conflicts`, ended and restarted plans, box label and
-   coverage — one coherent slice each, released as `mobile-vX.Y.Z` per ADR 0017.
-
-V1 acceptance is unchanged: rows 37, 39, 30 and 40 wait on the owner, and the retired
-`v1.0.0` tag is decided at acceptance. Any defect the owner reports from the live site
-takes precedence over new scope.
+Any defect the owner reports from the live site or the phone takes precedence over new
+scope.
 
 ## Resume protocol
 
@@ -1143,37 +1148,57 @@ governing-rule change first, then the monthly patterns, `conflicts`, ended and r
 plans), and the order to close the gap — starting with the release channel, which only
 the owner can create.
 
+## Sprint 8 — mobile resumes, from 2026-10-05
+
+The owner's answers to the Sprint 7 report, in one message: "Mobile başla, kaldığın
+yerden devam et"; the phone is plugged into their laptop and USB debugging is preferred
+over EAS Build; an older build named *MedicineTracker* from a previous tool may be on the
+phone and may be removed; **"kabul"** for the V1 acceptance items; the old tags stay
+`v1.0.0` and what comes next is `v1.0.1`; and the working rule, in their words: they
+decide, test, authorise — the agent does the work, including row 37.
+
+### Slice 1 — schema v3 and the server's due-day rule on the phone — PR #58
+
+`src/notifications/schedule.ts` is a pure module (no Expo, no React Native) mirroring
+`RecurrenceRule` and the governing rule, tested under Vitest with cases taken from
+`PlanEndTests` and `MonthlyRecurrenceTests` (20 tests; `pnpm test:mobile` is a CI step).
+Reminders use a repeating OS trigger only for a started, open-ended daily or weekly
+version; an end date, a future start, every-N-days and the monthly patterns are bounded
+runs of exact instants topped up per plan. **Defect this closes:** a plan ended on the
+web kept reminding on the phone, because a daily plan was a repeating trigger whatever
+its end date. Schema v3 adds `day_of_month`, `interval_months` and `conflicts`; the
+migration check upgrades frozen v1 and v2 fixtures. Today renders the conflicts in red
+with attribution. `MobileContractTests` pins the three fields (5 tests). Full API suite
+green locally (254).
+
+Known gap, recorded in the plan: the workspace sends the latest version only, so a
+future-dated edit leaves the in-between days without local reminders.
+
+### What the cloud session could not do
+
+Install on the phone. The owner asked "yapamaz mısın oradan?" — no: this session runs in
+a cloud container and cannot reach a USB port on their laptop. `docs/mobile-device-install.md`
+is the runbook for a session on their computer (Claude Desktop app, or
+`claude remote-control` in the repository folder), including removing the old app by its
+package name and nothing else.
+
 ## Where this stands
 
-Sprints 2 through 7 are closed, each with its report on its Notion sprint page.
+Sprints 2 through 7 are closed, each with its report on its Notion sprint page; Sprint 8
+(mobile) is open.
 
-The acceptance table stands at **33 DONE, 4 PARTIAL, 2 DEFERRED, 1 OPEN** of 40 rows.
+The acceptance table stands at **36 DONE, 2 PARTIAL, 2 DEFERRED, 0 OPEN** of 40 rows.
 `DEFERRED` is an owner decision recorded on a date, not a criterion met: **V1 is a web
 release with mobile infrastructure in place and does not deliver the offline mobile
-client** (ADR 0015).
+client** (ADR 0015). The owner accepted rows 30, 39 and 40 on 2026-10-05.
 
-**Nothing V1 still needs is ordinary coding work. All four remaining rows wait on the
-owner:**
+**What remains is the agent's:** row 37 (least privilege in production, delegated) and
+then the `v1.0.1` cut; row 38 closes itself on the last commit.
 
-1. Row 37 — least privilege. `deploy/least-privilege-database-role.sql` is written and
-   verified; applying it changes the live API's database credential and needs a password
-   only the owner holds.
-2. Row 39 — the deployment preflight needs the owner's approval. The migration half is
-   complete and tested on blank and production-shaped baselines.
-3. Row 30 — the owner's visual judgement on the web surface. Nothing agreed is missing.
-4. Row 40 — the owner runs the acceptance flow and approves. Last gate, and mandatory.
+**Exact next action.** Row 37, as the *Next exact action* section at the top describes:
+the commit-triggered Actions job that moves the live API off the superuser credential
+without the password ever leaving the server. Then the `v1.0.1` cut. Mobile continues on
+the owner's computer in parallel.
 
-Row 38 (the final V1 commit must pass CI) closes itself on whatever commit turns out to be
-last; it is not work, it is a condition.
-
-**Exact next action.** Sprint 7 is closed: PR #56 merged as `c4c9240` and deployed by
-run `37316264856` (web only; the public-site proof step passed), the Notion sprint page
-is `Done`, and the report went to the owner on 2026-10-05. The owner's sequence from here: **resume the mobile client** following
-`docs/mobile-resume-plan.md`, whose step 0 — the release channel — only the owner can
-do; then later features. V1 acceptance itself is unchanged: rows 37, 39, 30 and 40 still
-wait on the owner, and the retired `v1.0.0` tag question in ADR 0017 is decided at
-acceptance.
-
-Still open for the owner, unchanged: the mobile release-channel decision when mobile
-resumes; which production household is theirs, so the synthetic ones left by smoke tests
-can be cleaned; and the `VPS_SSH_KEY` rotation.
+Still open for the owner, unchanged: which production household is theirs, so the
+synthetic ones left by smoke tests can be cleaned; and the `VPS_SSH_KEY` rotation.

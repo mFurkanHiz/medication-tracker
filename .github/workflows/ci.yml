@@ -119,6 +119,20 @@ jobs:
       - run: pnpm check:mobile-migration
       - run: pnpm build:web
       - run: docker compose -f compose.web.yml config
+
+      # The API's database credential in compose.production.yml falls back to the
+      # bootstrap superuser only until deploy/apply-least-privilege.sh has written
+      # APP_DATABASE_* on the host. Both renderings are pinned here: a typo in that
+      # interpolation would otherwise be found at deploy time, on the host.
+      - name: Render the production compose with and without the application role
+        run: |
+          set -euo pipefail
+          without="$(env -u APP_DATABASE_USER -u APP_DATABASE_PASSWORD DATABASE_PASSWORD=bootstrap \
+            docker compose -f compose.production.yml config)"
+          grep -q 'Username=medication_tracker;Password=bootstrap;' <<<"$without"
+          with="$(DATABASE_PASSWORD=bootstrap APP_DATABASE_USER=medication_tracker_app APP_DATABASE_PASSWORD=confined \
+            docker compose -f compose.production.yml config)"
+          grep -q 'Username=medication_tracker_app;Password=confined;' <<<"$with"
       - run: docker build --file apps/web/Dockerfile --tag medication-tracker-web:ci --label "org.opencontainers.image.revision=${GITHUB_SHA}" .
       - run: docker build --file apps/api/Dockerfile --tag medication-tracker-api:ci --label "org.opencontainers.image.revision=${GITHUB_SHA}" .
       - name: Test packaged migration SQL on isolated PostgreSQL

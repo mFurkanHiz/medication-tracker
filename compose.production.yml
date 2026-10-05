@@ -13,7 +13,11 @@ services:
     mem_limit: 384m
     cpus: 0.75
     environment:
-      ConnectionStrings__Database: "Host=database;Database=medication_tracker;Username=medication_tracker;Password=${DATABASE_PASSWORD:?required};Maximum Pool Size=20"
+      # The API's own credential. APP_DATABASE_USER / APP_DATABASE_PASSWORD are written
+      # into .env.production on the host by deploy/apply-least-privilege.sh (acceptance
+      # row 37); until they exist the API falls back to the bootstrap account, so a
+      # deploy that lands before that script has run changes nothing.
+      ConnectionStrings__Database: "Host=database;Database=medication_tracker;Username=${APP_DATABASE_USER:-medication_tracker};Password=${APP_DATABASE_PASSWORD:-${DATABASE_PASSWORD:?required}};Maximum Pool Size=20"
       ASPNETCORE_ENVIRONMENT: Production
       DOTNET_GCHeapHardLimit: "0x10000000"
     depends_on:

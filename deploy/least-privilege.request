@@ -1,0 +1,4 @@
+# Asks the "Apply least privilege" workflow to move the live API off the PostgreSQL
+# superuser (acceptance row 37). Removed again after it has run; see the workflow's
+# header for why a commit is the confirmation.
+APPLY-LEAST-PRIVILEGE

@@ -5,22 +5,20 @@ reconstructing the product history from a long conversation.
 
 ## Current state
 
-- Owner-accepted V1: **NOT COMPLETE**. See `docs/v1-acceptance.md` for the authority
-  on scope and `docs/adr/0013-v1-domain-rebuild-strategy.md` for why the domain was
-  rebuilt rather than extended.
+- Owner-accepted V1: **NOT COMPLETE**. The acceptance table stands at 33 DONE, 4 PARTIAL,
+  2 DEFERRED, 1 OPEN; every remaining row waits on the owner (see *Where this stands*).
+  `docs/v1-acceptance.md` is the authority on scope; ADR 0013 explains the rebuild, ADR
+  0015 the owner-approved mobile deferral.
 - Production tracks `main`: every merge deploys by itself, so the live revision is
-  whatever `main` last squashed to, and the deploy job on that run is the record. The
-  first self-driven deployment was `8ebe4c60a9660fb4cdb57fb31f6b51aa351c2d9f` from CI
-  run `37125695168` on 2026-10-03; several have followed. Reports, export and counting
-  are **live**. Documentation-only merges no longer redeploy (`paths-ignore` on push).
-- PR #11 (the rebuild), #12 (deployment tooling) and #13 (backup verification) are
-  merged into main.
-- The API, the web client and the mobile client are all rebuilt against the new model.
-- Reports, export and counting (rows 18, 31, 32) are implemented, merged **and
-  deployed**.
-- PR #9 is **subsumed** by PR #11, not abandoned. Its recurrence rules are carried
-  forward onto `TreatmentPlanVersion`. Do not merge PR #9 separately.
-- PR #10 (packaged migration SQL fix) is already on main.
+  whatever `main` last squashed to — `dd90ea0` (PR #48, CI run `37242754000`) as of
+  2026-10-04. Documentation-only merges do not redeploy (`paths-ignore` on push).
+- **The owner is running the acceptance test on the live site** (from 2026-10-05) and
+  sending notes in batches. The first batch is evaluated in
+  `docs/owner-feedback-2026-10-05.md`; it contains one confirmed live defect (the
+  active-box swap returns 500) and seven candidate changes, all **held** because the owner
+  asked for notes and an evaluation, not code, until the planning session.
+- The mobile client is deferred past V1 with its infrastructure and API contract kept
+  (ADR 0015, `MobileContractTests`).
 
 ## What the rebuild has delivered
 
@@ -44,47 +42,35 @@ Domain, application, persistence and API layers for the package-first model:
 
 ## What is still open
 
-These are `OPEN` or `PARTIAL` in the acceptance contract and have **not** been
-narrowed or moved out of V1:
+These are `OPEN` or `PARTIAL` in the acceptance contract and have **not** been narrowed
+or moved out of V1. None is ordinary coding work:
 
-1. **Physical-device acceptance.** Offline mobile and local reminders are implemented
-   and type-checked, but reboot, permission revocation, time-zone change, DST and Doze
-   behaviour can only be proven on a real Android phone. Nothing here has run on one.
-2. **Accessibility** has no formal audit and no screen-reader pass on a device.
-3. **Synthetic demo seed** for safe public demonstration.
-4. **Mobile has no reports, export or counting surface.** These slices added all three
-   to the web client only. Rows 18, 31 and 32 are satisfied — a user can reach every
-   behaviour — but the mobile client does not yet show them.
-5. **One account survives, and whether it is the owner's is still unanswered.**
-   Production is down to `test@medtracker.com` (see the evidence checkpoint). If the
-   owner registers afresh with their own address instead, the care data created on
-   2026-10-03 belongs to the old account, and the `RESTRICT` foreign keys will refuse
-   to remove it until that data goes first. Ordering is handled here; the decision is
-   the owner's.
-6. **No test runner exists for the web client.** `apps/web` has no `*.test.*` file and
-   no runner in `package.json`; web logic is covered only by `tsc`, by the API suite
-   behind it, and by ad-hoc browser checks. The two UI fixes of 2026-10-03 were proven
-   with Playwright against a local stack, but nothing in CI would catch a regression
-   in them. Adding a runner is its own slice.
+1. **Row 37 — least privilege.** `deploy/least-privilege-database-role.sql` is written and
+   verified; applying it changes the live API's database credential and needs a password
+   only the owner holds.
+2. **Row 39 — deployment preflight** needs the owner's approval.
+3. **Row 30 — the owner's visual judgement** on the web surface.
+4. **Row 40 — the owner's acceptance run** and explicit 1.0.0 approval. In progress on the
+   live site since 2026-10-05.
+
+Row 38 closes itself on whatever commit turns out to be last.
+
+Also open, from the live test: the confirmed active-box swap defect and the candidate
+changes in `docs/owner-feedback-2026-10-05.md`, with the decisions D1–D6 listed there.
 
 ## Next exact action
 
-The synthetic demo seed, then the mobile surfaces — **unless the owner reports more
-defects from live testing, which take precedence.** They are testing the deployed site
-and reporting what they find; two such defects were fixed on 2026-10-03 (see the
-evidence checkpoint). Fixing what the owner actually hit comes before new scope.
+**Wait for the owner's go.** They are testing and said more notes follow and that nothing
+is to be coded before the planning session. When the go comes:
 
-- Deployment is armed and proven: a merge to `main` deploys by itself, and the care
-  data purge has run. The purge stays available for a future reset — commit
-  `deploy/purge-care-data.request` to `main` with the line `ERASE-CARE-DATA` in it, or
-  dispatch the workflow and type the same, then remove the file again.
-- **Synthetic demo seed** (row 35) is the last non-device, non-mobile item. It should
-  reuse the shape the browser checks already seed: a household, two people, a scheduled
-  and an as-needed medication, three packages, three weeks of mixed outcomes.
-- After that, mirroring reports, export and counting onto mobile.
+1. First slice is the **active-box swap defect** (`docs/owner-feedback-2026-10-05.md` §4):
+   release the previous pin before acquiring the new one inside one transaction, with a
+   test that swaps in both orders. No migration. A defect the owner actually hit comes
+   before new scope.
+2. Then the planning session settles decisions D1–D6 and the order of the candidate
+   slices; one migration per turn.
 
-Physical-device acceptance for rows 28 and 29 needs the owner's Android phone and
-cannot be produced here.
+Any further defect the owner reports from live testing takes precedence over new scope.
 
 ## Resume protocol
 
@@ -955,6 +941,43 @@ logic was guarded only by `tsc`, lint and the API tests. The owner asked for one
 - Gate: `pnpm test:web` 49 passed; lint, mobile typecheck and web build clean. The API
   was not touched.
 
+## Owner live-test feedback — 2026-10-05
+
+The owner began the acceptance run on the live site and sent a first batch of notes
+mid-test, asking for notes and an evaluation and explicitly **not** for code: *"Bunları not
+al, hemen kod yazma. Planlayacağız ve planlı bir şekilde ilerleyeceğiz."* The notes, what
+the code does today for each, the evaluation and a candidate slicing are in
+`docs/owner-feedback-2026-10-05.md`; the later-version ideas are in `docs/roadmap.md`
+under *Later*.
+
+What the evaluation established, in short:
+
+- **One live defect, reproduced.** Making another box active fails with *"Bir şeyler ters
+  gitti"*. The API does release the previous pin in the same request; the two UPDATEs run
+  in primary-key order inside one `SaveChanges`, and the filtered unique index
+  `ix_packages_single_pinned` rejects the pin when it sorts first. A throwaway test on
+  2026-10-05 swapped the pin in alternating orders across six fresh medicines: one of six
+  returned 500 with `23505 duplicate key ... "ix_packages_single_pinned"`. Deterministic
+  per pair of boxes, which is why the owner hits it every time. Not fixed yet, by the
+  owner's instruction; it is the first slice when the go comes.
+- **Two notes are mostly built already.** Boxes carry location, note, lot, expiry and a
+  `PUT` route, but the web cannot edit a box after creation and there is no name field.
+  The depletion forecast already walks real due days; the owner's "compute the official
+  refill date" button is that forecast with as-needed plans counted as daily, plus a
+  client action.
+- **One note touches the product boundary** and needs the owner's decision and an ADR:
+  caution tags matched against the person's other medicines. Admissible only as a
+  household-authored, exact-match, person-scoped, never-blocking reminder of the
+  household's own note, with wording that never claims an interaction.
+- **One note has a trap.** Restoring an ended plan by clearing `DeletedAt` would make the
+  adherence replay count the ended period as missed doses. Ending must append a version
+  with `EffectiveTo`; restart appends a new version.
+- The remaining notes (demote Lost/Discarded, official/unofficial flag, monthly plans) are
+  ordinary changes, two of them with a migration each.
+
+No V1 row changed. The acceptance table is unchanged at 33 DONE, 4 PARTIAL, 2 DEFERRED,
+1 OPEN.
+
 ## Where this stands
 
 Sprints 2 through 6 are closed, each with its report on its Notion sprint page.
@@ -978,12 +1001,13 @@ owner:**
 Row 38 (the final V1 commit must pass CI) closes itself on whatever commit turns out to be
 last; it is not work, it is a condition.
 
-**Exact next action.** There is no next implementation slice that V1 requires. Do not
-invent one. The web test runner that was the best-value unrequired work is now in place;
-what remains is the owner's list above. If the owner wants engineering work to continue
-while they decide, the honest candidates are a screen-reader pass of the web by a person
-(which CI cannot produce) and widening the web tests as screens change — neither is a V1
-row, and neither should be presented as one.
+**Exact next action.** The owner is running the acceptance test (row 40) on the live
+site and has asked for no code until the planning session. Their first batch of notes is
+evaluated in `docs/owner-feedback-2026-10-05.md`: one confirmed live defect (active-box
+swap → 500) is the first slice when the go comes, and seven candidate changes wait on the
+decisions listed there. Nothing V1 requires is ordinary coding work; do not invent a V1
+slice. The honest non-V1 candidates remain a screen-reader pass of the web by a person and
+widening the web tests as screens change.
 
 Still open for the owner, unchanged: the mobile release-channel decision when mobile
 resumes; which production household is theirs, so the synthetic ones left by smoke tests

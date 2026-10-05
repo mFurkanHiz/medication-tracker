@@ -24,6 +24,8 @@ export type MedicationPackage = {
   ordinal: number;
   /** The household's own name for the box, shown instead of the ordinal when set. */
   label?: string | null;
+  /** Overrides the medicine's coverage for this box; null inherits it. */
+  coverage?: string | null;
   state: PackageState;
   /** Derived from the ledger, never stored. */
   isEmpty: boolean;
@@ -47,6 +49,8 @@ export type RefillPolicy = {
   lowStockThreshold: Quantity | null;
   lowStockDays: number | null;
   nextEligibleRefillOn: string | null;
+  /** When all stock is expected to run out, as the household recorded it. */
+  expectedDepletionOn: string | null;
   note: string | null;
 };
 
@@ -78,6 +82,8 @@ export type MedicationDefinition = {
   defaultPackageCapacity: Quantity | null;
   category: string | null;
   tags: string[];
+  /** Who paid: 'InsuranceCovered', 'SelfPaid' or 'Unspecified' (treated as covered). */
+  coverage: string;
   notes: string | null;
   cautions: CautionNotes | null;
   isArchived: boolean;
@@ -208,6 +214,14 @@ export type Forecast = {
   /** True when stock runs out before the prescription may be refilled. */
   hasRefillGap: boolean;
   refillGapDays: number | null;
+  /** False when no plan exists to compute a suggestion from. */
+  canSuggest: boolean;
+  /** Covered stock only, an as-needed plan counted as one dose a day. */
+  suggestedNextEligibleRefillOn: string | null;
+  /** All stock, the same assumption. */
+  suggestedDepletionOn: string | null;
+  coveredBalance: Quantity;
+  expectedDepletionOn: string | null;
 };
 
 /**

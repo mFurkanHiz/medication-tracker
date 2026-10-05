@@ -41,7 +41,8 @@ public sealed class MedicationPackage
         string? barcode = null,
         string? source = null,
         string? storageLocation = null,
-        string? note = null)
+        string? note = null,
+        Coverage? coverage = null)
     {
         if (!nominalCapacity.IsPositive)
         {
@@ -76,6 +77,7 @@ public sealed class MedicationPackage
         Source = Clean(source);
         StorageLocation = Clean(storageLocation);
         Note = Clean(note);
+        Coverage = coverage;
     }
 
     public Guid Id { get; private set; }
@@ -134,6 +136,16 @@ public sealed class MedicationPackage
     public string? Label { get; private set; }
 
     public const int MaximumLabelLength = 60;
+
+    /// <summary>
+    /// Who paid for this box, when that differs from the medicine's own setting. Null
+    /// inherits the medicine's <see cref="Domain.Catalog.Coverage"/>.
+    /// </summary>
+    public Coverage? Coverage { get; private set; }
+
+    /// <summary>Whether this box counts toward the insurance-covered supply.</summary>
+    public bool IsCoveredGiven(Coverage definitionCoverage) =>
+        (Coverage ?? definitionCoverage) != Domain.Catalog.Coverage.SelfPaid;
 
     /// <summary>Who the package belongs to. Unchanged by lending.</summary>
     public Guid? OwnerPersonId { get; private set; }
@@ -215,6 +227,7 @@ public sealed class MedicationPackage
 
     public void UpdateDetails(
         string? label,
+        Coverage? coverage,
         DateOnly? expiresOn,
         DateOnly? acquiredOn,
         string? lotNumber,
@@ -231,6 +244,7 @@ public sealed class MedicationPackage
         Source = Clean(source);
         StorageLocation = Clean(storageLocation);
         Note = Clean(note);
+        Coverage = coverage;
     }
 
     /// <summary>

@@ -131,6 +131,7 @@ public static class WorkspaceEndpoints
                     category = definition.Category,
                     tags = definition.Tags,
                     notes = definition.Notes,
+                    coverage = definition.Coverage.ToString(),
                     cautions = CautionView.Of(definition),
                     isArchived = definition.IsArchived,
 
@@ -153,6 +154,7 @@ public static class WorkspaceEndpoints
                                 : null,
                             lowStockDays = policy.LowStockDays,
                             nextEligibleRefillOn = policy.NextEligibleRefillOn,
+                            expectedDepletionOn = policy.ExpectedDepletionOn,
                             note = policy.Note,
                         },
                 };

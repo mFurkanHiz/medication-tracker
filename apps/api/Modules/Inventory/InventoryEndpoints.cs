@@ -98,6 +98,11 @@ public static class InventoryEndpoints
 
             var accountId = HouseholdAccess.RequireAccountId(context);
             var now = DateTimeOffset.UtcNow;
+            if (!TryParseCoverage(request.Coverage, out var coverage))
+            {
+                return ApiResults.Invalid("coverage", "invalid");
+            }
+
             var correlationId = Guid.CreateVersion7();
 
             await using var transaction = await db.Database.BeginTransactionAsync(ct);
@@ -119,13 +124,13 @@ public static class InventoryEndpoints
             for (var index = 0; index < request.FullPackages; index++)
             {
                 created.Add(AddPackage(db, householdId, definition.Id, legacyItemId, ordinal++, capacity, capacity,
-                    definition.Unit, sealedPackage: true, request, accountId, now, correlationId));
+                    definition.Unit, sealedPackage: true, request, accountId, now, correlationId, coverage));
             }
 
             foreach (var (packageCapacity, remaining) in openedAmounts)
             {
                 created.Add(AddPackage(db, householdId, definition.Id, legacyItemId, ordinal++, packageCapacity,
-                    remaining, definition.Unit, sealedPackage: false, request, accountId, now, correlationId));
+                    remaining, definition.Unit, sealedPackage: false, request, accountId, now, correlationId, coverage));
             }
 
             if (loose is { } looseAmount)
@@ -417,6 +422,11 @@ public static class InventoryEndpoints
                 return Results.NotFound();
             }
 
+            if (!TryParseCoverage(request.Coverage, out var coverage))
+            {
+                return ApiResults.Invalid("coverage", "invalid");
+            }
+
             if (request.Label is { } label && label.Trim().Length > MedicationPackage.MaximumLabelLength)
             {
                 return ApiResults.Invalid("label", "label_too_long");
@@ -424,6 +434,7 @@ public static class InventoryEndpoints
 
             package.UpdateDetails(
                 request.Label,
+                coverage,
                 request.ExpiresOn,
                 request.AcquiredOn,
                 request.LotNumber,
@@ -612,7 +623,8 @@ public static class InventoryEndpoints
         AddStockRequest request,
         Guid accountId,
         DateTimeOffset now,
-        Guid correlationId)
+        Guid correlationId,
+        Domain.Catalog.Coverage? coverage)
     {
         var package = new MedicationPackage(
             Guid.CreateVersion7(),
@@ -632,7 +644,8 @@ public static class InventoryEndpoints
             request.Barcode,
             request.Source,
             request.StorageLocation,
-            request.Note);
+            request.Note,
+            coverage);
 
         db.Packages.Add(package);
 
@@ -655,11 +668,31 @@ public static class InventoryEndpoints
         };
     }
 
+    /// <summary>Null and blank mean "not given"; anything else has to name a Coverage.</summary>
+    internal static bool TryParseCoverage(string? value, out Domain.Catalog.Coverage? coverage)
+    {
+        coverage = null;
+
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return true;
+        }
+
+        if (!Enum.TryParse<Domain.Catalog.Coverage>(value, ignoreCase: true, out var parsed))
+        {
+            return false;
+        }
+
+        coverage = parsed;
+        return true;
+    }
+
     internal static object PackageView(MedicationPackage package, ExactQuantity balance) => new
     {
         id = package.Id,
         ordinal = package.Ordinal,
         label = package.Label,
+        coverage = package.Coverage?.ToString(),
         state = package.State.ToString(),
 
         // Emptiness is derived from the ledger, never stored. ADR 0014.
@@ -706,7 +739,8 @@ public sealed record AddStockRequest(
     string? Barcode = null,
     string? Source = null,
     string? StorageLocation = null,
-    string? Note = null);
+    string? Note = null,
+    string? Coverage = null);
 
 /// <summary>
 /// A partly-used package. Capacity defaults to the request's capacity, so the common
@@ -731,7 +765,8 @@ public sealed record UpdatePackageRequest(
     string? Source = null,
     string? StorageLocation = null,
     string? Note = null,
-    string? Label = null);
+    string? Label = null,
+    string? Coverage = null);
 
 public sealed record AssignPackageRequest(Guid? PersonId);
 

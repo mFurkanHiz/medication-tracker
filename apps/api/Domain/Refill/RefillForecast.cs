@@ -136,6 +136,51 @@ public static class RefillForecast
     }
 
     /// <summary>
+    /// The first day on which <paramref name="balance"/> no longer covers the planned
+    /// doses, with an as-needed plan counted as one dose a day.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This is the owner's "official" reading of a supply, used to suggest the refill and
+    /// end dates: a prescription assumes the medicine is taken as written, so for that
+    /// purpose an as-needed plan is taken daily at its dose. It is a suggestion the
+    /// household confirms by saving, never a forecast of what they will actually do —
+    /// <see cref="Project"/> keeps excluding as-needed plans for exactly that reason.
+    /// </para>
+    /// <para>
+    /// Null when there is no plan to compute from, or when the balance outlasts the
+    /// horizon. An empty balance runs out on the first due day, which may be today.
+    /// </para>
+    /// </remarks>
+    public static DateOnly? SupplyRunsOutOn(
+        ExactQuantity balance,
+        IReadOnlyCollection<PlannedConsumption> plans,
+        DateOnly from,
+        int horizonDays = DefaultHorizonDays)
+    {
+        ArgumentNullException.ThrowIfNull(plans);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(horizonDays);
+
+        var assumed = plans
+            .Where(plan => plan.DosePerOccurrence.IsPositive)
+            .Select(plan => plan.Recurrence.Kind == TreatmentKind.AsNeeded
+                ? plan with
+                {
+                    Recurrence = plan.Recurrence with
+                    {
+                        Kind = TreatmentKind.Scheduled,
+                        Pattern = RecurrencePattern.Daily,
+                        WeekdayMask = null,
+                        IntervalDays = null,
+                    },
+                }
+                : plan)
+            .ToList();
+
+        return assumed.Count == 0 ? null : FindFirstUncoveredDay(balance, assumed, from, horizonDays);
+    }
+
+    /// <summary>
     /// Walks forward to the first day whose planned doses the remaining balance cannot
     /// cover in full. Returns null when the balance survives the whole horizon.
     /// </summary>

@@ -295,6 +295,7 @@ public sealed class MedicationRefillPolicyConfiguration : IEntityTypeConfigurati
         b.Property(x => x.LowStockThresholdDenominator).HasColumnName("low_stock_threshold_denominator");
         b.Property(x => x.LowStockDays).HasColumnName("low_stock_days");
         b.Property(x => x.NextEligibleRefillOn).HasColumnName("next_eligible_refill_on");
+        b.Property(x => x.ExpectedDepletionOn).HasColumnName("expected_depletion_on");
         b.Property(x => x.Note).HasColumnName("note").HasMaxLength(1000);
         b.Property(x => x.UpdatedAt).HasColumnName("updated_at");
         b.Property(x => x.UpdatedByAccountId).HasColumnName("updated_by_account_id");

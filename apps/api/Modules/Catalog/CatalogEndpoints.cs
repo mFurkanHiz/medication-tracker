@@ -59,7 +59,8 @@ public static class CatalogEndpoints
                 request.Category,
                 parsed.Tags,
                 request.Notes,
-                parsed.Cautions);
+                parsed.Cautions,
+                parsed.Coverage);
 
             db.MedicationDefinitions.Add(definition);
 
@@ -121,7 +122,8 @@ public static class CatalogEndpoints
                 request.Category,
                 parsed.Tags,
                 request.Notes,
-                parsed.Cautions);
+                parsed.Cautions,
+                parsed.Coverage);
 
             db.MedicationDefinitionChangeEvents.Add(new MedicationDefinitionChangeEvent(
                 Guid.CreateVersion7(), householdId, definition.Id, HouseholdAccess.RequireAccountId(context),
@@ -296,8 +298,15 @@ public static class CatalogEndpoints
             return false;
         }
 
+        field = "coverage";
+        var coverage = Coverage.Unspecified;
+        if (request.Coverage is not null && !Enum.TryParse(request.Coverage, ignoreCase: true, out coverage))
+        {
+            return false;
+        }
+
         field = string.Empty;
-        parsed = new ParsedDefinition(form, unit, ingredients, tags, capacity, cautions.Normalized());
+        parsed = new ParsedDefinition(form, unit, ingredients, tags, capacity, cautions.Normalized(), coverage);
         return true;
     }
 
@@ -334,6 +343,7 @@ public static class CatalogEndpoints
         definition.CautionThingsToDo,
         definition.CautionThingsToAvoid,
         definition.CautionWarning,
+        Coverage = definition.Coverage.ToString(),
         definition.IsArchived,
     });
 
@@ -343,7 +353,8 @@ public static class CatalogEndpoints
         string[] ActiveIngredients,
         string[] Tags,
         ExactQuantity? DefaultPackageCapacity,
-        CautionNotes Cautions);
+        CautionNotes Cautions,
+        Coverage Coverage);
 }
 
 /// <summary>
@@ -367,4 +378,5 @@ public sealed record MedicationDefinitionRequest(
     string? CautionFoodsToAvoid = null,
     string? CautionThingsToDo = null,
     string? CautionThingsToAvoid = null,
-    string? CautionWarning = null);
+    string? CautionWarning = null,
+    string? Coverage = null);

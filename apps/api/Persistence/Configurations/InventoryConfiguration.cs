@@ -62,6 +62,7 @@ public sealed class MedicationPackageConfiguration : IEntityTypeConfiguration<Me
         b.Property(x => x.StorageLocation).HasColumnName("storage_location").HasMaxLength(200);
         b.Property(x => x.Note).HasColumnName("note").HasMaxLength(2000);
         b.Property(x => x.Label).HasColumnName("label").HasMaxLength(MedicationPackage.MaximumLabelLength);
+        b.Property(x => x.Coverage).HasColumnName("coverage").HasConversion<string>().HasMaxLength(20);
         b.Property(x => x.OwnerPersonId).HasColumnName("owner_person_id");
         b.Property(x => x.HolderPersonId).HasColumnName("holder_person_id");
         b.Property(x => x.IsPinned).HasColumnName("is_pinned").HasDefaultValue(false);

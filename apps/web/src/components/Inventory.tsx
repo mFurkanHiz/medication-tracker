@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { ApiError, api, type AddStockInput, type MedicationDefinitionInput, type UpdatePackageInput } from '@/lib/api';
-import { cautionList, enumKey, errorKey, useLocale } from '@/lib/i18n';
+import { cautionList, enumKey, errorKey, useLocale, type MessageKey } from '@/lib/i18n';
 import { addQuantities, formatQuantity, parseQuantity, type Quantity } from '@/lib/quantity';
 import type {
   Forecast, MedicationDefinition, MedicationPackage, Person, TreatmentPlan, Workspace,
@@ -406,6 +406,7 @@ function PackageRow({ household, pkg, activeLoanId, people, onChanged, onError }
             <Badge tone={pkg.state === 'Sealed' ? 'neutral' : 'accent'}>{t(stateKey)}</Badge>
           ) : null}
           {pkg.isPinned ? <Badge tone="positive">{t('pinned')}</Badge> : null}
+          {pkg.coverage === 'SelfPaid' ? <Badge tone="quiet">{t('coverageSelfPaid')}</Badge> : null}
           {activeLoanId ? <Badge tone="warning">{t('onLoan')}</Badge> : null}
         </div>
       </div>
@@ -526,6 +527,7 @@ function EditPackageDialog({ household, pkg, onClose, onSaved }: {
   const { t } = useLocale();
   const [label, setLabel] = useState(pkg.label ?? '');
   const [storageLocation, setStorageLocation] = useState(pkg.storageLocation ?? '');
+  const [coverage, setCoverage] = useState(pkg.coverage ?? '');
   const [note, setNote] = useState(pkg.note ?? '');
   const [expiresOn, setExpiresOn] = useState(pkg.expiresOn ?? '');
   const [acquiredOn, setAcquiredOn] = useState(pkg.acquiredOn ?? '');
@@ -544,6 +546,7 @@ function EditPackageDialog({ household, pkg, onClose, onSaved }: {
         expiresOn: expiresOn === '' ? null : expiresOn,
         acquiredOn: acquiredOn === '' ? null : acquiredOn,
         lotNumber: lotNumber.trim() || null,
+        coverage: coverage === '' ? null : coverage,
         barcode: pkg.barcode ?? null,
         source: pkg.source ?? null,
       };
@@ -595,6 +598,19 @@ function EditPackageDialog({ household, pkg, onClose, onSaved }: {
               value={storageLocation}
               onChange={(e) => setStorageLocation(e.target.value)}
             />
+          )}
+        </Field>
+
+        <Field label={t('coverage')} hint={t('coverageBoxHint')} optional={t('optional')}>
+          {({ id, describedBy }) => (
+            <Select id={id} aria-describedby={describedBy} value={coverage} onChange={(e) => setCoverage(e.target.value)}>
+              <option value="">{t('coverageInherit')}</option>
+              {COVERAGES.filter((value) => value !== 'Unspecified').map((value) => (
+                <option key={value} value={value}>
+                  {t(coverageKey(value))}
+                </option>
+              ))}
+            </Select>
           )}
         </Field>
 
@@ -731,6 +747,7 @@ function DefinitionDialog({ household, definition, onClose, onSaved }: {
   const [thingsToDo, setThingsToDo] = useState(definition?.cautions?.thingsToDo ?? '');
   const [thingsToAvoid, setThingsToAvoid] = useState(definition?.cautions?.thingsToAvoid ?? '');
   const [warning, setWarning] = useState(definition?.cautions?.warning ?? '');
+  const [coverage, setCoverage] = useState(definition?.coverage ?? 'Unspecified');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -765,6 +782,7 @@ function DefinitionDialog({ household, definition, onClose, onSaved }: {
       cautionThingsToDo: thingsToDo.trim() || null,
       cautionThingsToAvoid: thingsToAvoid.trim() || null,
       cautionWarning: warning.trim() || null,
+      coverage,
     };
 
     setBusy(true);
@@ -898,6 +916,21 @@ function DefinitionDialog({ household, definition, onClose, onSaved }: {
           </div>
         </Advanced>
 
+        {/* Who paid decides which stock the official refill date is computed from. The
+            owner asked for a name that reads as neither "informal" nor "illegal": a
+            self-paid box is an ordinary purchase. Unspecified behaves as covered. */}
+        <Field label={t('coverage')} hint={t('coverageHint')}>
+          {({ id, describedBy }) => (
+            <Select id={id} aria-describedby={describedBy} value={coverage} onChange={(e) => setCoverage(e.target.value)}>
+              {COVERAGES.map((value) => (
+                <option key={value} value={value}>
+                  {t(coverageKey(value))}
+                </option>
+              ))}
+            </Select>
+          )}
+        </Field>
+
         <Advanced label={t('advancedOptions')}>
           <div className="flex flex-col gap-4">
             <Field label={t('brand')} optional={t('optional')}>
@@ -951,6 +984,7 @@ function AddStockDialog({ household, definition, people, onClose, onSaved }: {
   const [acquiredOn, setAcquiredOn] = useState('');
   const [lotNumber, setLotNumber] = useState('');
   const [storageLocation, setStorageLocation] = useState('');
+  const [coverage, setCoverage] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -1031,6 +1065,7 @@ function AddStockDialog({ household, definition, people, onClose, onSaved }: {
       acquiredOn: acquiredOn === '' ? null : acquiredOn,
       lotNumber: lotNumber.trim() || null,
       storageLocation: storageLocation.trim() || null,
+      coverage: coverage === '' ? null : coverage,
     };
 
     setBusy(true);
@@ -1157,6 +1192,19 @@ function AddStockDialog({ household, definition, people, onClose, onSaved }: {
               )}
             </Field>
 
+            <Field label={t('coverage')} hint={t('coverageBoxHint')} optional={t('optional')}>
+              {({ id, describedBy }) => (
+                <Select id={id} aria-describedby={describedBy} value={coverage} onChange={(e) => setCoverage(e.target.value)}>
+                  <option value="">{t('coverageInherit')}</option>
+                  {COVERAGES.filter((value) => value !== 'Unspecified').map((value) => (
+                    <option key={value} value={value}>
+                      {t(coverageKey(value))}
+                    </option>
+                  ))}
+                </Select>
+              )}
+            </Field>
+
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label={t('expiresOn')} optional={t('optional')}>
                 {({ id }) => (
@@ -1202,6 +1250,7 @@ function RefillDialog({ household, definition, onClose, onSaved }: {
   );
   const [days, setDays] = useState(policy?.lowStockDays?.toString() ?? '');
   const [refillOn, setRefillOn] = useState(policy?.nextEligibleRefillOn ?? '');
+  const [expectedOn, setExpectedOn] = useState(policy?.expectedDepletionOn ?? '');
   const [note, setNote] = useState(policy?.note ?? '');
   const [forecast, setForecast] = useState<Forecast | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -1233,6 +1282,7 @@ function RefillDialog({ household, definition, onClose, onSaved }: {
         lowStockThresholdDenominator: parsedThreshold?.denominator ?? null,
         lowStockDays: parsedDays,
         nextEligibleRefillOn: refillOn === '' ? null : refillOn,
+        expectedDepletionOn: expectedOn === '' ? null : expectedOn,
         note: note.trim() || null,
       });
       onSaved();
@@ -1283,17 +1333,59 @@ function RefillDialog({ household, definition, onClose, onSaved }: {
           </Field>
         </div>
 
+        {/* Two dates, both optional, both with a button. The official one counts only the
+            insurance-covered stock, because that is what the pharmacy's clock runs on; the
+            expected one counts everything on hand. Neither is written unless the household
+            presses the button and then saves: a suggestion, not an inference. */}
         <Field label={t('nextEligibleRefill')} hint={t('nextEligibleRefillHint')} optional={t('optional')}>
           {({ id, describedBy }) => (
-            <Input
-              id={id}
-              aria-describedby={describedBy}
-              type="date"
-              value={refillOn}
-              onChange={(e) => setRefillOn(e.target.value)}
-            />
+            <div className="flex flex-wrap items-center gap-2">
+              <Input
+                id={id}
+                aria-describedby={describedBy}
+                type="date"
+                className="w-auto"
+                value={refillOn}
+                onChange={(e) => setRefillOn(e.target.value)}
+              />
+              <Button
+                variant="secondary"
+                disabled={!forecast?.canSuggest || !forecast.suggestedNextEligibleRefillOn}
+                onClick={() =>
+                  forecast?.suggestedNextEligibleRefillOn && setRefillOn(forecast.suggestedNextEligibleRefillOn)
+                }
+              >
+                {t('computeFromStock')}
+              </Button>
+            </div>
           )}
         </Field>
+
+        <Field label={t('expectedDepletion')} hint={t('expectedDepletionHint')} optional={t('optional')}>
+          {({ id, describedBy }) => (
+            <div className="flex flex-wrap items-center gap-2">
+              <Input
+                id={id}
+                aria-describedby={describedBy}
+                type="date"
+                className="w-auto"
+                value={expectedOn}
+                onChange={(e) => setExpectedOn(e.target.value)}
+              />
+              <Button
+                variant="secondary"
+                disabled={!forecast?.canSuggest || !forecast.suggestedDepletionOn}
+                onClick={() => forecast?.suggestedDepletionOn && setExpectedOn(forecast.suggestedDepletionOn)}
+              >
+                {t('computeFromStock')}
+              </Button>
+            </div>
+          )}
+        </Field>
+
+        {forecast && !forecast.canSuggest ? (
+          <p className="text-sm text-ink-muted">{t('computeNeedsPlan')}</p>
+        ) : null}
 
         <Field label={t('note')} optional={t('optional')}>
           {({ id }) => <Input id={id} value={note} onChange={(e) => setNote(e.target.value)} />}
@@ -1301,6 +1393,19 @@ function RefillDialog({ household, definition, onClose, onSaved }: {
       </div>
     </Dialog>
   );
+}
+
+const COVERAGES = ['Unspecified', 'InsuranceCovered', 'SelfPaid'] as const;
+
+function coverageKey(value: string): MessageKey {
+  switch (value) {
+    case 'InsuranceCovered':
+      return 'coverageInsuranceCovered';
+    case 'SelfPaid':
+      return 'coverageSelfPaid';
+    default:
+      return 'coverageUnspecified';
+  }
 }
 
 function splitList(value: string): string[] {

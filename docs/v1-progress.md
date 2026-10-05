@@ -1005,7 +1005,7 @@ visible.
   detail. A label past 60 characters is refused by name. Migration-count assertions in
   `tests/migrations` now say 15.
 
-### Slice 4 — end and restart a plan (this checkpoint's PR)
+### Slice 4 — end and restart a plan — PR #52 → `main` `7897dad`
 
 - **The governing rule changed, deliberately.** A day used to be governed by the
   highest-numbered version *covering* it. Under that rule an older open-ended version kept
@@ -1033,6 +1033,26 @@ visible.
   to the plan's original start, which re-governed every day in between), and "today" is
   the viewer's calendar date rather than the UTC date (`lib/dates.ts`, tested).
 
+### Slice 5 — Coverage and the two compute buttons (migration 16, this checkpoint's PR)
+
+- **Coverage** (TR *Karşılama*): `InsuranceCovered`, `SelfPaid`, `Unspecified` (behaves as
+  covered). On the definition as the default; a box may override it (`packages.coverage`,
+  nullable), set when stock is added or in the Edit box dialog. The owner's naming
+  request is honoured: nothing reads as "informal" or "illegal".
+- **Two dates in the Temin dialog, both optional, both with "Stoktan hesapla".** The
+  official refill date is suggested from the **insurance-covered stock only**; the new
+  **expected end date** (`refill_policies.expected_depletion_on`) from all stock. Both use
+  `RefillForecast.SupplyRunsOutOn`, which counts an as-needed plan as one dose a day — the
+  owner's "resmî olarak her gün kullanacağı varsayılır" — while the forecast proper keeps
+  excluding as-needed plans. Suggestions arrive on `GET …/forecast`
+  (`canSuggest`, `suggestedNextEligibleRefillOn`, `suggestedDepletionOn`,
+  `coveredBalance`); nothing is stored until the household saves. Without a plan the
+  buttons are disabled and the dialog says why.
+- Tests: `SupplySuggestionTests` (the owner's 20-tablets-at-2-a-day example to the day,
+  as-needed counted daily, empty supply runs out today) and `CoverageApiTests` (inherit and
+  override, covered-only versus all-stock suggestions, policy round trip, unknown coverage
+  refused). Migration-count assertions now say 16.
+
 ## Where this stands
 
 Sprints 2 through 6 are closed, each with its report on its Notion sprint page.
@@ -1057,11 +1077,11 @@ Row 38 (the final V1 commit must pass CI) closes itself on whatever commit turns
 last; it is not work, it is a condition.
 
 **Exact next action.** Sprint 7 is in progress on the owner's decisions (see the Sprint 7
-section above for what has landed). Next slice: **Coverage** on the medicine with a per-box
-override, plus the two compute buttons for the official and the actual end date
-(migration 16). Then monthly recurrence in both forms (migration 17), then do-not-take-with
-tags with the Today warning and its ADR (migration 18), then the general review, then the
-mobile preparation (versioning ADR, resume plan; no mobile code). One migration per PR.
+section above for what has landed). Next slice: **monthly recurrence in both forms** —
+day-of-month and every-N-months anchored on the start (migration 17). Then
+do-not-take-with tags with the Today warning and its ADR (migration 18), then the general
+review, then the mobile preparation (versioning ADR, resume plan; no mobile code). One
+migration per PR.
 
 Still open for the owner, unchanged: the mobile release-channel decision when mobile
 resumes; which production household is theirs, so the synthetic ones left by smoke tests

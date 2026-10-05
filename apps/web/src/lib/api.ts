@@ -142,9 +142,11 @@ export type MedicationDefinitionInput = {
   cautionThingsToDo?: string | null;
   cautionThingsToAvoid?: string | null;
   cautionWarning?: string | null;
+  coverage?: string | null;
 };
 
 export type AddStockInput = {
+  coverage?: string | null;
   capacityNumerator?: number | null;
   capacityDenominator?: number | null;
   fullPackages?: number;
@@ -162,6 +164,7 @@ export type AddStockInput = {
 /** Every detail of a box the household may change later. PUT replaces them all. */
 export type UpdatePackageInput = {
   label?: string | null;
+  coverage?: string | null;
   expiresOn?: string | null;
   acquiredOn?: string | null;
   lotNumber?: string | null;
@@ -338,6 +341,7 @@ export const api = {
       lowStockThresholdDenominator?: number | null;
       lowStockDays?: number | null;
       nextEligibleRefillOn?: string | null;
+      expectedDepletionOn?: string | null;
       note?: string | null;
     },
   ) =>

@@ -68,3 +68,18 @@ These requirements cut across the earlier sprint labels and are tracked in `v1-a
 - Barcode/OCR assisted entry
 - Expiry and lot tracking
 - Advanced reports, symptoms, measurements, and approved integrations
+
+Recorded from the owner's live-test notes of 2026-10-05, for versions after the next one;
+the focus stays medication tracking and its reminders. Evaluation in
+`docs/owner-feedback-2026-10-05.md`.
+
+- Reminders on the web — the product's core, currently a mobile responsibility while the
+  mobile client is deferred (ADR 0015). The next planning round picks the delivery path:
+  resume mobile, web push from the Next.js app, or both. "Remind N minutes before",
+  "remind again" and snooze belong to whichever path is chosen.
+- Vaccine tracking: dated series with boosters, a different shape from a recurrence.
+- Long-interval medicines (quarterly, yearly): covered by an every-N-months pattern.
+- Menstrual-cycle tracking, daily health notes, and a mood journal with triggers. These
+  reach into special-category health data beyond medication; the owner's own reading is
+  that they may become a separate product integrating with this one. Decide module versus
+  product by whether the data must be joined with medication events.

@@ -10,15 +10,19 @@ reconstructing the product history from a long conversation.
   `docs/v1-acceptance.md` is the authority on scope; ADR 0013 explains the rebuild, ADR
   0015 the owner-approved mobile deferral.
 - Production tracks `main`: every merge deploys by itself, so the live revision is
-  whatever `main` last squashed to — `dd90ea0` (PR #48, CI run `37242754000`) as of
-  2026-10-04. Documentation-only merges do not redeploy (`paths-ignore` on push).
-- **The owner is running the acceptance test on the live site** (from 2026-10-05) and
-  sending notes in batches. The first batch is evaluated in
-  `docs/owner-feedback-2026-10-05.md`; it contains one confirmed live defect (the
-  active-box swap returns 500) and seven candidate changes, all **held** because the owner
-  asked for notes and an evaluation, not code, until the planning session.
+  whatever `main` last squashed to — `c4c9240` (PR #56, CI run `37316264856`) as of
+  2026-10-05, with migrations 1–18 applied. Documentation-only merges do not redeploy
+  (`paths-ignore` on push).
+- **The owner's live-test round of 2026-10-05 is closed.** Sprint 7 shipped every note
+  and decision (D1–D6) in seven slices (PR #50–#55, migrations 15–18), then the general
+  review the owner asked for and the mobile preparation (PR #56). Notes, evaluation and
+  decisions: `docs/owner-feedback-2026-10-05.md`. Three review findings are Backlog
+  (box-to-box transfer, the count-batch race answering 500, the heavy per-card
+  disclosure), not defects.
 - The mobile client is deferred past V1 with its infrastructure and API contract kept
-  (ADR 0015, `MobileContractTests`).
+  (ADR 0015, `MobileContractTests`). Its resumption is planned in
+  `docs/mobile-resume-plan.md` under the ADR 0017 versioning and starts when the owner
+  says so; step 0, the release channel, is the owner's.
 
 ## What the rebuild has delivered
 
@@ -50,27 +54,32 @@ or moved out of V1. None is ordinary coding work:
    only the owner holds.
 2. **Row 39 — deployment preflight** needs the owner's approval.
 3. **Row 30 — the owner's visual judgement** on the web surface.
-4. **Row 40 — the owner's acceptance run** and explicit 1.0.0 approval. In progress on the
-   live site since 2026-10-05.
+4. **Row 40 — the owner's acceptance run** and explicit 1.0.0 approval. The owner's
+   "şimdilik güzel gözüküyor" of 2026-10-05 is a test note, not an acceptance.
 
 Row 38 closes itself on whatever commit turns out to be last.
 
-Also open, from the live test: the confirmed active-box swap defect and the candidate
-changes in `docs/owner-feedback-2026-10-05.md`, with the decisions D1–D6 listed there.
+From the live test nothing is open: the defect and every candidate change shipped in
+Sprint 7. Open beyond V1 and decided at acceptance: the retired `v1.0.0` tag (ADR 0017,
+retire and recreate it, or name the first accepted release `v1.0.1`).
 
 ## Next exact action
 
-**Wait for the owner's go.** They are testing and said more notes follow and that nothing
-is to be coded before the planning session. When the go comes:
+**Resume the mobile client when the owner says start — not before.** The owner's
+sequence after Sprint 7 is mobile, then later features; they said "mobile şimdi başlama"
+and will say when. Follow `docs/mobile-resume-plan.md`:
 
-1. First slice is the **active-box swap defect** (`docs/owner-feedback-2026-10-05.md` §4):
-   release the previous pin before acquiring the new one inside one transaction, with a
-   test that swaps in both orders. No migration. A defect the owner actually hit comes
-   before new scope.
-2. Then the planning session settles decisions D1–D6 and the order of the candidate
-   slices; one migration per turn.
+0. The release channel (Expo account, EAS Build, internal distribution) is the owner's;
+   without it no mobile slice reaches a phone (Sprint 5's lesson).
+1. First agent slice: bring the phone's governing-version rule to parity with the server
+   (PR #52 changed it: the highest-numbered version that has started governs the day, and
+   nothing once it has ended). A phone on the old rule can remind on the wrong day.
+2. Then the monthly patterns, `conflicts`, ended and restarted plans, box label and
+   coverage — one coherent slice each, released as `mobile-vX.Y.Z` per ADR 0017.
 
-Any further defect the owner reports from live testing takes precedence over new scope.
+V1 acceptance is unchanged: rows 37, 39, 30 and 40 wait on the owner, and the retired
+`v1.0.0` tag is decided at acceptance. Any defect the owner reports from the live site
+takes precedence over new scope.
 
 ## Resume protocol
 
@@ -978,7 +987,7 @@ What the evaluation established, in short:
 No V1 row changed. The acceptance table is unchanged at 33 DONE, 4 PARTIAL, 2 DEFERRED,
 1 OPEN.
 
-## Sprint 7 — the owner's live-test notes, in progress
+## Sprint 7 — the owner's live-test notes, closed 2026-10-05
 
 The owner answered decisions D1–D6 on 2026-10-05 (recorded in
 `docs/owner-feedback-2026-10-05.md`), finished their own test round ("şimdilik güzel
@@ -1091,7 +1100,7 @@ visible.
   API: same person and day only, never blocks, round trip, not due today → no warning).
   Migration-count assertions now say 18.
 
-### Slice 8 — the general review the owner asked for
+### Slice 8 — the general review the owner asked for — PR #56 → `main` `c4c9240`, deployed (run `37316264856`)
 
 Run against a local stack at migration 18 with a synthetic household seeded through the
 API (two people, four medicines, mixed coverage, a labelled box, a tagged medicine, a
@@ -1123,7 +1132,7 @@ and 375 pixels, in Turkish and English.
   3. The "Diğer işlemler" disclosure on every plan card is visually heavy; a per-card
      menu would be lighter. Cosmetic.
 
-### Slice 9 — mobile preparation, no mobile code
+### Slice 9 — mobile preparation, no mobile code — PR #56, same merge
 
 ADR 0017 sets the versioning: one version line for the API and the web (`vX.Y.Z`), a
 mobile number that names the server version it is at parity with (`mobile-vX.Y.Z`),
@@ -1136,7 +1145,7 @@ the owner can create.
 
 ## Where this stands
 
-Sprints 2 through 6 are closed, each with its report on its Notion sprint page.
+Sprints 2 through 7 are closed, each with its report on its Notion sprint page.
 
 The acceptance table stands at **33 DONE, 4 PARTIAL, 2 DEFERRED, 1 OPEN** of 40 rows.
 `DEFERRED` is an owner decision recorded on a date, not a criterion met: **V1 is a web
@@ -1157,8 +1166,9 @@ owner:**
 Row 38 (the final V1 commit must pass CI) closes itself on whatever commit turns out to be
 last; it is not work, it is a condition.
 
-**Exact next action.** Sprint 7 is complete pending the owner's reading of its report.
-The owner's sequence from here: **resume the mobile client** following
+**Exact next action.** Sprint 7 is closed: PR #56 merged as `c4c9240` and deployed by
+run `37316264856` (web only; the public-site proof step passed), the Notion sprint page
+is `Done`, and the report went to the owner on 2026-10-05. The owner's sequence from here: **resume the mobile client** following
 `docs/mobile-resume-plan.md`, whose step 0 — the release channel — only the owner can
 do; then later features. V1 acceptance itself is unchanged: rows 37, 39, 30 and 40 still
 wait on the owner, and the retired `v1.0.0` tag question in ADR 0017 is decided at

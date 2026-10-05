@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ApiError, api } from '@/lib/api';
-import { LOCALES, LocaleProvider, dictionaries, errorKey, type MessageKey } from '@/lib/i18n';
+import { LOCALES, LocaleProvider, dictionaries, type MessageKey, describeError } from '@/lib/i18n';
 import { useStoredLocale } from '@/lib/locale-store';
 import type { Session, Workspace } from '@/lib/types';
 import { Counting } from './Counting';
@@ -59,7 +59,7 @@ export function App() {
           if (caught instanceof ApiError && caught.status === 401) {
             setSession(null);
           } else {
-            setError(t(caught instanceof ApiError ? errorKey(caught.code) : 'errorNetwork'));
+            setError(describeError(caught, t));
           }
         })
         .finally(() => setChecked(true)),
@@ -84,7 +84,7 @@ export function App() {
         setError(null);
       })
       .catch((caught: unknown) =>
-        setError(t(caught instanceof ApiError ? errorKey(caught.code) : 'errorNetwork')),
+        setError(describeError(caught, t)),
       );
   }, [household, t]);
 

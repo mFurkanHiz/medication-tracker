@@ -1,8 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { ApiError, api, type AddStockInput, type MedicationDefinitionInput, type UpdatePackageInput } from '@/lib/api';
-import { cautionList, enumKey, errorKey, useLocale, type MessageKey } from '@/lib/i18n';
+import { api, type AddStockInput, type MedicationDefinitionInput, type UpdatePackageInput } from '@/lib/api';
+import { cautionList, enumKey, useLocale, type MessageKey, describeError } from '@/lib/i18n';
 import { addQuantities, formatQuantity, parseQuantity, type Quantity } from '@/lib/quantity';
 import type {
   Forecast, MedicationDefinition, MedicationPackage, Person, TreatmentPlan, Workspace,
@@ -90,7 +90,7 @@ export function Inventory({ household, workspace, onChanged }: {
                       await api.restoreDefinition(household, medication.id);
                       onChanged();
                     } catch (caught) {
-                      setError(t(caught instanceof ApiError ? errorKey(caught.code) : 'errorNetwork'));
+                      setError(describeError(caught, t));
                     }
                   }}
                 >
@@ -233,7 +233,7 @@ function MedicationRow({
                       await api.setPlanPaused(household, plan.id, false);
                       onChanged();
                     } catch (caught) {
-                      onError(t(caught instanceof ApiError ? errorKey(caught.code) : 'errorNetwork'));
+                      onError(describeError(caught, t));
                     }
                   }}
                 >
@@ -318,7 +318,7 @@ function MedicationRow({
                     setConfirmingArchive(false);
                     onChanged();
                   } catch (caught) {
-                    onError(t(caught instanceof ApiError ? errorKey(caught.code) : 'errorNetwork'));
+                    onError(describeError(caught, t));
                   } finally {
                     setArchiving(false);
                   }
@@ -370,7 +370,7 @@ function PackageRow({ household, pkg, activeLoanId, people, onChanged, onError }
       await action();
       onChanged();
     } catch (caught) {
-      onError(t(caught instanceof ApiError ? errorKey(caught.code) : 'errorNetwork'));
+      onError(describeError(caught, t));
     } finally {
       setBusy(false);
     }
@@ -553,7 +553,7 @@ function EditPackageDialog({ household, pkg, onClose, onSaved }: {
       await api.updatePackage(household, pkg.id, input);
       onSaved();
     } catch (caught) {
-      setError(t(caught instanceof ApiError ? errorKey(caught.code) : 'errorNetwork'));
+      setError(describeError(caught, t));
     } finally {
       setBusy(false);
     }
@@ -614,7 +614,7 @@ function EditPackageDialog({ household, pkg, onClose, onSaved }: {
           )}
         </Field>
 
-        <div className="grid gap-4 sm:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-2">
           <Field label={t('expiresOn')} optional={t('optional')}>
             {({ id }) => <Input id={id} type="date" value={expiresOn} onChange={(e) => setExpiresOn(e.target.value)} />}
           </Field>
@@ -798,7 +798,7 @@ function DefinitionDialog({ household, definition, onClose, onSaved }: {
       }
       onSaved();
     } catch (caught) {
-      setError(t(caught instanceof ApiError ? errorKey(caught.code) : 'errorNetwork'));
+      setError(describeError(caught, t));
     } finally {
       setBusy(false);
     }
@@ -1091,7 +1091,7 @@ function AddStockDialog({ household, definition, people, onClose, onSaved }: {
       await api.addStock(household, definition.id, input);
       onSaved();
     } catch (caught) {
-      setError(t(caught instanceof ApiError ? errorKey(caught.code) : 'errorNetwork'));
+      setError(describeError(caught, t));
     } finally {
       setBusy(false);
     }
@@ -1303,7 +1303,7 @@ function RefillDialog({ household, definition, onClose, onSaved }: {
       });
       onSaved();
     } catch (caught) {
-      setError(t(caught instanceof ApiError ? errorKey(caught.code) : 'errorNetwork'));
+      setError(describeError(caught, t));
     } finally {
       setBusy(false);
     }

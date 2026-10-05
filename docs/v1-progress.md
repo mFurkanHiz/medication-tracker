@@ -1069,7 +1069,7 @@ visible.
   enumeration, field ownership, and an API round trip that is due only on its day).
   Migration-count assertions now say 17.
 
-### Slice 7 — do-not-take-with tags and the Today warning (migration 18, this checkpoint's PR, ADR 0016)
+### Slice 7 — do-not-take-with tags and the Today warning — PR #55 (migration 18, ADR 0016)
 
 - The one place the product cross-references two medicines, and the whole of what it
   does is **string equality on words the household typed**: a tag on one medicine against
@@ -1090,6 +1090,49 @@ visible.
   guessing, no self-match, brand as a name, mutual tags give one warning per row; and the
   API: same person and day only, never blocks, round trip, not due today → no warning).
   Migration-count assertions now say 18.
+
+### Slice 8 — the general review the owner asked for
+
+Run against a local stack at migration 18 with a synthetic household seeded through the
+API (two people, four medicines, mixed coverage, a labelled box, a tagged medicine, a
+monthly plan, an ended plan) and driven through every screen the sprint touched at 1280
+and 375 pixels, in Turkish and English.
+
+- **Seen working on the screen, not inferred from code:** the red do-not-take-with
+  warning on both rows of the same person and on neither row of the other person; the
+  Temin dialog's two dates and the buttons filling them (twenty covered tablets at one a
+  day → 25 October; twenty-eight on hand → 2 November, matching the forecast line); box
+  name and location on the row, the "Kendi ödemesi" badge, the demoted actions behind
+  "Diğer işlemler", the Edit box dialog; the plans screen with "Planı sonlandır", the
+  past-plans section with "Yeniden başlat"; the monthly plan described on its card. No
+  console or page errors beyond the expected pre-login 401; the local API log holds no
+  exception.
+- **Accessibility audit re-run** (`pnpm check:a11y`): no WCAG A/AA violations across
+  all screens in both languages, and the layout holds at twice the root font size.
+- **Fixed:** the generic "Bir şeyler ters gitti" banner. A validation refusal now names
+  the field it rejected ("Geçersiz alan: effectiveFrom") and ten more refusal codes have
+  their own sentence; `describeError` replaces the uniform expression in every component
+  and is unit-tested. The Edit box dialog's date row no longer wraps its labels.
+- **Found, recorded, not fixed (candidates, in Notion as Backlog):**
+  1. Giving tablets back from one box to another — the owner's "two of Gülten's Arlec go
+     back to İsmail" — is a transfer between boxes, which does not exist. Lending a box
+     and returning it does (ADR 0011) and covers the "use İsmail's box for two days" half.
+  2. Submitting the same count twice at the same instant would hit the unique index on
+     `previous_batch_id` after the `stale_revision` check and surface as 500 rather than
+     409. Only under a genuine race; worth a translation of that violation to 409.
+  3. The "Diğer işlemler" disclosure on every plan card is visually heavy; a per-card
+     menu would be lighter. Cosmetic.
+
+### Slice 9 — mobile preparation, no mobile code
+
+ADR 0017 sets the versioning: one version line for the API and the web (`vX.Y.Z`), a
+mobile number that names the server version it is at parity with (`mobile-vX.Y.Z`),
+the lag visible rather than hidden, and the two honest ways to resolve the retired
+`v1.0.0` tag for the owner to pick at acceptance. `docs/mobile-resume-plan.md` lists what
+exists, what the server gained in Sprint 7 that the phone does not know (the
+governing-rule change first, then the monthly patterns, `conflicts`, ended and restarted
+plans), and the order to close the gap — starting with the release channel, which only
+the owner can create.
 
 ## Where this stands
 
@@ -1114,12 +1157,12 @@ owner:**
 Row 38 (the final V1 commit must pass CI) closes itself on whatever commit turns out to be
 last; it is not work, it is a condition.
 
-**Exact next action.** Sprint 7's seven owner slices have landed or are in their PR (see
-the Sprint 7 section above). Next: the **general review** the owner asked for — drive the
-web through every screen against a local stack, re-run the accessibility audit, review
-error handling and ordering-sensitive writes, check lending for the borrowing scenario —
-fixing small defects and recording larger ones. Then the mobile preparation: versioning
-ADR and resume plan, no mobile code.
+**Exact next action.** Sprint 7 is complete pending the owner's reading of its report.
+The owner's sequence from here: **resume the mobile client** following
+`docs/mobile-resume-plan.md`, whose step 0 — the release channel — only the owner can
+do; then later features. V1 acceptance itself is unchanged: rows 37, 39, 30 and 40 still
+wait on the owner, and the retired `v1.0.0` tag question in ADR 0017 is decided at
+acceptance.
 
 Still open for the owner, unchanged: the mobile release-channel decision when mobile
 resumes; which production household is theirs, so the synthetic ones left by smoke tests

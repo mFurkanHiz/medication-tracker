@@ -159,6 +159,18 @@ export type AddStockInput = {
   note?: string | null;
 };
 
+/** Every detail of a box the household may change later. PUT replaces them all. */
+export type UpdatePackageInput = {
+  label?: string | null;
+  expiresOn?: string | null;
+  acquiredOn?: string | null;
+  lotNumber?: string | null;
+  barcode?: string | null;
+  source?: string | null;
+  storageLocation?: string | null;
+  note?: string | null;
+};
+
 export type PlanInput = {
   personId: string;
   medicationDefinitionId: string;
@@ -253,6 +265,9 @@ export const api = {
 
   reinstatePackage: (household: string, pkg: string, reason?: string) =>
     post<void>(`/households/${household}/inventory/packages/${pkg}/reinstate`, { reason }),
+
+  updatePackage: (household: string, pkg: string, input: UpdatePackageInput) =>
+    put<void>(`/households/${household}/inventory/packages/${pkg}`, input),
 
   assignPackage: (household: string, pkg: string, personId: string | null) =>
     post<void>(`/households/${household}/inventory/packages/${pkg}/owner`, { personId }),

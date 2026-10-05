@@ -126,6 +126,15 @@ public sealed class MedicationPackage
 
     public string? Note { get; private set; }
 
+    /// <summary>
+    /// What the household calls this box when "Box 2" is not how they think of it: "the
+    /// bedroom one", "Ayşe's travel box". Optional. The ordinal stays both the fallback
+    /// name and the identity; a label is a courtesy to the reader, never a key.
+    /// </summary>
+    public string? Label { get; private set; }
+
+    public const int MaximumLabelLength = 60;
+
     /// <summary>Who the package belongs to. Unchanged by lending.</summary>
     public Guid? OwnerPersonId { get; private set; }
 
@@ -205,6 +214,7 @@ public sealed class MedicationPackage
     public void Unpin() => IsPinned = false;
 
     public void UpdateDetails(
+        string? label,
         DateOnly? expiresOn,
         DateOnly? acquiredOn,
         string? lotNumber,
@@ -213,6 +223,7 @@ public sealed class MedicationPackage
         string? storageLocation,
         string? note)
     {
+        Label = Clean(label);
         ExpiresOn = expiresOn;
         AcquiredOn = acquiredOn;
         LotNumber = Clean(lotNumber);

@@ -22,6 +22,8 @@ export type PackageState = 'Sealed' | 'Opened' | 'Disposed' | 'Lost' | 'Archived
 export type MedicationPackage = {
   id: string;
   ordinal: number;
+  /** The household's own name for the box, shown instead of the ordinal when set. */
+  label?: string | null;
   state: PackageState;
   /** Derived from the ledger, never stored. */
   isEmpty: boolean;

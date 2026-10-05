@@ -417,7 +417,13 @@ public static class InventoryEndpoints
                 return Results.NotFound();
             }
 
+            if (request.Label is { } label && label.Trim().Length > MedicationPackage.MaximumLabelLength)
+            {
+                return ApiResults.Invalid("label", "label_too_long");
+            }
+
             package.UpdateDetails(
+                request.Label,
                 request.ExpiresOn,
                 request.AcquiredOn,
                 request.LotNumber,
@@ -653,6 +659,7 @@ public static class InventoryEndpoints
     {
         id = package.Id,
         ordinal = package.Ordinal,
+        label = package.Label,
         state = package.State.ToString(),
 
         // Emptiness is derived from the ledger, never stored. ADR 0014.
@@ -723,7 +730,8 @@ public sealed record UpdatePackageRequest(
     string? Barcode = null,
     string? Source = null,
     string? StorageLocation = null,
-    string? Note = null);
+    string? Note = null,
+    string? Label = null);
 
 public sealed record AssignPackageRequest(Guid? PersonId);
 

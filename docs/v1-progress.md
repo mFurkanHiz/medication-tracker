@@ -67,15 +67,12 @@ retire and recreate it, or name the first accepted release `v1.0.1`).
 
 ## Next exact action
 
-1. **Apply least privilege in production (row 37).** A commit-triggered Actions job, in
-   the style of `deploy/purge-care-data.request`: on the VPS, generate a password with
-   the server's own randomness, run `deploy/least-privilege-database-role.sql` inside the
-   database container as the bootstrap superuser, back up and rewrite
-   `/opt/medication-tracker/.env.production` so the API's connection string uses the new
-   role, restart only this project's `api` container, wait for its health, and prove from
-   inside the container that `current_user` is the new role and `rolsuper` is false.
-   Idempotent, with the previous env file kept for rollback. Touches nothing outside the
-   `medication-tracker` compose project. The password never leaves the server.
+1. **Row 37 is in flight (PR #59).** When it merges, the *Apply least privilege* workflow
+   runs on the same push and prints its proof. Then a follow-up PR removes
+   `deploy/least-privilege.request` and records the run number on row 37 and in the
+   threat model. If the run fails, the script restores the previous environment file and
+   the API stays on the old credential: read the log, fix, re-run (a dispatch with the
+   confirmation, or the request file again).
 2. **Cut `v1.0.1`** once row 37 is in and CI on that commit is green (row 38): the root
    `VERSION` file, `GET /api/version`, the web footer, the tag on the accepted commit, and
    the acceptance table's summary updated to complete. Retired `v1.0.0` stays.
@@ -1173,6 +1170,26 @@ green locally (254).
 
 Known gap, recorded in the plan: the workspace sends the latest version only, so a
 future-dated edit leaves the in-between days without local reminders.
+
+### Slice 2 — least privilege in production — PR #59
+
+The mechanism for row 37, in the purge's shape. `compose.production.yml` reads
+`APP_DATABASE_USER` / `APP_DATABASE_PASSWORD` for the API's credential and falls back to
+the bootstrap account until they exist (CI pins both renderings). The *Apply least
+privilege* workflow — confirmed by a dispatch input or by `deploy/least-privilege.request`
+on `main`, serialised with the deploy under the `production-deploy` concurrency group —
+ships `deploy/apply-least-privilege.sh`, the SQL and the compose file from the reviewed
+commit and runs the script on the host: password generated there, role created or
+refreshed as the superuser, proven confined over a password-checked TCP connection,
+the two variables written to `.env.production` (previous file kept under
+`.deploy/env-history`), only the api container recreated, readiness waited for with a
+rollback to the previous file on failure, then `pg_stat_activity` read to prove the API's
+connections are the confined role and none remain as the superuser. The SQL gained
+`ALTER DEFAULT PRIVILEGES` per schema because the deployment keeps applying migrations as
+the superuser inside the container. Rehearsed on a local production-shaped database:
+every proof above, plus idempotency, rotation and a migration re-run after the ownership
+change. The production run follows the merge; its evidence goes on row 37 in the
+follow-up that removes the request file.
 
 ### What the cloud session could not do
 

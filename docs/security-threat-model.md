@@ -71,19 +71,25 @@ and asserts 403 on each, then asserts the target household's stock is unchanged.
 
 ### Outstanding
 
-- **The application connects to PostgreSQL as the cluster superuser.**
+- **The application connected to PostgreSQL as the cluster superuser** — being closed.
   `compose.production.yml` sets `POSTGRES_USER: medication_tracker`, which the official
-  postgres image creates as the bootstrap **superuser**, and the connection string uses
-  that same account. A leaked `DATABASE_PASSWORD` or a successful injection is therefore
-  not a "read the household tables" problem but a "the database container is yours" one:
-  a superuser connection can drop any database in the cluster and `COPY ... FROM PROGRAM`
-  runs commands as the postgres process.
-  `deploy/least-privilege-database-role.sql` creates a `NOSUPERUSER` replacement that
-  still owns the eight application schemas, so migrations keep working, and it has been
-  verified against a throwaway database — including that `COPY ... TO PROGRAM` is refused.
-  **Applying it is the owner's decision**: it changes the credential the live API
-  authenticates with and needs a password only the owner holds. Found 2026-10-04 while
-  closing the two items above.
+  postgres image creates as the bootstrap **superuser**, and until acceptance row 37 the
+  connection string used that same account. A leaked `DATABASE_PASSWORD` or a successful
+  injection was therefore not a "read the household tables" problem but a "the database
+  container is yours" one: a superuser connection can drop any database in the cluster
+  and `COPY ... FROM PROGRAM` runs commands as the postgres process. Found 2026-10-04.
+  The owner delegated the fix on 2026-10-05 and the mechanism is in (PR #59): the
+  *Apply least privilege* workflow runs `deploy/apply-least-privilege.sh` on the host,
+  which creates `medication_tracker_app` from `deploy/least-privilege-database-role.sql`
+  (`NOSUPERUSER`, confined to this database, owner of the eight application schemas,
+  default privileges on whatever the superuser's future migrations create), generates
+  its password on the host, proves the role confined over a password-checked
+  connection, points the API at it through `APP_DATABASE_USER` / `APP_DATABASE_PASSWORD`,
+  recreates only the api container and proves from `pg_stat_activity` that the API's
+  connections are the confined role. The deployment's migration step keeps the
+  superuser over the container's local socket; that password never leaves the host.
+  Re-running the workflow rotates the credential. The production run's number and
+  printed proof are recorded on row 37 of `docs/v1-acceptance.md`.
 - **Mobile secure storage and notification privacy** remain unreviewed on a physical
   device. Deferred with the client (ADR 0015): there is no shipped mobile build whose
   storage could be reviewed.

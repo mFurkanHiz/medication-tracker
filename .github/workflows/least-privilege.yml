@@ -1,0 +1,155 @@
+name: Apply least privilege
+
+# Moves the live API off the PostgreSQL superuser (acceptance row 37). It changes the
+# credential the API authenticates with, so it never runs on its own: it needs an
+# explicit confirmation, and it lives in its own file so no change to the test pipeline
+# can start it by accident. Same two routes as the purge, for the same reasons:
+#
+#   1. Dispatch it and type APPLY-LEAST-PRIVILEGE into the form.
+#   2. Commit deploy/least-privilege.request to main containing that same line.
+#
+# The second exists because an agent session's token cannot dispatch a workflow and the
+# owner delegated the work. The push trigger is narrowed to that one path; the request
+# file is removed again afterwards, which runs this once more to find nothing to do.
+#
+# What runs on the host is deploy/apply-least-privilege.sh from this commit: the
+# password is generated there and never leaves it, the role is proven confined before
+# the API is pointed at it, only the api container is recreated, and the previous
+# environment file is restored if the API does not come back. Running it again later
+# rotates the credential.
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: >-
+          Type APPLY-LEAST-PRIVILEGE to confirm. The API is moved to a database role
+          that is not a superuser and is confined to this database; only the api
+          container restarts. Re-running rotates the role's password.
+        required: true
+        type: string
+
+  push:
+    branches: [main]
+    paths:
+      - 'deploy/least-privilege.request'
+
+permissions:
+  contents: read
+
+jobs:
+  apply:
+    name: Move the API off the superuser
+    runs-on: ubuntu-latest
+
+    # Never two at once, and never cancelled part-way through. Shared with the deploy
+    # and the purge: nothing may race on the same compose project.
+    concurrency:
+      group: production-deploy
+      cancel-in-progress: false
+
+    environment: production
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Resolve the confirmation
+        id: gate
+        env:
+          CONFIRM: ${{ inputs.confirm }}
+        run: |
+          set -euo pipefail
+          request=deploy/least-privilege.request
+
+          if [ -n "${CONFIRM:-}" ]; then
+            test "$CONFIRM" = "APPLY-LEAST-PRIVILEGE" || {
+              echo 'Refusing: the confirmation must be exactly APPLY-LEAST-PRIVILEGE.' >&2
+              exit 1
+            }
+            echo 'Confirmed by the dispatch input.'
+            echo 'proceed=yes' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [ ! -f "$request" ]; then
+            echo "No $request in this commit, so nothing is being asked for."
+            echo 'This is what the run looks like after a request file is removed'
+            echo 'again, which is the last step rather than a failure.'
+            echo 'proceed=no' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          grep -qx 'APPLY-LEAST-PRIVILEGE' "$request" || {
+            echo "Refusing: $request exists but holds no line that reads exactly" >&2
+            echo 'APPLY-LEAST-PRIVILEGE. A file that does not say what it authorises' >&2
+            echo 'authorises nothing.' >&2
+            exit 1
+          }
+
+          echo "Confirmed by $request in this commit:"
+          sed 's/^/    /' "$request"
+          echo 'proceed=yes' >> "$GITHUB_OUTPUT"
+
+      - name: Authorise the SSH session
+        if: steps.gate.outputs.proceed == 'yes'
+        env:
+          DEPLOY_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+          VPS_HOST: ${{ vars.VPS_HOST || secrets.VPS_HOST }}
+        run: |
+          set -euo pipefail
+          test -n "$DEPLOY_KEY" || { echo 'Secret VPS_SSH_KEY is not set.' >&2; exit 1; }
+          mkdir -m 700 -p ~/.ssh
+          printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+
+          # Same host-key handling as the deploy, from the same script: the secret,
+          # else deploy/known_hosts from this commit, else stop before the network.
+          bash deploy/authorise-ssh.sh ~/.ssh/known_hosts
+
+      - name: Apply, prove, or roll back
+        if: steps.gate.outputs.proceed == 'yes'
+        env:
+          VPS_HOST: ${{ vars.VPS_HOST || secrets.VPS_HOST }}
+          VPS_USER: ${{ vars.VPS_USER || secrets.VPS_USER }}
+        run: |
+          set -euo pipefail
+          test -n "$VPS_HOST" || { echo 'VPS_HOST is not set, as a variable or a secret.' >&2; exit 1; }
+          target="${VPS_USER:-root}@${VPS_HOST}"
+          ssh_opts=(-i "$HOME/.ssh/id_deploy" -o IdentitiesOnly=yes
+                    -o StrictHostKeyChecking=yes
+                    -o UserKnownHostsFile="$HOME/.ssh/known_hosts"
+                    -o BatchMode=yes -o ConnectTimeout=20)
+
+          # The script, its SQL and the compose file travel from this commit, so what
+          # runs is what was reviewed. The compose file matters here: it is the one
+          # that reads APP_DATABASE_*, and this run may land before the deploy of the
+          # same merge has shipped it.
+          ssh "${ssh_opts[@]}" "$target" 'install -d -m 755 /opt/medication-tracker/deploy'
+          scp "${ssh_opts[@]}" \
+            deploy/apply-least-privilege.sh deploy/least-privilege-database-role.sql \
+            "$target:/opt/medication-tracker/deploy/"
+          scp "${ssh_opts[@]}" \
+            compose.production.yml \
+            "$target:/opt/medication-tracker/compose.production.yml"
+
+          ssh "${ssh_opts[@]}" "$target" \
+            'bash /opt/medication-tracker/deploy/apply-least-privilege.sh --yes-apply-least-privilege'
+
+      - name: Prove the public site answers
+        if: steps.gate.outputs.proceed == 'yes'
+        env:
+          PUBLIC_URL: ${{ vars.PUBLIC_URL || secrets.PUBLIC_URL || 'https://medicationtracker.rapidconfigs.com' }}
+        run: |
+          set -euo pipefail
+          landing="$(curl --silent --show-error --location --max-time 30 \
+            --output /dev/null --write-out '%{http_code}' "$PUBLIC_URL/")"
+          session="$(curl --silent --show-error --max-time 30 \
+            --output /dev/null --write-out '%{http_code}' "$PUBLIC_URL/api/auth/session")"
+          echo "GET / -> $landing"
+          echo "GET /api/auth/session -> $session"
+          test "$landing" = "200" || { echo 'The site did not serve.' >&2; exit 1; }
+          test "$session" = "401" || { echo "Expected 401, got $session." >&2; exit 1; }
+
+      - name: Forget the key
+        if: always()
+        run: shred --remove --force ~/.ssh/id_deploy 2>/dev/null || rm -f ~/.ssh/id_deploy

@@ -84,7 +84,7 @@ internal static class PlanDeactivation
                 plan.Id,
                 current.VersionNumber + 1,
                 current.Dose,
-                current.Recurrence,
+                current.Recurrence with { EffectiveFrom = TreatmentEndpoints.VersionStartFor(current, now) },
                 current.LocalTime,
                 current.TimeZoneId,
                 now,

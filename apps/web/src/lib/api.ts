@@ -292,6 +292,18 @@ export const api = {
       { isPaused },
     ),
 
+  endPlan: (household: string, plan: string, endsOn: string) =>
+    post<{ versionId: string; versionNumber: number; effectiveTo: string }>(
+      `/households/${household}/plans/${plan}/end`,
+      { endsOn },
+    ),
+
+  restartPlan: (household: string, plan: string, startsOn: string) =>
+    post<{ versionId: string; versionNumber: number; effectiveFrom: string }>(
+      `/households/${household}/plans/${plan}/restart`,
+      { startsOn },
+    ),
+
   deletePlan: (household: string, plan: string) =>
     del<void>(`/households/${household}/plans/${plan}`),
 

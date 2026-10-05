@@ -383,12 +383,13 @@ public static class AdministrationEndpoints
                     return new ResolvedTarget(Error: ApiResults.Invalid("scheduledFor", "not_due"));
                 }
 
-                // A newer version covering that day supersedes this one for writes too.
+                // A newer version that had started by that day supersedes this one for
+                // writes too — whether it still runs, is paused or has ended, the older
+                // version no longer speaks for that day.
                 var superseded = await db.TreatmentPlanVersions.AsNoTracking().AnyAsync(
                     candidate => candidate.TreatmentPlanId == row.plan.Id
                                  && candidate.VersionNumber > row.version.VersionNumber
-                                 && (candidate.EffectiveFrom == null || candidate.EffectiveFrom <= localDay)
-                                 && (candidate.EffectiveTo == null || candidate.EffectiveTo >= localDay),
+                                 && (candidate.EffectiveFrom == null || candidate.EffectiveFrom <= localDay),
                     ct);
 
                 if (superseded)
@@ -440,18 +441,20 @@ public static class AdministrationEndpoints
                                 // archived before that cascade existed, with no backfill.
                                 && person.ArchivedAt == null
                                 && (version.EffectiveFrom == null || version.EffectiveFrom <= day)
-                                && (version.EffectiveTo == null || version.EffectiveTo >= day)
                           select new { plan, version, definition }).ToListAsync(ct);
 
-        // The highest version number covering the day wins, so an edit takes effect
-        // without disturbing versions that governed earlier days.
+        // The highest-numbered version that had started by the day governs it, so an edit
+        // takes effect without disturbing versions that governed earlier days.
         //
-        // The pause is applied AFTER that choice, never as a filter in the query. Filtering
-        // it out earlier would let an older, unpaused version win the group and quietly
-        // resurrect the schedule the household just set aside.
+        // The end and the pause are applied AFTER that choice, never as filters in the
+        // query, and for the same reason: filtering an ended or paused version out earlier
+        // would let the older, open-ended version it replaced win the group and quietly
+        // carry the schedule past the day the household ended or set it aside. The same
+        // rule lives in ScheduledSlots.Governing; the two must not drift apart.
         return rows
             .GroupBy(row => row.plan.Id)
             .Select(group => group.OrderByDescending(row => row.version.VersionNumber).First())
+            .Where(row => row.version.EffectiveTo == null || row.version.EffectiveTo >= day)
             .Where(row => !row.version.IsPaused)
             .Select(row => (row.plan, row.version, row.definition))
             .ToList();

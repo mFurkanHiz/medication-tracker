@@ -192,12 +192,16 @@ public static class TreatmentEndpoints
             // Everything else is copied verbatim. A pause says nothing about the dose, the
             // days or the times, and resuming must bring back exactly the plan that was set
             // aside rather than some reconstruction of it.
+            // The pause starts on the day it was decided. Copying the current version's
+            // start as well would let the paused version govern the days before the pause
+            // too, and the adherence replay would then read those days as having asked for
+            // nothing — a pause that quietly erased the doses the household did take.
             var version = new TreatmentPlanVersion(
                 Guid.CreateVersion7(),
                 plan.Id,
                 latest.VersionNumber + 1,
                 latest.Dose,
-                latest.Recurrence,
+                latest.Recurrence with { EffectiveFrom = VersionStartFor(latest, now) },
                 latest.LocalTime,
                 latest.TimeZoneId,
                 now,
@@ -223,6 +227,176 @@ public static class TreatmentEndpoints
             });
         });
 
+        // Ending a plan is a decision with a date, recorded the way every other decision
+        // about a plan is: as an appended version. This one copies the current version and
+        // closes it on the last day of doses, so the days up to and including that day keep
+        // exactly what they asked for and the days after it ask for nothing. The plan
+        // itself stays — listed under past plans, and restartable. The old "end" was a soft
+        // delete with no way back, which the owner met on the live site as a plan that had
+        // simply vanished.
+        api.MapPost("/{planId:guid}/end", async (
+            Guid householdId,
+            Guid planId,
+            EndPlanRequest? request,
+            HttpContext context,
+            MedicationTrackerDbContext db,
+            CancellationToken ct) =>
+        {
+            if (!await HouseholdAccess.IsMemberAsync(db, householdId, context, ct))
+            {
+                return ApiResults.Forbidden();
+            }
+
+            var plan = await db.TreatmentPlans.SingleOrDefaultAsync(
+                candidate => candidate.Id == planId
+                             && candidate.HouseholdId == householdId
+                             && candidate.DeletedAt == null, ct);
+
+            if (plan is null)
+            {
+                return Results.NotFound();
+            }
+
+            var latest = await db.TreatmentPlanVersions.AsNoTracking()
+                .Where(version => version.TreatmentPlanId == planId)
+                .OrderByDescending(version => version.VersionNumber)
+                .FirstAsync(ct);
+
+            var now = DateTimeOffset.UtcNow;
+            var endsOn = request?.EndsOn ?? TodayIn(latest.TimeZoneId, now);
+
+            if (latest.EffectiveFrom is { } from && endsOn < from)
+            {
+                return ApiResults.Invalid("endsOn", "before_current_version");
+            }
+
+            // Ending on the same day twice is one decision, not two.
+            if (latest.EffectiveTo == endsOn)
+            {
+                return Results.Ok(new
+                {
+                    versionId = latest.Id,
+                    versionNumber = latest.VersionNumber,
+                    effectiveTo = latest.EffectiveTo,
+                });
+            }
+
+            var accountId = HouseholdAccess.RequireAccountId(context);
+            var before = Snapshot(plan, latest);
+
+            // Everything is copied verbatim, the pause included: a plan ended while paused
+            // must not have its paused days re-read as doses the household skipped.
+            var version = new TreatmentPlanVersion(
+                Guid.CreateVersion7(),
+                plan.Id,
+                latest.VersionNumber + 1,
+                latest.Dose,
+                latest.Recurrence with { EffectiveTo = endsOn },
+                latest.LocalTime,
+                latest.TimeZoneId,
+                now,
+                accountId,
+                latest.DayPeriod,
+                latest.MealRelation,
+                latest.MinimumIntervalMinutes,
+                latest.Instructions,
+                latest.IsPaused);
+
+            db.TreatmentPlanVersions.Add(version);
+            db.TreatmentPlanChangeEvents.Add(new TreatmentPlanChangeEvent(
+                Guid.CreateVersion7(), householdId, plan.Id, accountId,
+                ChangeKind.VersionAppended, before, Snapshot(plan, version), now));
+
+            await db.SaveChangesAsync(ct);
+
+            return Results.Ok(new
+            {
+                versionId = version.Id,
+                versionNumber = version.VersionNumber,
+                effectiveTo = version.EffectiveTo,
+            });
+        });
+
+        // Restarting appends a version that begins on the restart day, open-ended and not
+        // paused, with the same dose and pattern. The days between the end and the restart
+        // stay governed by the ended version and ask for nothing: they were never owed, and
+        // bringing the plan back must not turn them into missed doses after the fact.
+        api.MapPost("/{planId:guid}/restart", async (
+            Guid householdId,
+            Guid planId,
+            RestartPlanRequest? request,
+            HttpContext context,
+            MedicationTrackerDbContext db,
+            CancellationToken ct) =>
+        {
+            if (!await HouseholdAccess.IsMemberAsync(db, householdId, context, ct))
+            {
+                return ApiResults.Forbidden();
+            }
+
+            var plan = await db.TreatmentPlans.SingleOrDefaultAsync(
+                candidate => candidate.Id == planId
+                             && candidate.HouseholdId == householdId
+                             && candidate.DeletedAt == null, ct);
+
+            if (plan is null)
+            {
+                return Results.NotFound();
+            }
+
+            var latest = await db.TreatmentPlanVersions.AsNoTracking()
+                .Where(version => version.TreatmentPlanId == planId)
+                .OrderByDescending(version => version.VersionNumber)
+                .FirstAsync(ct);
+
+            if (latest.EffectiveTo is not { } endedOn)
+            {
+                return ApiResults.Conflict("plan_not_ended");
+            }
+
+            var now = DateTimeOffset.UtcNow;
+            var startsOn = request?.StartsOn ?? TodayIn(latest.TimeZoneId, now);
+
+            if (startsOn <= endedOn)
+            {
+                return ApiResults.Invalid("startsOn", "before_end");
+            }
+
+            var accountId = HouseholdAccess.RequireAccountId(context);
+            var before = Snapshot(plan, latest);
+
+            var version = new TreatmentPlanVersion(
+                Guid.CreateVersion7(),
+                plan.Id,
+                latest.VersionNumber + 1,
+                latest.Dose,
+                latest.Recurrence with { EffectiveFrom = startsOn, EffectiveTo = null },
+                latest.LocalTime,
+                latest.TimeZoneId,
+                now,
+                accountId,
+                latest.DayPeriod,
+                latest.MealRelation,
+                latest.MinimumIntervalMinutes,
+                latest.Instructions,
+                isPaused: false);
+
+            db.TreatmentPlanVersions.Add(version);
+            db.TreatmentPlanChangeEvents.Add(new TreatmentPlanChangeEvent(
+                Guid.CreateVersion7(), householdId, plan.Id, accountId,
+                ChangeKind.VersionAppended, before, Snapshot(plan, version), now));
+
+            await db.SaveChangesAsync(ct);
+
+            return Results.Ok(new
+            {
+                versionId = version.Id,
+                versionNumber = version.VersionNumber,
+                effectiveFrom = version.EffectiveFrom,
+            });
+        });
+
+        // Deleting remains for a plan created by mistake. It is not how a plan ends.
         api.MapDelete("/{planId:guid}", async (
             Guid householdId,
             Guid planId,
@@ -257,6 +431,31 @@ public static class TreatmentEndpoints
         });
 
         return endpoints;
+    }
+
+    /// <summary>
+    /// The first day a version appended now governs: today in the plan's own zone, or the
+    /// current version's start when that is still ahead. A pause, an end or a restart is
+    /// a decision made on a day, and must not reach back over the days before it.
+    /// </summary>
+    internal static DateOnly VersionStartFor(TreatmentPlanVersion latest, DateTimeOffset now)
+    {
+        var today = TodayIn(latest.TimeZoneId, now);
+        return latest.EffectiveFrom is { } from && from > today ? from : today;
+    }
+
+    /// <summary>Today's calendar date in a plan's zone; UTC when the zone is unknown here.</summary>
+    internal static DateOnly TodayIn(string timeZoneId, DateTimeOffset now)
+    {
+        try
+        {
+            var zone = TimeZoneInfo.FindSystemTimeZoneById(timeZoneId);
+            return DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(now, zone).DateTime);
+        }
+        catch (TimeZoneNotFoundException)
+        {
+            return DateOnly.FromDateTime(now.UtcDateTime);
+        }
     }
 
     internal static bool TryValidate(TreatmentPlanRequest request, out ParsedPlan parsed, out string field)
@@ -384,6 +583,12 @@ public static class TreatmentEndpoints
 }
 
 /// <summary>Whether the household is setting this plan aside, or picking it back up.</summary>
+/// <summary>The last day of doses. Defaults to today in the plan's zone.</summary>
+public sealed record EndPlanRequest(DateOnly? EndsOn = null);
+
+/// <summary>The first day the plan asks again. Defaults to today in the plan's zone.</summary>
+public sealed record RestartPlanRequest(DateOnly? StartsOn = null);
+
 public sealed record SetPlanPausedRequest(bool IsPaused);
 
 public sealed record TreatmentPlanRequest(

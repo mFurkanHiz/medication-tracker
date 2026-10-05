@@ -230,10 +230,25 @@ export const tr = {
   effectiveTo: 'Bitiş',
   instructions: 'Talimat notu',
   planVersionNote: 'Düzenleme yeni bir sürüm oluşturur; geçmiş kayıtlar değişmez.',
-  deletePlan: 'Planı sonlandır',
+  deletePlan: 'Planı sil',
   pausePlan: 'Şimdilik ara ver',
   resumePlan: 'Yeniden başla',
   planPaused: 'Ara verildi',
+  endPlan: 'Planı sonlandır',
+  endsOn: 'Son doz günü',
+  endPlanHint:
+    'Bu gün dahil dozlar istenir; sonrası istenmez ve kaçırılmış sayılmaz. Plan "Geçmiş planlar" altında kalır ve yeniden başlatılabilir.',
+  restartPlan: 'Yeniden başlat',
+  restartsOn: 'İlk gün',
+  restartPlanHint: 'Aradaki günler istenmemiş sayılır; plan aynı doz ve düzenle bu günden devam eder.',
+  pastPlans: 'Geçmiş planlar',
+  planEnded: 'Sonlandı',
+  deletePlanConfirm:
+    'Yalnızca yanlışlıkla oluşturulduysa silin. Kayıtlı dozlar geçmişte kalır. Kullanımı bittiyse "Planı sonlandır" kullanın.',
+  effectiveFromEditHint: 'Değişiklik bu günden itibaren geçerli olur; önceki günler olduğu gibi kalır.',
+  errorPlanNotEnded: 'Yeniden başlatmak için plan önce sonlandırılmış olmalı.',
+  errorBeforeEnd: 'İlk gün son doz gününden sonra olmalı.',
+  errorBeforeCurrentVersion: 'Bu tarih planın mevcut başlangıcından önce.',
   planMedicationArchived: 'Devam ettirmek için önce ilacı arşivden geri getirin.',
   planPersonArchived: 'Devam ettirmek için önce kişiyi arşivden geri getirin.',
   medicationHasPausedPlan:
@@ -624,10 +639,25 @@ export const en: Record<MessageKey, string> = {
   effectiveTo: 'Until',
   instructions: 'Instruction note',
   planVersionNote: 'Editing creates a new version; past records are unchanged.',
-  deletePlan: 'End plan',
+  deletePlan: 'Delete plan',
   pausePlan: 'Pause for now',
   resumePlan: 'Start again',
   planPaused: 'Paused',
+  endPlan: 'End plan',
+  endsOn: 'Last day of doses',
+  endPlanHint:
+    'Doses are asked for up to and including this day; after it nothing is asked and nothing counts as missed. The plan stays under past plans and can be restarted.',
+  restartPlan: 'Restart',
+  restartsOn: 'First day',
+  restartPlanHint: 'The days in between are not owed; the plan continues from this day with the same dose and pattern.',
+  pastPlans: 'Past plans',
+  planEnded: 'Ended',
+  deletePlanConfirm:
+    'Delete only if this plan was created by mistake. Recorded doses stay in history. If the course is over, use "End plan".',
+  effectiveFromEditHint: 'The change applies from this day on; earlier days stay as they were.',
+  errorPlanNotEnded: 'A plan must be ended before it can be restarted.',
+  errorBeforeEnd: 'The first day must come after the last day of doses.',
+  errorBeforeCurrentVersion: 'This date is before the plan\'s current start.',
   planMedicationArchived: 'Restore the medication from the archive before resuming.',
   planPersonArchived: 'Restore the person from the archive before resuming.',
   medicationHasPausedPlan:
@@ -847,6 +877,9 @@ export function errorKey(code: string): MessageKey {
     stale_revision: 'errorStaleRevision',
     package_on_loan: 'errorPackageOnLoan',
     label_too_long: 'errorLabelTooLong',
+    plan_not_ended: 'errorPlanNotEnded',
+    before_end: 'errorBeforeEnd',
+    before_current_version: 'errorBeforeCurrentVersion',
   };
 
   return map[code] ?? 'errorGeneric';

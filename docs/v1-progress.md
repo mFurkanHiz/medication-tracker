@@ -978,6 +978,61 @@ What the evaluation established, in short:
 No V1 row changed. The acceptance table is unchanged at 33 DONE, 4 PARTIAL, 2 DEFERRED,
 1 OPEN.
 
+## Sprint 7 — the owner's live-test notes, in progress
+
+The owner answered decisions D1–D6 on 2026-10-05 (recorded in
+`docs/owner-feedback-2026-10-05.md`), finished their own test round ("şimdilik güzel
+gözüküyor"), asked for a general review by the agent, and set the sequence: these slices,
+then the mobile client resumes, then later features. Versions where web and mobile are at
+parity share one name; the web may run ahead during development and that must stay
+visible.
+
+### Slices 1 and 2 — PR #50 → `main` `9877f8d`, deployed (run `37307889883`)
+
+- **Active-box swap 500 fixed.** `POST /packages/{id}/pin` now saves the release of the
+  previous pin before the acquire, inside one transaction. The new test swaps the pin in
+  both directions and was red before the fix (one direction hit `23505` on
+  `ix_packages_single_pinned`) and green after.
+- **Box row demoted.** Lost, disposed and lending wait under a per-box "Diğer işlemler"
+  disclosure; the active-box choice and loan return stay on the row.
+- Deploy job succeeded: `GET / → 200`, `GET /api/auth/session → 401`.
+
+### Slice 3 — PR #51 → `main` `d3c51ee` (migration 15)
+
+- `MedicationPackage.Label`, optional, shown instead of "Kutu N" with the ordinal beside
+  it. Web "Kutuyu düzenle" dialog over the existing PUT, which until now nothing in the
+  web could reach; barcode and source are sent back unchanged because PUT replaces every
+  detail. A label past 60 characters is refused by name. Migration-count assertions in
+  `tests/migrations` now say 15.
+
+### Slice 4 — end and restart a plan (this checkpoint's PR)
+
+- **The governing rule changed, deliberately.** A day used to be governed by the
+  highest-numbered version *covering* it. Under that rule an older open-ended version kept
+  governing every day after a newer version's end, so an end date set on an edit never
+  ended anything, and ending by appending a bounded version would have handed the schedule
+  back to the version it replaced. The rule is now **the latest version that had started
+  by the day, provided it has not ended** — in `ScheduledSlots.Governing`, in the Today
+  list's `CurrentVersionsAsync`, and in the dose-recording "superseded" check. Unit tests
+  in `PlanEndTests` pin both halves, including "an end date on an edit really ends".
+- **Pause starts on the day of the pause.** The paused version used to copy the current
+  version's start as well, so it governed the days before the pause too and the replay
+  read them as having asked for nothing: a pause silently erased recorded history. Now
+  `VersionStartFor` gives the appended version today in the plan's zone (or the current
+  start when that is still ahead). The archive cascade in `PlanDeactivation` uses the same
+  helper. Pinned by an API test.
+- **End** (`POST /plans/{id}/end`, `endsOn` defaulting to today in the plan's zone) appends
+  a copy of the current version closed on the last day of doses, pause included.
+  Idempotent on the same day. **Restart** (`POST /plans/{id}/restart`, `startsOn`) appends
+  an open, unpaused copy starting on that day; refused with `plan_not_ended` while the
+  plan runs and `before_end` on or before the last day. The gap is governed by the ended
+  version and asks for nothing. Delete stays for a plan created by mistake.
+- **Web.** Past plans section; "Planı sonlandır" with a date and an explanation; "Yeniden
+  başlat" with the earliest allowed day; "Planı sil" behind a disclosure and a
+  confirmation. The plan form's start date now defaults to **today** on edit (it defaulted
+  to the plan's original start, which re-governed every day in between), and "today" is
+  the viewer's calendar date rather than the UTC date (`lib/dates.ts`, tested).
+
 ## Where this stands
 
 Sprints 2 through 6 are closed, each with its report on its Notion sprint page.
@@ -1001,13 +1056,12 @@ owner:**
 Row 38 (the final V1 commit must pass CI) closes itself on whatever commit turns out to be
 last; it is not work, it is a condition.
 
-**Exact next action.** The owner is running the acceptance test (row 40) on the live
-site and has asked for no code until the planning session. Their first batch of notes is
-evaluated in `docs/owner-feedback-2026-10-05.md`: one confirmed live defect (active-box
-swap → 500) is the first slice when the go comes, and seven candidate changes wait on the
-decisions listed there. Nothing V1 requires is ordinary coding work; do not invent a V1
-slice. The honest non-V1 candidates remain a screen-reader pass of the web by a person and
-widening the web tests as screens change.
+**Exact next action.** Sprint 7 is in progress on the owner's decisions (see the Sprint 7
+section above for what has landed). Next slice: **Coverage** on the medicine with a per-box
+override, plus the two compute buttons for the official and the actual end date
+(migration 16). Then monthly recurrence in both forms (migration 17), then do-not-take-with
+tags with the Today warning and its ADR (migration 18), then the general review, then the
+mobile preparation (versioning ADR, resume plan; no mobile code). One migration per PR.
 
 Still open for the owner, unchanged: the mobile release-channel decision when mobile
 resumes; which production household is theirs, so the synthetic ones left by smoke tests

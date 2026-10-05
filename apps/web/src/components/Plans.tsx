@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { ApiError, api, type PlanInput } from '@/lib/api';
 import { enumKey, errorKey, useLocale, type MessageKey } from '@/lib/i18n';
+import { addDaysIso, laterOf, todayIso } from '@/lib/dates';
 import { formatQuantity, parseQuantity } from '@/lib/quantity';
 import type { TreatmentPlan, Workspace } from '@/lib/types';
 import { unitLabel } from './Today';
@@ -36,9 +37,37 @@ export function Plans({ household, workspace, onChanged }: {
 }) {
   const { t } = useLocale();
   const [editing, setEditing] = useState<TreatmentPlan | null | 'new'>(null);
+  const [ending, setEnding] = useState<TreatmentPlan | null>(null);
+  const [restarting, setRestarting] = useState<TreatmentPlan | null>(null);
+  const [deleting, setDeleting] = useState<TreatmentPlan | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const canAdd = workspace.people.length > 0 && workspace.medications.some((m) => !m.isArchived);
+
+  // A plan whose last day of doses has passed is history: still listed, never asking.
+  // "Passed" is judged on the viewer's calendar, which is the only place "today" means
+  // anything to the person reading the list.
+  const today = todayIso();
+  const past = workspace.plans.filter(
+    (plan) => typeof plan.effectiveTo === 'string' && plan.effectiveTo < today,
+  );
+  const current = workspace.plans.filter((plan) => !past.includes(plan));
+
+  const card = (plan: TreatmentPlan, ended: boolean) => (
+    <PlanCard
+      key={plan.id}
+      household={household}
+      workspace={workspace}
+      plan={plan}
+      ended={ended}
+      onEdit={() => setEditing(plan)}
+      onEnd={() => setEnding(plan)}
+      onRestart={() => setRestarting(plan)}
+      onDelete={() => setDeleting(plan)}
+      onChanged={onChanged}
+      onError={setError}
+    />
+  );
 
   return (
     <div className="flex flex-col gap-4">
@@ -53,92 +82,17 @@ export function Plans({ household, workspace, onChanged }: {
       {workspace.plans.length === 0 ? (
         <EmptyState title={t('plansEmpty')} hint={t('plansEmptyHint')} />
       ) : (
-        <ul className="flex list-none flex-col gap-3 p-0">
-          {workspace.plans.map((plan) => {
-            const person = workspace.people.find((p) => p.id === plan.personId);
-            const medication = workspace.medications.find((m) => m.id === plan.medicationDefinitionId);
-            const period = enumKey(plan.dayPeriod);
-            const meal = enumKey(plan.mealRelation);
-
-            return (
-              <Card as="li" key={plan.id} className="flex flex-col gap-3">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="min-w-[min(12rem,100%)] flex-1">
-                    <h3 className="text-lg font-bold">{medication?.name ?? '—'}</h3>
-                    <p className="text-sm text-ink-muted">
-                      {person?.name ?? '—'} · {formatQuantity(plan.dose)}{' '}
-                      {medication ? unitLabel(medication.unit) : ''}
-                    </p>
-                    <p className="mt-1 text-sm">{describeSchedule(plan, t)}</p>
-                  </div>
-
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    {plan.isPaused ? <Badge tone="warning">{t('planPaused')}</Badge> : null}
-
-                    {/* The same named period means an obligation on a scheduled plan and a
-                        preference on an as-needed one. Say which, rather than letting the
-                        badge imply a timetable the household never promised. */}
-                    {period ? (
-                      <Badge tone="accent">
-                        {plan.kind === 'AsNeeded' ? `${t('preferably')} ${t(period)}` : t(period)}
-                      </Badge>
-                    ) : null}
-                    {meal ? <Badge>{t(meal)}</Badge> : null}
-                    <Badge tone="quiet">v{plan.versionNumber}</Badge>
-                  </div>
-                </div>
-
-                <div className="flex flex-wrap gap-2">
-                  <Button variant="secondary" onClick={() => setEditing(plan)}>
-                    {t('editPlan')}
-                  </Button>
-
-                  {/* Archiving the medication or the person pauses their plans, and the
-                      Today list filters both — so resuming here while either is still
-                      archived would look like it worked and change nothing. Say what has
-                      to happen first instead of offering a button that lies. */}
-                  {medication?.isArchived || person?.isArchived ? (
-                    <p className="self-center text-sm text-ink-muted">
-                      {medication?.isArchived ? t('planMedicationArchived') : t('planPersonArchived')}
-                    </p>
-                  ) : (
-                    /* Sits before the destructive one on purpose. "I have stopped for now"
-                       is the ordinary case; ending a plan outright is the rare one, and
-                       until today it was the only thing on offer. */
-                    <Button
-                      variant="secondary"
-                      onClick={async () => {
-                        try {
-                          await api.setPlanPaused(household, plan.id, !plan.isPaused);
-                          onChanged();
-                        } catch (caught) {
-                          setError(t(caught instanceof ApiError ? errorKey(caught.code) : 'errorNetwork'));
-                        }
-                      }}
-                    >
-                      {plan.isPaused ? t('resumePlan') : t('pausePlan')}
-                    </Button>
-                  )}
-
-                  <Button
-                    variant="danger"
-                    onClick={async () => {
-                      try {
-                        await api.deletePlan(household, plan.id);
-                        onChanged();
-                      } catch (caught) {
-                        setError(t(caught instanceof ApiError ? errorKey(caught.code) : 'errorNetwork'));
-                      }
-                    }}
-                  >
-                    {t('deletePlan')}
-                  </Button>
-                </div>
-              </Card>
-            );
-          })}
-        </ul>
+        <ul className="flex list-none flex-col gap-3 p-0">{current.map((plan) => card(plan, false))}</ul>
       )}
+
+      {past.length > 0 ? (
+        <section aria-labelledby="past-plans-heading" className="flex flex-col gap-3">
+          <h2 id="past-plans-heading" className="text-lg font-bold">
+            {t('pastPlans')}
+          </h2>
+          <ul className="flex list-none flex-col gap-3 p-0">{past.map((plan) => card(plan, true))}</ul>
+        </section>
+      ) : null}
 
       {editing ? (
         <PlanDialog
@@ -152,7 +106,323 @@ export function Plans({ household, workspace, onChanged }: {
           }}
         />
       ) : null}
+
+      {ending ? (
+        <EndPlanDialog
+          household={household}
+          plan={ending}
+          onClose={() => setEnding(null)}
+          onSaved={() => {
+            setEnding(null);
+            onChanged();
+          }}
+        />
+      ) : null}
+
+      {restarting ? (
+        <RestartPlanDialog
+          household={household}
+          plan={restarting}
+          onClose={() => setRestarting(null)}
+          onSaved={() => {
+            setRestarting(null);
+            onChanged();
+          }}
+        />
+      ) : null}
+
+      {deleting ? (
+        <DeletePlanDialog
+          household={household}
+          plan={deleting}
+          onClose={() => setDeleting(null)}
+          onSaved={() => {
+            setDeleting(null);
+            onChanged();
+          }}
+        />
+      ) : null}
     </div>
+  );
+}
+
+/** One plan, current or past. A past plan offers only what makes sense for history. */
+function PlanCard({ household, workspace, plan, ended, onEdit, onEnd, onRestart, onDelete, onChanged, onError }: {
+  household: string;
+  workspace: Workspace;
+  plan: TreatmentPlan;
+  ended: boolean;
+  onEdit: () => void;
+  onEnd: () => void;
+  onRestart: () => void;
+  onDelete: () => void;
+  onChanged: () => void;
+  onError: (message: string) => void;
+}) {
+  const { t } = useLocale();
+  const person = workspace.people.find((p) => p.id === plan.personId);
+  const medication = workspace.medications.find((m) => m.id === plan.medicationDefinitionId);
+  const period = enumKey(plan.dayPeriod);
+  const meal = enumKey(plan.mealRelation);
+
+  return (
+    <Card as="li" className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-[min(12rem,100%)] flex-1">
+          <h3 className="text-lg font-bold">{medication?.name ?? '—'}</h3>
+          <p className="text-sm text-ink-muted">
+            {person?.name ?? '—'} · {formatQuantity(plan.dose)}{' '}
+            {medication ? unitLabel(medication.unit) : ''}
+          </p>
+          <p className="mt-1 text-sm">{describeSchedule(plan, t)}</p>
+          {plan.effectiveTo ? (
+            <p className="mt-1 text-sm text-ink-muted">
+              {ended ? t('planEnded') : t('effectiveTo')}: {plan.effectiveTo}
+            </p>
+          ) : null}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-1.5">
+          {ended ? (
+            <Badge tone="quiet">{t('planEnded')}</Badge>
+          ) : plan.isPaused ? (
+            <Badge tone="warning">{t('planPaused')}</Badge>
+          ) : null}
+
+          {/* The same named period means an obligation on a scheduled plan and a
+              preference on an as-needed one. Say which, rather than letting the
+              badge imply a timetable the household never promised. */}
+          {period ? (
+            <Badge tone="accent">
+              {plan.kind === 'AsNeeded' ? `${t('preferably')} ${t(period)}` : t(period)}
+            </Badge>
+          ) : null}
+          {meal ? <Badge>{t(meal)}</Badge> : null}
+          <Badge tone="quiet">v{plan.versionNumber}</Badge>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        {ended ? (
+          <Button variant="secondary" onClick={onRestart}>
+            {t('restartPlan')}
+          </Button>
+        ) : (
+          <>
+            <Button variant="secondary" onClick={onEdit}>
+              {t('editPlan')}
+            </Button>
+
+            {/* Archiving the medication or the person pauses their plans, and the Today
+                list filters both — so resuming here while either is still archived would
+                look like it worked and change nothing. Say what has to happen first
+                instead of offering a button that lies. */}
+            {medication?.isArchived || person?.isArchived ? (
+              <p className="self-center text-sm text-ink-muted">
+                {medication?.isArchived ? t('planMedicationArchived') : t('planPersonArchived')}
+              </p>
+            ) : (
+              /* "I have stopped for now" is the ordinary case and comes first; ending the
+                 plan outright is the rarer one and comes after. Both keep the plan. */
+              <Button
+                variant="secondary"
+                onClick={async () => {
+                  try {
+                    await api.setPlanPaused(household, plan.id, !plan.isPaused);
+                    onChanged();
+                  } catch (caught) {
+                    onError(t(caught instanceof ApiError ? errorKey(caught.code) : 'errorNetwork'));
+                  }
+                }}
+              >
+                {plan.isPaused ? t('resumePlan') : t('pausePlan')}
+              </Button>
+            )}
+
+            <Button variant="secondary" onClick={onEnd}>
+              {t('endPlan')}
+            </Button>
+          </>
+        )}
+      </div>
+
+      {/* Deleting is for a plan created by mistake, and it used to be the only way to
+          stop one — the owner met it on the live site as a plan that had vanished. It
+          stays, one step away, behind a confirmation that says what it is for. */}
+      <Advanced label={t('moreActions')}>
+        <Button variant="danger" onClick={onDelete}>
+          {t('deletePlan')}
+        </Button>
+      </Advanced>
+    </Card>
+  );
+}
+
+/** The last day of doses. Everything after it asks for nothing and counts as nothing. */
+function EndPlanDialog({ household, plan, onClose, onSaved }: {
+  household: string;
+  plan: TreatmentPlan;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const { t } = useLocale();
+  const [endsOn, setEndsOn] = useState(todayIso());
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function submit() {
+    setBusy(true);
+    setError(null);
+    try {
+      await api.endPlan(household, plan.id, endsOn);
+      onSaved();
+    } catch (caught) {
+      setError(t(caught instanceof ApiError ? errorKey(caught.code) : 'errorNetwork'));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Dialog
+      open
+      onClose={onClose}
+      title={t('endPlan')}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>
+            {t('cancel')}
+          </Button>
+          <Button onClick={() => void submit()} disabled={busy || endsOn === ''}>
+            {t('endPlan')}
+          </Button>
+        </>
+      }
+    >
+      <div className="flex flex-col gap-4">
+        {error ? <Notice tone="danger">{error}</Notice> : null}
+        <Field label={t('endsOn')} hint={t('endPlanHint')}>
+          {({ id, describedBy }) => (
+            <Input
+              id={id}
+              aria-describedby={describedBy}
+              type="date"
+              value={endsOn}
+              onChange={(e) => setEndsOn(e.target.value)}
+            />
+          )}
+        </Field>
+      </div>
+    </Dialog>
+  );
+}
+
+/** The first day the plan asks again. The gap since the end is not owed. */
+function RestartPlanDialog({ household, plan, onClose, onSaved }: {
+  household: string;
+  plan: TreatmentPlan;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const { t } = useLocale();
+  const earliest = plan.effectiveTo ? addDaysIso(plan.effectiveTo, 1) : todayIso();
+  const [startsOn, setStartsOn] = useState(laterOf(todayIso(), earliest));
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function submit() {
+    setBusy(true);
+    setError(null);
+    try {
+      await api.restartPlan(household, plan.id, startsOn);
+      onSaved();
+    } catch (caught) {
+      setError(t(caught instanceof ApiError ? errorKey(caught.code) : 'errorNetwork'));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Dialog
+      open
+      onClose={onClose}
+      title={t('restartPlan')}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>
+            {t('cancel')}
+          </Button>
+          <Button onClick={() => void submit()} disabled={busy || startsOn < earliest}>
+            {t('restartPlan')}
+          </Button>
+        </>
+      }
+    >
+      <div className="flex flex-col gap-4">
+        {error ? <Notice tone="danger">{error}</Notice> : null}
+        <Field label={t('restartsOn')} hint={t('restartPlanHint')}>
+          {({ id, describedBy }) => (
+            <Input
+              id={id}
+              aria-describedby={describedBy}
+              type="date"
+              min={earliest}
+              value={startsOn}
+              onChange={(e) => setStartsOn(e.target.value)}
+            />
+          )}
+        </Field>
+      </div>
+    </Dialog>
+  );
+}
+
+/** Only for a plan created by mistake. A course that is over is ended, not deleted. */
+function DeletePlanDialog({ household, plan, onClose, onSaved }: {
+  household: string;
+  plan: TreatmentPlan;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const { t } = useLocale();
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function submit() {
+    setBusy(true);
+    setError(null);
+    try {
+      await api.deletePlan(household, plan.id);
+      onSaved();
+    } catch (caught) {
+      setError(t(caught instanceof ApiError ? errorKey(caught.code) : 'errorNetwork'));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Dialog
+      open
+      onClose={onClose}
+      title={t('deletePlan')}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>
+            {t('cancel')}
+          </Button>
+          <Button variant="danger" onClick={() => void submit()} disabled={busy}>
+            {t('deletePlan')}
+          </Button>
+        </>
+      }
+    >
+      <div className="flex flex-col gap-4">
+        {error ? <Notice tone="danger">{error}</Notice> : null}
+        <p className="text-sm">{t('deletePlanConfirm')}</p>
+      </div>
+    </Dialog>
   );
 }
 
@@ -199,9 +469,13 @@ function PlanDialog({ household, workspace, plan, onClose, onSaved }: {
   const [dayPeriod, setDayPeriod] = useState(plan?.dayPeriod ?? '');
   const [mealRelation, setMealRelation] = useState(plan?.mealRelation ?? '');
   const [minimumInterval, setMinimumInterval] = useState(plan?.minimumIntervalMinutes?.toString() ?? '');
-  const [effectiveFrom, setEffectiveFrom] = useState(
-    plan?.effectiveFrom ?? new Date().toISOString().slice(0, 10),
-  );
+  // A change applies from the day it is made, never from the plan's original start.
+  // Appending a version that starts where the old one started would re-govern every day
+  // in between with the new dose and rewrite the history the adherence replay reads. The
+  // household can still push the date later. (This used to default to the old start on
+  // edit, and to the UTC date on create — yesterday, for a viewer in Türkiye, until
+  // three in the morning.)
+  const [effectiveFrom, setEffectiveFrom] = useState(laterOf(todayIso(), plan?.effectiveFrom ?? null));
   const [effectiveTo, setEffectiveTo] = useState(plan?.effectiveTo ?? '');
   const [instructions, setInstructions] = useState(plan?.instructions ?? '');
   const [error, setError] = useState<string | null>(null);
@@ -464,9 +738,15 @@ function PlanDialog({ household, workspace, plan, onClose, onSaved }: {
         <Advanced label={t('advancedOptions')}>
           <div className="flex flex-col gap-4">
             <div className="grid gap-4 sm:grid-cols-2">
-              <Field label={t('effectiveFrom')}>
-                {({ id }) => (
-                  <Input id={id} type="date" value={effectiveFrom} onChange={(e) => setEffectiveFrom(e.target.value)} />
+              <Field label={t('effectiveFrom')} hint={plan ? t('effectiveFromEditHint') : undefined}>
+                {({ id, describedBy }) => (
+                  <Input
+                    id={id}
+                    aria-describedby={describedBy}
+                    type="date"
+                    value={effectiveFrom}
+                    onChange={(e) => setEffectiveFrom(e.target.value)}
+                  />
                 )}
               </Field>
               <Field label={t('effectiveTo')} optional={t('optional')}>

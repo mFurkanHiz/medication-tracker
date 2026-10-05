@@ -1,5 +1,7 @@
 'use client';
 
+import { ApiError } from './api';
+
 import { createContext, useContext } from 'react';
 import { APP_DESCRIPTION, APP_NAME } from './document-metadata';
 
@@ -358,6 +360,19 @@ export const tr = {
   errorNetwork: 'Sunucuya ulaşılamadı.',
   errorUnauthenticated: 'Oturum sona erdi. Yeniden giriş yapın.',
   errorForbidden: 'Bu ev için yetkiniz yok.',
+  errorFieldInvalid: 'Geçersiz alan',
+  errorFieldRequired: 'Zorunlu alan',
+  errorFieldTooLong: 'Çok uzun alan',
+  errorAlreadyOnLoan: 'Bu kutu zaten ödünç verilmiş.',
+  errorAlreadyReturned: 'Bu ödünç zaten geri alınmış.',
+  errorPackageNotAvailable: 'Bu kutu kullanılabilir değil; kayıp ya da atıldı olarak işaretli.',
+  errorPackageNotRetired: 'Bu kutu kayıp ya da atıldı olarak işaretli değil.',
+  errorSamePerson: 'Kutu zaten bu kişide.',
+  errorNotDue: 'Bu plan o gün için planlı değil.',
+  errorSuperseded: 'Bu plan sürümü artık geçerli değil; sayfayı yenileyin.',
+  errorUnknownPerson: 'Kişi bulunamadı; sayfayı yenileyin.',
+  errorUnknownMedication: 'İlaç bulunamadı; sayfayı yenileyin.',
+  errorUnknownTimeZone: 'Saat dilimi tanınmadı.',
   errorInsufficientStock: 'Stok bu doz için yetersiz. Gelişmiş seçeneklerden kaynak seçin.',
   errorChosenSourceInsufficient: 'Seçtiğiniz kaynakta bu doz için yeterli miktar yok.',
   errorPackageNotEligible: 'Bu kutu kullanıma uygun değil.',
@@ -788,6 +803,19 @@ export const en: Record<MessageKey, string> = {
   errorNetwork: 'Could not reach the server.',
   errorUnauthenticated: 'Your session ended. Please sign in again.',
   errorForbidden: 'You do not have access to this household.',
+  errorFieldInvalid: 'Invalid field',
+  errorFieldRequired: 'Required field',
+  errorFieldTooLong: 'Field too long',
+  errorAlreadyOnLoan: 'This box is already on loan.',
+  errorAlreadyReturned: 'This loan was already returned.',
+  errorPackageNotAvailable: 'This box is not available; it is marked lost or disposed.',
+  errorPackageNotRetired: 'This box is not marked lost or disposed.',
+  errorSamePerson: 'The box is already with this person.',
+  errorNotDue: 'This plan is not due on that day.',
+  errorSuperseded: 'This plan version is no longer current; refresh the page.',
+  errorUnknownPerson: 'Person not found; refresh the page.',
+  errorUnknownMedication: 'Medicine not found; refresh the page.',
+  errorUnknownTimeZone: 'The time zone was not recognised.',
   errorInsufficientStock: 'There is not enough stock for this dose. Choose a source under advanced options.',
   errorChosenSourceInsufficient: 'The source you chose does not hold enough for this dose.',
   errorPackageNotEligible: 'That package cannot be used.',
@@ -907,6 +935,37 @@ export function useLocale() {
   return useContext(LocaleContext);
 }
 
+/**
+ * The message for whatever a request threw.
+ *
+ * A refusal the dictionary knows gets its own sentence. A validation refusal names the
+ * field it rejected, because "something went wrong" on a form with twelve fields is a
+ * message the owner met on the live site and could do nothing with. Anything else —
+ * a 500, a body with no code — stays generic, which is the truth of what we know.
+ */
+export function describeError(caught: unknown, t: Translate): string {
+  if (!(caught instanceof ApiError)) {
+    return t('errorNetwork');
+  }
+
+  const key = errorKey(caught.code);
+  if (key !== 'errorGeneric') {
+    return t(key);
+  }
+
+  if (caught.field && caught.status === 400) {
+    const reason = VALIDATION_REASONS[caught.code] ?? 'errorFieldInvalid';
+    return `${t(reason)}: ${caught.field}`;
+  }
+
+  return t('errorGeneric');
+}
+
+const VALIDATION_REASONS: Record<string, MessageKey> = {
+  required: 'errorFieldRequired',
+  too_long: 'errorFieldTooLong',
+};
+
 /** Maps a server refusal code onto a translated message. */
 export function errorKey(code: string): MessageKey {
   const map: Record<string, MessageKey> = {
@@ -931,6 +990,16 @@ export function errorKey(code: string): MessageKey {
     plan_not_ended: 'errorPlanNotEnded',
     before_end: 'errorBeforeEnd',
     before_current_version: 'errorBeforeCurrentVersion',
+    already_on_loan: 'errorAlreadyOnLoan',
+    already_returned: 'errorAlreadyReturned',
+    package_not_available: 'errorPackageNotAvailable',
+    package_not_retired: 'errorPackageNotRetired',
+    same_person: 'errorSamePerson',
+    not_due: 'errorNotDue',
+    superseded: 'errorSuperseded',
+    unknown_person: 'errorUnknownPerson',
+    unknown_medication: 'errorUnknownMedication',
+    unknown_time_zone: 'errorUnknownTimeZone',
   };
 
   return map[code] ?? 'errorGeneric';

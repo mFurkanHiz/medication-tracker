@@ -1,8 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ApiError, api } from '@/lib/api';
-import { errorKey, useLocale, type MessageKey } from '@/lib/i18n';
+import { api } from '@/lib/api';
+import { useLocale, type MessageKey, describeError } from '@/lib/i18n';
 import { formatQuantity } from '@/lib/quantity';
 import type { AdherenceReport, AdherenceTally, InventoryReport, Workspace } from '@/lib/types';
 import { Badge, Button, Card, EmptyState, Field, Notice, Select, Spinner } from './ui';
@@ -73,7 +73,7 @@ export function Reports({ household, workspace }: { household: string; workspace
         setError(null);
       })
       .catch((caught: unknown) =>
-        setError(t(caught instanceof ApiError ? errorKey(caught.code) : 'errorNetwork')),
+        setError(describeError(caught, t)),
       );
   }, [household, period, timeZoneId, t]);
 
@@ -319,7 +319,7 @@ function Export({ household }: { household: string }) {
 
       setState('done');
     } catch (caught: unknown) {
-      setError(t(caught instanceof ApiError ? errorKey(caught.code) : 'errorNetwork'));
+      setError(describeError(caught, t));
       setState('idle');
     }
   };

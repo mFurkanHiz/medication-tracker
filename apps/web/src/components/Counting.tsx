@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ApiError, api, type CountLineInput } from '@/lib/api';
-import { errorKey, useLocale } from '@/lib/i18n';
+import { useLocale, describeError } from '@/lib/i18n';
 import { formatQuantity, parseQuantity } from '@/lib/quantity';
 import type { CountSession, MedicationDefinition, Workspace } from '@/lib/types';
 import { Advanced, Badge, Button, Card, EmptyState, Field, Input, Notice, Spinner, Textarea } from './ui';
@@ -47,7 +47,7 @@ export function Counting({ household, workspace, onChanged }: {
           setError(null);
         })
         .catch((caught: unknown) =>
-          setError(t(caught instanceof ApiError ? errorKey(caught.code) : 'errorNetwork')),
+          setError(describeError(caught, t)),
         ),
     [household, t],
   );
@@ -142,7 +142,7 @@ export function Counting({ household, workspace, onChanged }: {
       await load();
       onChanged();
     } catch (caught: unknown) {
-      setError(t(caught instanceof ApiError ? errorKey(caught.code) : 'errorNetwork'));
+      setError(describeError(caught, t));
 
       // A stale revision means somebody else already corrected this count. Reloading
       // puts the newest link in front of the user instead of leaving them retrying.

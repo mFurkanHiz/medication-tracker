@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { cautionList, en, enumKey, tr, type MessageKey } from '@/lib/i18n';
+import { cautionList, describeError, en, enumKey, tr, type MessageKey } from '@/lib/i18n';
+import { ApiError } from '@/lib/api';
 
 /**
  * The translation dictionaries, and the two helpers that read from them.
@@ -134,5 +135,25 @@ describe('enumKey', () => {
     expect(enumKey(undefined)).toBeNull();
     expect(enumKey('SomethingTheServerAddedLater')).toBeNull();
     expect(enumKey('')).toBeNull();
+  });
+});
+
+describe('describeError', () => {
+  const t = (key: MessageKey) => tr[key];
+
+  it('names the field a validation refusal rejected instead of saying something went wrong', () => {
+    // The owner met "Bir şeyler ters gitti" on a form with twelve fields and could do
+    // nothing with it. A 400 that names its field now says which one.
+    expect(describeError(new ApiError(400, 'invalid', 'effectiveFrom'), t)).toBe('Geçersiz alan: effectiveFrom');
+    expect(describeError(new ApiError(400, 'required', 'name'), t)).toBe('Zorunlu alan: name');
+  });
+
+  it('keeps a known refusal as its own sentence and an unknown 500 generic', () => {
+    expect(describeError(new ApiError(409, 'plan_not_ended'), t)).toBe(tr.errorPlanNotEnded);
+    expect(describeError(new ApiError(500, 'request_failed'), t)).toBe(tr.errorGeneric);
+  });
+
+  it('calls anything that is not an API refusal a network problem', () => {
+    expect(describeError(new TypeError('fetch failed'), t)).toBe(tr.errorNetwork);
   });
 });

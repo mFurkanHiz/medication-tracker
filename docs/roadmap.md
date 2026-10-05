@@ -78,8 +78,15 @@ the focus stays medication tracking and its reminders. Evaluation in
   resume mobile, web push from the Next.js app, or both. "Remind N minutes before",
   "remind again" and snooze belong to whichever path is chosen.
 - Vaccine tracking: dated series with boosters, a different shape from a recurrence.
-- Long-interval medicines (quarterly, yearly): covered by an every-N-months pattern.
+- Long-interval medicines (quarterly, yearly): delivered in Sprint 7 as the every-N-months
+  pattern (PR #54).
 - Menstrual-cycle tracking, daily health notes, and a mood journal with triggers. These
   reach into special-category health data beyond medication; the owner's own reading is
   that they may become a separate product integrating with this one. Decide module versus
   product by whether the data must be joined with medication events.
+
+## After Sprint 7 — the mobile client resumes
+
+Per the owner's sequence of 2026-10-05: the Sprint 7 slices, then mobile, then later
+features. `docs/mobile-resume-plan.md` is the hand-over; ADR 0017 sets how web and mobile
+versions relate while the web runs ahead.

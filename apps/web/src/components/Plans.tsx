@@ -1,8 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { ApiError, api, type PlanInput } from '@/lib/api';
-import { enumKey, errorKey, useLocale, type MessageKey } from '@/lib/i18n';
+import { api, type PlanInput } from '@/lib/api';
+import { enumKey, useLocale, type MessageKey, describeError } from '@/lib/i18n';
 import { addDaysIso, laterOf, todayIso } from '@/lib/dates';
 import { formatQuantity, parseQuantity } from '@/lib/quantity';
 import type { TreatmentPlan, Workspace } from '@/lib/types';
@@ -231,7 +231,7 @@ function PlanCard({ household, workspace, plan, ended, onEdit, onEnd, onRestart,
                     await api.setPlanPaused(household, plan.id, !plan.isPaused);
                     onChanged();
                   } catch (caught) {
-                    onError(t(caught instanceof ApiError ? errorKey(caught.code) : 'errorNetwork'));
+                    onError(describeError(caught, t));
                   }
                 }}
               >
@@ -277,7 +277,7 @@ function EndPlanDialog({ household, plan, onClose, onSaved }: {
       await api.endPlan(household, plan.id, endsOn);
       onSaved();
     } catch (caught) {
-      setError(t(caught instanceof ApiError ? errorKey(caught.code) : 'errorNetwork'));
+      setError(describeError(caught, t));
     } finally {
       setBusy(false);
     }
@@ -337,7 +337,7 @@ function RestartPlanDialog({ household, plan, onClose, onSaved }: {
       await api.restartPlan(household, plan.id, startsOn);
       onSaved();
     } catch (caught) {
-      setError(t(caught instanceof ApiError ? errorKey(caught.code) : 'errorNetwork'));
+      setError(describeError(caught, t));
     } finally {
       setBusy(false);
     }
@@ -396,7 +396,7 @@ function DeletePlanDialog({ household, plan, onClose, onSaved }: {
       await api.deletePlan(household, plan.id);
       onSaved();
     } catch (caught) {
-      setError(t(caught instanceof ApiError ? errorKey(caught.code) : 'errorNetwork'));
+      setError(describeError(caught, t));
     } finally {
       setBusy(false);
     }
@@ -551,7 +551,7 @@ function PlanDialog({ household, workspace, plan, onClose, onSaved }: {
       }
       onSaved();
     } catch (caught) {
-      setError(t(caught instanceof ApiError ? errorKey(caught.code) : 'errorNetwork'));
+      setError(describeError(caught, t));
     } finally {
       setBusy(false);
     }

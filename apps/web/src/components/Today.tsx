@@ -1,9 +1,9 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { ApiError, api } from '@/lib/api';
+import { api } from '@/lib/api';
 import { useNow } from '@/lib/use-now';
-import { cautionList, enumKey, errorKey, useLocale } from '@/lib/i18n';
+import { cautionList, enumKey, useLocale, describeError } from '@/lib/i18n';
 import { formatQuantity, parseQuantity } from '@/lib/quantity';
 import type { AllocationDetail, DoseSource, DueDose, Today as TodayModel, Workspace } from '@/lib/types';
 import {
@@ -42,7 +42,7 @@ export function Today({ household, workspace, onChanged }: {
           setError(null);
         })
         .catch((caught: unknown) =>
-          setError(t(caught instanceof ApiError ? errorKey(caught.code) : 'errorNetwork')),
+          setError(describeError(caught, t)),
         ),
     [household, t],
   );
@@ -78,7 +78,7 @@ export function Today({ household, workspace, onChanged }: {
       await load();
       onChanged();
     } catch (caught) {
-      setError(t(caught instanceof ApiError ? errorKey(caught.code) : 'errorNetwork'));
+      setError(describeError(caught, t));
     } finally {
       setBusy(null);
     }
@@ -354,7 +354,7 @@ function AdvancedDoseDialog({ household, dose, onClose, onRecorded }: {
 
       onRecorded();
     } catch (caught) {
-      setError(t(caught instanceof ApiError ? errorKey(caught.code) : 'errorNetwork'));
+      setError(describeError(caught, t));
     } finally {
       setBusy(false);
     }
@@ -476,7 +476,7 @@ export function CorrectionDialog({ household, administrationId, onClose, onCorre
             })),
         );
       } catch (caught) {
-        setError(t(caught instanceof ApiError ? errorKey(caught.code) : 'errorNetwork'));
+        setError(describeError(caught, t));
       }
     })();
   }, [household, administrationId, t]);
@@ -501,7 +501,7 @@ export function CorrectionDialog({ household, administrationId, onClose, onCorre
       );
       onCorrected();
     } catch (caught) {
-      setError(t(caught instanceof ApiError ? errorKey(caught.code) : 'errorNetwork'));
+      setError(describeError(caught, t));
     } finally {
       setBusy(false);
     }

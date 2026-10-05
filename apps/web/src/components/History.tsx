@@ -1,8 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { ApiError, api } from '@/lib/api';
-import { enumKey, errorKey, useLocale } from '@/lib/i18n';
+import { api } from '@/lib/api';
+import { enumKey, useLocale, describeError } from '@/lib/i18n';
 import { formatQuantity } from '@/lib/quantity';
 import type { Activity, Workspace } from '@/lib/types';
 import { CorrectionDialog } from './Today';
@@ -34,7 +34,7 @@ export function History({ household, workspace, onChanged }: {
           setError(null);
         })
         .catch((caught: unknown) =>
-          setError(t(caught instanceof ApiError ? errorKey(caught.code) : 'errorNetwork')),
+          setError(describeError(caught, t)),
         ),
     [household, t],
   );

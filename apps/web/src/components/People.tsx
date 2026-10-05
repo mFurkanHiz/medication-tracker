@@ -1,8 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { ApiError, api } from '@/lib/api';
-import { errorKey, useLocale } from '@/lib/i18n';
+import { api } from '@/lib/api';
+import { useLocale, describeError } from '@/lib/i18n';
 import type { Workspace } from '@/lib/types';
 import { Advanced, Badge, Button, Card, Dialog, EmptyState, Field, Input, Notice } from './ui';
 
@@ -35,7 +35,7 @@ export function People({ household, workspace, onChanged }: {
       await action();
       onChanged();
     } catch (caught) {
-      setError(t(caught instanceof ApiError ? errorKey(caught.code) : 'errorNetwork'));
+      setError(describeError(caught, t));
     } finally {
       setBusy(false);
     }

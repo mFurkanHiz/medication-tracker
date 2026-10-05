@@ -21,6 +21,19 @@ public enum RecurrencePattern
 
     /// <summary>Every N local days, anchored on the effective start date.</summary>
     EveryNDays = 2,
+
+    /// <summary>
+    /// A given day of every month. In a month too short for it, the month's last day:
+    /// "the 31st" means the 28th in February, not nothing.
+    /// </summary>
+    DayOfMonth = 3,
+
+    /// <summary>
+    /// Every N months on the day of the effective start date, clamped the same way. N = 1
+    /// is monthly, 3 quarterly, 12 yearly — the owner's "uzun aralıklı ilaçlar" in one
+    /// pattern.
+    /// </summary>
+    EveryNMonths = 4,
 }
 
 /// <summary>
@@ -71,11 +84,14 @@ public sealed record RecurrenceSpecification(
     int? WeekdayMask,
     int? IntervalDays,
     DateOnly? EffectiveFrom,
-    DateOnly? EffectiveTo)
+    DateOnly? EffectiveTo,
+    int? DayOfMonth = null,
+    int? IntervalMonths = null)
 {
     public const int MinimumWeekdayMask = 1;
     public const int MaximumWeekdayMask = 127;
     public const int MaximumIntervalDays = 3650;
+    public const int MaximumIntervalMonths = 120;
 
     public static RecurrenceSpecification Daily(DateOnly? from = null, DateOnly? to = null) =>
         new(TreatmentKind.Scheduled, RecurrencePattern.Daily, null, null, from, to);

@@ -184,6 +184,8 @@ export type PlanInput = {
   pattern?: string;
   weekdayMask?: number | null;
   intervalDays?: number | null;
+  dayOfMonth?: number | null;
+  intervalMonths?: number | null;
   effectiveFrom?: string | null;
   effectiveTo?: string | null;
   localTime?: string | null;

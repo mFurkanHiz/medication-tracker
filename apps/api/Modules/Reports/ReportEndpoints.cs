@@ -106,6 +106,8 @@ public static class ReportEndpoints
                                version.Pattern,
                                version.WeekdayMask,
                                version.IntervalDays,
+                               version.DayOfMonth,
+                               version.IntervalMonths,
                                version.EffectiveFrom,
                                version.EffectiveTo,
                                version.LocalTime,
@@ -159,7 +161,7 @@ public static class ReportEndpoints
                     row.VersionNumber,
                     new RecurrenceSpecification(
                         row.Kind, row.Pattern, row.WeekdayMask, row.IntervalDays,
-                        row.EffectiveFrom, row.EffectiveTo),
+                        row.EffectiveFrom, row.EffectiveTo, row.DayOfMonth, row.IntervalMonths),
                     row.LocalTime,
                     planZone,
                     row.IsPaused));

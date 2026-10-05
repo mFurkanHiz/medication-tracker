@@ -96,7 +96,7 @@ export type MedicationDefinition = {
 };
 
 export type TreatmentKind = 'Scheduled' | 'AsNeeded';
-export type RecurrencePattern = 'Daily' | 'SelectedWeekdays' | 'EveryNDays';
+export type RecurrencePattern = 'Daily' | 'SelectedWeekdays' | 'EveryNDays' | 'DayOfMonth' | 'EveryNMonths';
 
 export type TreatmentPlan = {
   id: string;
@@ -109,6 +109,8 @@ export type TreatmentPlan = {
   pattern: RecurrencePattern;
   weekdayMask: number | null;
   intervalDays: number | null;
+  dayOfMonth: number | null;
+  intervalMonths: number | null;
   effectiveFrom: string | null;
   effectiveTo: string | null;
   localTime: string | null;

@@ -444,6 +444,14 @@ function describeSchedule(plan: TreatmentPlan, t: (key: MessageKey) => string): 
     return `${t('scheduleInterval')}: ${plan.intervalDays}${time}`;
   }
 
+  if (plan.pattern === 'DayOfMonth' && plan.dayOfMonth !== null) {
+    return `${t('scheduleDayOfMonth')}: ${plan.dayOfMonth}${time}`;
+  }
+
+  if (plan.pattern === 'EveryNMonths' && plan.intervalMonths !== null) {
+    return `${t('scheduleEveryNMonths')}: ${plan.intervalMonths}${time}`;
+  }
+
   return `${t('scheduleDaily')}${time}`;
 }
 
@@ -465,6 +473,8 @@ function PlanDialog({ household, workspace, plan, onClose, onSaved }: {
   const [pattern, setPattern] = useState(plan?.pattern ?? 'Daily');
   const [weekdayMask, setWeekdayMask] = useState(plan?.weekdayMask ?? 0);
   const [intervalDays, setIntervalDays] = useState(plan?.intervalDays?.toString() ?? '2');
+  const [dayOfMonth, setDayOfMonth] = useState(plan?.dayOfMonth?.toString() ?? '1');
+  const [intervalMonths, setIntervalMonths] = useState(plan?.intervalMonths?.toString() ?? '1');
   const [localTime, setLocalTime] = useState(plan?.localTime?.slice(0, 5) ?? '08:00');
   const [dayPeriod, setDayPeriod] = useState(plan?.dayPeriod ?? '');
   const [mealRelation, setMealRelation] = useState(plan?.mealRelation ?? '');
@@ -493,6 +503,18 @@ function PlanDialog({ household, workspace, plan, onClose, onSaved }: {
       return;
     }
 
+    const parsedDayOfMonth = Number.parseInt(dayOfMonth, 10);
+    if (pattern === 'DayOfMonth' && !(parsedDayOfMonth >= 1 && parsedDayOfMonth <= 31)) {
+      setError(t('errorGeneric'));
+      return;
+    }
+
+    const parsedIntervalMonths = Number.parseInt(intervalMonths, 10);
+    if (pattern === 'EveryNMonths' && !(parsedIntervalMonths >= 1 && parsedIntervalMonths <= 120)) {
+      setError(t('errorGeneric'));
+      return;
+    }
+
     const input: PlanInput = {
       personId,
       medicationDefinitionId: medicationId,
@@ -505,6 +527,8 @@ function PlanDialog({ household, workspace, plan, onClose, onSaved }: {
       weekdayMask: kind === 'Scheduled' && pattern === 'SelectedWeekdays' ? weekdayMask : null,
       intervalDays:
         kind === 'Scheduled' && pattern === 'EveryNDays' ? Number.parseInt(intervalDays, 10) : null,
+      dayOfMonth: kind === 'Scheduled' && pattern === 'DayOfMonth' ? parsedDayOfMonth : null,
+      intervalMonths: kind === 'Scheduled' && pattern === 'EveryNMonths' ? parsedIntervalMonths : null,
       effectiveFrom: effectiveFrom === '' ? null : effectiveFrom,
       effectiveTo: effectiveTo === '' ? null : effectiveTo,
       // An exact clock belongs to a schedule. An as-needed dose has no clock — but it can
@@ -599,6 +623,8 @@ function PlanDialog({ household, workspace, plan, onClose, onSaved }: {
                 <option value="Daily">{t('scheduleDaily')}</option>
                 <option value="SelectedWeekdays">{t('scheduleWeekdays')}</option>
                 <option value="EveryNDays">{t('scheduleInterval')}</option>
+                <option value="DayOfMonth">{t('scheduleDayOfMonth')}</option>
+                <option value="EveryNMonths">{t('scheduleEveryNMonths')}</option>
                 <option value="AsNeeded">{t('scheduleAsNeeded')}</option>
               </Select>
             )}
@@ -637,6 +663,41 @@ function PlanDialog({ household, workspace, plan, onClose, onSaved }: {
                 max={3650}
                 value={intervalDays}
                 onChange={(e) => setIntervalDays(e.target.value)}
+              />
+            )}
+          </Field>
+        ) : null}
+
+        {/* Calendar months, never thirty-day spans. A day the month does not have falls
+            on its last day, and the hint says so, because "the 31st" on a monthly plan is
+            exactly the case somebody will wonder about in February. */}
+        {kind === 'Scheduled' && pattern === 'DayOfMonth' ? (
+          <Field label={t('dayOfMonth')} hint={t('dayOfMonthHint')}>
+            {({ id, describedBy }) => (
+              <Input
+                id={id}
+                aria-describedby={describedBy}
+                type="number"
+                min={1}
+                max={31}
+                value={dayOfMonth}
+                onChange={(e) => setDayOfMonth(e.target.value)}
+              />
+            )}
+          </Field>
+        ) : null}
+
+        {kind === 'Scheduled' && pattern === 'EveryNMonths' ? (
+          <Field label={t('intervalMonths')} hint={t('intervalMonthsHint')}>
+            {({ id, describedBy }) => (
+              <Input
+                id={id}
+                aria-describedby={describedBy}
+                type="number"
+                min={1}
+                max={120}
+                value={intervalMonths}
+                onChange={(e) => setIntervalMonths(e.target.value)}
               />
             )}
           </Field>

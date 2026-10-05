@@ -56,11 +56,18 @@ public sealed class TreatmentPlanVersionConfiguration : IEntityTypeConfiguration
             // Each recurrence pattern owns exactly the fields it needs and no others.
             table.HasCheckConstraint(
                 "ck_plan_versions_recurrence",
-                "(pattern = 'Daily' AND weekday_mask IS NULL AND interval_days IS NULL) "
+                "(pattern = 'Daily' AND weekday_mask IS NULL AND interval_days IS NULL "
+                + "AND day_of_month IS NULL AND interval_months IS NULL) "
                 + "OR (kind = 'Scheduled' AND pattern = 'SelectedWeekdays' AND weekday_mask BETWEEN 1 AND 127 "
-                + "AND interval_days IS NULL) "
+                + "AND interval_days IS NULL AND day_of_month IS NULL AND interval_months IS NULL) "
                 + "OR (kind = 'Scheduled' AND pattern = 'EveryNDays' AND effective_from IS NOT NULL "
-                + "AND interval_days BETWEEN 1 AND 3650 AND weekday_mask IS NULL)");
+                + "AND interval_days BETWEEN 1 AND 3650 AND weekday_mask IS NULL "
+                + "AND day_of_month IS NULL AND interval_months IS NULL) "
+                + "OR (kind = 'Scheduled' AND pattern = 'DayOfMonth' AND day_of_month BETWEEN 1 AND 31 "
+                + "AND weekday_mask IS NULL AND interval_days IS NULL AND interval_months IS NULL) "
+                + "OR (kind = 'Scheduled' AND pattern = 'EveryNMonths' AND effective_from IS NOT NULL "
+                + "AND interval_months BETWEEN 1 AND 120 AND weekday_mask IS NULL "
+                + "AND interval_days IS NULL AND day_of_month IS NULL)");
         });
 
         b.HasKey(x => x.Id);
@@ -73,6 +80,8 @@ public sealed class TreatmentPlanVersionConfiguration : IEntityTypeConfiguration
         b.Property(x => x.Pattern).HasColumnName("pattern").HasConversion<string>().HasMaxLength(20).IsRequired();
         b.Property(x => x.WeekdayMask).HasColumnName("weekday_mask");
         b.Property(x => x.IntervalDays).HasColumnName("interval_days");
+        b.Property(x => x.DayOfMonth).HasColumnName("day_of_month");
+        b.Property(x => x.IntervalMonths).HasColumnName("interval_months");
         b.Property(x => x.EffectiveFrom).HasColumnName("effective_from");
         b.Property(x => x.EffectiveTo).HasColumnName("effective_to");
         b.Property(x => x.LocalTime).HasColumnName("local_time");

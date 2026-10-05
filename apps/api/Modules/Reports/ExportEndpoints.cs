@@ -308,6 +308,8 @@ public static class ExportEndpoints
                 pattern = version.Pattern.ToString(),
                 version.WeekdayMask,
                 version.IntervalDays,
+                version.DayOfMonth,
+                version.IntervalMonths,
                 version.EffectiveFrom,
                 version.EffectiveTo,
                 version.LocalTime,

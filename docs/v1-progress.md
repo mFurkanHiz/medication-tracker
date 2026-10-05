@@ -1033,7 +1033,7 @@ visible.
   to the plan's original start, which re-governed every day in between), and "today" is
   the viewer's calendar date rather than the UTC date (`lib/dates.ts`, tested).
 
-### Slice 5 — Coverage and the two compute buttons (migration 16, this checkpoint's PR)
+### Slice 5 — Coverage and the two compute buttons — PR #53 (migration 16)
 
 - **Coverage** (TR *Karşılama*): `InsuranceCovered`, `SelfPaid`, `Unspecified` (behaves as
   covered). On the definition as the default; a box may override it (`packages.coverage`,
@@ -1052,6 +1052,22 @@ visible.
   as-needed counted daily, empty supply runs out today) and `CoverageApiTests` (inherit and
   override, covered-only versus all-stock suggestions, policy round trip, unknown coverage
   refused). Migration-count assertions now say 16.
+
+### Slice 6 — monthly recurrence in both forms (migration 17, this checkpoint's PR)
+
+- `RecurrencePattern.DayOfMonth` (1–31) and `RecurrencePattern.EveryNMonths` (1–120,
+  anchored on the start date's day). **Calendar months, never thirty-day spans**; a day
+  the month does not have falls on its last day, so a plan written for the 31st is not
+  silently skipped in February. The rule lives in `RecurrenceRule.IsDue`; the forecast,
+  the adherence replay and the Today list walk days through it and needed no change.
+- `plan_versions.day_of_month`, `plan_versions.interval_months`, and the
+  `ck_plan_versions_recurrence` check constraint rewritten so each pattern still owns
+  exactly its own fields. Validation mirrors it in `RecurrenceRule.IsValid`.
+- Web: two new schedule choices with hints that say what happens in short months;
+  `describeSchedule` names them on the card.
+- Tests: `MonthlyRecurrenceTests` (clamping, anchoring, quarterly and yearly, due-day
+  enumeration, field ownership, and an API round trip that is due only on its day).
+  Migration-count assertions now say 17.
 
 ## Where this stands
 
@@ -1077,11 +1093,10 @@ Row 38 (the final V1 commit must pass CI) closes itself on whatever commit turns
 last; it is not work, it is a condition.
 
 **Exact next action.** Sprint 7 is in progress on the owner's decisions (see the Sprint 7
-section above for what has landed). Next slice: **monthly recurrence in both forms** —
-day-of-month and every-N-months anchored on the start (migration 17). Then
-do-not-take-with tags with the Today warning and its ADR (migration 18), then the general
-review, then the mobile preparation (versioning ADR, resume plan; no mobile code). One
-migration per PR.
+section above for what has landed). Next slice: **do-not-take-with tags** on the
+definition with the person-scoped red warning on Today and its ADR (migration 18). Then
+the general review, then the mobile preparation (versioning ADR, resume plan; no mobile
+code). One migration per PR.
 
 Still open for the owner, unchanged: the mobile release-channel decision when mobile
 resumes; which production household is theirs, so the synthetic ones left by smoke tests

@@ -130,6 +130,8 @@ public sealed class TreatmentPlanVersion
         Pattern = recurrence.Pattern;
         WeekdayMask = recurrence.WeekdayMask;
         IntervalDays = recurrence.IntervalDays;
+        DayOfMonth = recurrence.DayOfMonth;
+        IntervalMonths = recurrence.IntervalMonths;
         EffectiveFrom = recurrence.EffectiveFrom;
         EffectiveTo = recurrence.EffectiveTo;
         LocalTime = localTime;
@@ -164,6 +166,12 @@ public sealed class TreatmentPlanVersion
     public int? WeekdayMask { get; private set; }
 
     public int? IntervalDays { get; private set; }
+
+    /// <summary>For <see cref="RecurrencePattern.DayOfMonth"/>: 1–31, clamped to the month.</summary>
+    public int? DayOfMonth { get; private set; }
+
+    /// <summary>For <see cref="RecurrencePattern.EveryNMonths"/>: the month interval, anchored on the start date.</summary>
+    public int? IntervalMonths { get; private set; }
 
     public DateOnly? EffectiveFrom { get; private set; }
 
@@ -209,7 +217,7 @@ public sealed class TreatmentPlanVersion
     public Guid CreatedByAccountId { get; private set; }
 
     public RecurrenceSpecification Recurrence =>
-        new(Kind, Pattern, WeekdayMask, IntervalDays, EffectiveFrom, EffectiveTo);
+        new(Kind, Pattern, WeekdayMask, IntervalDays, EffectiveFrom, EffectiveTo, DayOfMonth, IntervalMonths);
 
     public bool IsDueOn(DateOnly localDay) => RecurrenceRule.IsDue(Recurrence, localDay);
 

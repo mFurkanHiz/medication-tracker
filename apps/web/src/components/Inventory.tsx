@@ -412,47 +412,61 @@ function PackageRow({ household, pkg, activeLoanId, people, onChanged, onError }
       </dl>
 
       {pkg.state === 'Sealed' || pkg.state === 'Opened' ? (
-        <div className="mt-3 flex flex-wrap gap-2">
-          <Button
-            variant="quiet"
-            disabled={busy}
-            onClick={() =>
-              void run(() =>
-                pkg.isPinned ? api.unpinPackage(household, pkg.id) : api.pinPackage(household, pkg.id),
-              )
-            }
-          >
-            {pkg.isPinned ? t('unpin') : t('pin')}
-          </Button>
-
-          {activeLoanId ? (
-            <Button variant="quiet" disabled={busy} onClick={() => void run(() => api.returnLoan(household, activeLoanId))}>
-              {t('returnLoan')}
+        <div className="mt-3 flex flex-col gap-2">
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="quiet"
+              disabled={busy}
+              onClick={() =>
+                void run(() =>
+                  pkg.isPinned ? api.unpinPackage(household, pkg.id) : api.pinPackage(household, pkg.id),
+                )
+              }
+            >
+              {pkg.isPinned ? t('unpin') : t('pin')}
             </Button>
-          ) : pkg.ownerPersonId ? (
-            // Lending moves custody only, so it is offered on a package that someone
-            // owns and nobody else is currently holding.
-            <LendControl
-              people={people.filter((person) => !person.isArchived && person.id !== pkg.ownerPersonId)}
-              busy={busy}
-              onLend={(borrower) => void run(() => api.lendPackage(household, pkg.id, borrower))}
-            />
-          ) : null}
 
-          <Button
-            variant="danger"
-            disabled={busy}
-            onClick={() => void run(() => api.retirePackage(household, pkg.id, 'Lost'))}
-          >
-            {t('retireLost')}
-          </Button>
-          <Button
-            variant="danger"
-            disabled={busy}
-            onClick={() => void run(() => api.retirePackage(household, pkg.id, 'Disposed'))}
-          >
-            {t('retireDisposed')}
-          </Button>
+            {activeLoanId ? (
+              <Button variant="quiet" disabled={busy} onClick={() => void run(() => api.returnLoan(household, activeLoanId))}>
+                {t('returnLoan')}
+              </Button>
+            ) : null}
+          </div>
+
+          {/* The owner's words, testing the live site: "Kayıp" and "Atıldı" are not buttons a
+              household presses every day, so they should not sit level with the ones it does.
+              The row keeps the daily actions — choosing the active box, taking a loan back —
+              and the rest waits one step away. Lending is here too: it changes who holds a
+              box, which is rarer than a dose and worth a deliberate step. Nothing is lost by
+              the demotion; both retirements can be reversed with Reinstate. */}
+          <Advanced label={t('moreActions')}>
+            <div className="flex flex-wrap gap-2">
+              {!activeLoanId && pkg.ownerPersonId ? (
+                // Lending moves custody only, so it is offered on a package that someone
+                // owns and nobody else is currently holding.
+                <LendControl
+                  people={people.filter((person) => !person.isArchived && person.id !== pkg.ownerPersonId)}
+                  busy={busy}
+                  onLend={(borrower) => void run(() => api.lendPackage(household, pkg.id, borrower))}
+                />
+              ) : null}
+
+              <Button
+                variant="danger"
+                disabled={busy}
+                onClick={() => void run(() => api.retirePackage(household, pkg.id, 'Lost'))}
+              >
+                {t('retireLost')}
+              </Button>
+              <Button
+                variant="danger"
+                disabled={busy}
+                onClick={() => void run(() => api.retirePackage(household, pkg.id, 'Disposed'))}
+              >
+                {t('retireDisposed')}
+              </Button>
+            </div>
+          </Advanced>
         </div>
       ) : (
         // The owner found a box he had written off and there was nowhere to say so:

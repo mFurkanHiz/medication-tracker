@@ -234,6 +234,7 @@ public static class ExportEndpoints
                 definition.Tags,
                 definition.Notes,
                 coverage = definition.Coverage.ToString(),
+                definition.DoNotTakeWithTags,
                 cautions = CautionView.Of(definition),
                 definition.IsArchived,
                 total = InventoryEndpoints.Quantity(

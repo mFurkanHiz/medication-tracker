@@ -19,6 +19,7 @@ public static class CatalogEndpoints
     public const int MaximumTags = 12;
     public const int MaximumTagLength = 40;
     public const int MaximumActiveIngredients = 12;
+    public const int MaximumDoNotTakeWithTags = 24;
 
     public static IEndpointRouteBuilder MapCatalogEndpoints(this IEndpointRouteBuilder endpoints)
     {
@@ -60,7 +61,8 @@ public static class CatalogEndpoints
                 parsed.Tags,
                 request.Notes,
                 parsed.Cautions,
-                parsed.Coverage);
+                parsed.Coverage,
+                parsed.DoNotTakeWithTags);
 
             db.MedicationDefinitions.Add(definition);
 
@@ -123,7 +125,8 @@ public static class CatalogEndpoints
                 parsed.Tags,
                 request.Notes,
                 parsed.Cautions,
-                parsed.Coverage);
+                parsed.Coverage,
+                parsed.DoNotTakeWithTags);
 
             db.MedicationDefinitionChangeEvents.Add(new MedicationDefinitionChangeEvent(
                 Guid.CreateVersion7(), householdId, definition.Id, HouseholdAccess.RequireAccountId(context),
@@ -298,6 +301,13 @@ public static class CatalogEndpoints
             return false;
         }
 
+        field = "doNotTakeWithTags";
+        var doNotTakeWith = Normalize(request.DoNotTakeWithTags, MaximumDoNotTakeWithTags);
+        if (doNotTakeWith is null)
+        {
+            return false;
+        }
+
         field = "coverage";
         var coverage = Coverage.Unspecified;
         if (request.Coverage is not null && !Enum.TryParse(request.Coverage, ignoreCase: true, out coverage))
@@ -306,7 +316,7 @@ public static class CatalogEndpoints
         }
 
         field = string.Empty;
-        parsed = new ParsedDefinition(form, unit, ingredients, tags, capacity, cautions.Normalized(), coverage);
+        parsed = new ParsedDefinition(form, unit, ingredients, tags, capacity, cautions.Normalized(), coverage, doNotTakeWith);
         return true;
     }
 
@@ -344,6 +354,7 @@ public static class CatalogEndpoints
         definition.CautionThingsToAvoid,
         definition.CautionWarning,
         Coverage = definition.Coverage.ToString(),
+        definition.DoNotTakeWithTags,
         definition.IsArchived,
     });
 
@@ -354,7 +365,8 @@ public static class CatalogEndpoints
         string[] Tags,
         ExactQuantity? DefaultPackageCapacity,
         CautionNotes Cautions,
-        Coverage Coverage);
+        Coverage Coverage,
+        string[] DoNotTakeWithTags);
 }
 
 /// <summary>
@@ -379,4 +391,5 @@ public sealed record MedicationDefinitionRequest(
     string? CautionThingsToDo = null,
     string? CautionThingsToAvoid = null,
     string? CautionWarning = null,
-    string? Coverage = null);
+    string? Coverage = null,
+    string[]? DoNotTakeWithTags = null);

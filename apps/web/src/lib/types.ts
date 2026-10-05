@@ -84,6 +84,8 @@ export type MedicationDefinition = {
   tags: string[];
   /** Who paid: 'InsuranceCovered', 'SelfPaid' or 'Unspecified' (treated as covered). */
   coverage: string;
+  /** Names and ingredients not to combine with, as the household tagged them. */
+  doNotTakeWithTags: string[];
   notes: string | null;
   cautions: CautionNotes | null;
   isArchived: boolean;
@@ -132,6 +134,18 @@ export type Workspace = {
 
 export type AdministrationOutcome = 'Taken' | 'Skipped' | 'PartialDose' | 'ExtraDose';
 
+/**
+ * One "do not take with" warning on a dose row: the other medicine, the household's own
+ * words that matched, and whose tag it came from. Never a block; see ADR 0016.
+ */
+export type DoseConflict = {
+  medicationDefinitionId: string;
+  medicationName: string;
+  matched: string[];
+  notedOnMedicationDefinitionId: string;
+  notedOn: string;
+};
+
 export type DueDose = {
   planId: string;
   planVersionId: string;
@@ -144,6 +158,7 @@ export type DueDose = {
   mealRelation: string | null;
   /** The medicine's own safe-use notes, so the dose row can show them in place. */
   cautions: CautionNotes | null;
+  conflicts: DoseConflict[];
   /** The household's own minimum gap between doses, in minutes. Advisory, never a block. */
   minimumIntervalMinutes: number | null;
   lastTakenAt: string | null;

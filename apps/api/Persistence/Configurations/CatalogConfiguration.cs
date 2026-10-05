@@ -57,6 +57,7 @@ public sealed class MedicationDefinitionConfiguration : IEntityTypeConfiguration
         b.Property(x => x.CautionThingsToDo).HasColumnName("caution_things_to_do").HasColumnType("text");
         b.Property(x => x.CautionThingsToAvoid).HasColumnName("caution_things_to_avoid").HasColumnType("text");
         b.Property(x => x.CautionWarning).HasColumnName("caution_warning").HasColumnType("text");
+        b.Property(x => x.DoNotTakeWithTags).HasColumnName("do_not_take_with_tags").HasColumnType("text[]").IsRequired().HasDefaultValueSql("'{}'");
         b.Property(x => x.ExternalCodes).HasColumnName("external_codes").HasColumnType("jsonb");
         b.Property(x => x.CreatedAt).HasColumnName("created_at");
         b.Property(x => x.ArchivedAt).HasColumnName("archived_at");

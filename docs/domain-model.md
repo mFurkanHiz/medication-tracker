@@ -192,3 +192,7 @@ R6 drafts.
 This is a medication organisation and adherence product. It records what the user or
 their clinician decided. It never diagnoses, never recommends or calculates a dose,
 never invents a drug interaction, and never tells anyone what to take.
+It may remind the household of its own words: when they have tagged a medicine as not to
+be taken with another and both fall on the same person's same day, it says so, in red,
+attributing the warning to their tag, and still records the dose if they take it (ADR
+0016). Silence is not a safety claim.

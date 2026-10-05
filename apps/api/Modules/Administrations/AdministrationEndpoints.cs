@@ -1,4 +1,5 @@
 using MedicationTracker.Api.Application;
+using MedicationTracker.Api.Domain.Catalog;
 using MedicationTracker.Api.Domain.Administrations;
 using MedicationTracker.Api.Domain.Inventory;
 using MedicationTracker.Api.Domain.Quantities;
@@ -37,6 +38,11 @@ public static class AdministrationEndpoints
             var versions = await CurrentVersionsAsync(db, householdId, day, ct);
             var totals = await InventoryReader.TotalsAsync(db, householdId, ct);
             var lastTaken = await LastTakenAsync(db, householdId, ct);
+
+            // The household's own "do not take with" tags, matched among what the same
+            // person has on the same day. Plain equality on their own words — no drug
+            // database, no inference — and never a block. ADR 0016.
+            var conflicts = ConflictsFor(versions, day);
 
             var due = new List<object>();
             foreach (var row in versions)
@@ -80,6 +86,20 @@ public static class AdministrationEndpoints
                     // their hand; a warning filed away on another page is a warning that
                     // arrives after the dose.
                     cautions = CautionView.Of(row.Definition),
+
+                    // Red on the screen, and still only the household's own note read back
+                    // to them: the other medicine, the words that matched, and whose note
+                    // it came from. Both buttons below stay live whatever this says.
+                    conflicts = conflicts.TryGetValue((row.Plan.PersonId, row.Plan.MedicationDefinitionId), out var found)
+                        ? found.Select(conflict => (object)new
+                        {
+                            medicationDefinitionId = conflict.MedicationDefinitionId,
+                            medicationName = conflict.MedicationName,
+                            matched = conflict.Matched,
+                            notedOnMedicationDefinitionId = conflict.NotedOnMedicationDefinitionId,
+                            notedOn = conflict.NotedOn,
+                        }).ToList()
+                        : [],
 
                     // The household's own minimum gap, and what it works out to. Until
                     // now this field was validated, stored, copied forward and exported
@@ -417,6 +437,35 @@ public static class AdministrationEndpoints
         return exists
             ? new ResolvedTarget(personId, definitionId, null, null)
             : new ResolvedTarget(Error: Results.NotFound());
+    }
+
+    /// <summary>
+    /// The do-not-take-with warnings for the day, keyed by person and medicine. Scoped to
+    /// the person, because a household cabinet holds other people's medicines, and to
+    /// the medicines actually due that day, which is the question the owner asked.
+    /// </summary>
+    private static Dictionary<(Guid PersonId, Guid DefinitionId), IReadOnlyList<DoNotTakeWithConflict>> ConflictsFor(
+        IEnumerable<(TreatmentPlan Plan, TreatmentPlanVersion Version, MedicationDefinition Definition)> versions,
+        DateOnly day)
+    {
+        var result = new Dictionary<(Guid, Guid), IReadOnlyList<DoNotTakeWithConflict>>();
+
+        foreach (var person in versions.Where(row => row.Version.IsDueOn(day)).GroupBy(row => row.Plan.PersonId))
+        {
+            var medicines = person
+                .Select(row => row.Definition)
+                .DistinctBy(definition => definition.Id)
+                .Select(definition => new MedicineIdentity(
+                    definition.Id, definition.Name, definition.Brand, definition.ActiveIngredients, definition.DoNotTakeWithTags))
+                .ToList();
+
+            foreach (var (definitionId, found) in DoNotTakeWithMatcher.Among(medicines))
+            {
+                result[(person.Key, definitionId)] = found;
+            }
+        }
+
+        return result;
     }
 
     private static async Task<List<(TreatmentPlan Plan, TreatmentPlanVersion Version, MedicationDefinition Definition)>> CurrentVersionsAsync(

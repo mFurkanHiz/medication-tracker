@@ -310,6 +310,12 @@ export const tr = {
   coverageSelfPaid: 'Kendi ödemesi',
   coverageInherit: 'İlacın ayarı',
   coverageBoxHint: 'Bu kutu için ilacın ayarından farklıysa seçin.',
+  doNotTakeWithTags: 'Birlikte alınmaması gerekenler (etiket)',
+  doNotTakeWithTagsHint:
+    'İlaç adları ya da etken maddeler, virgülle: ligone, parol, paracetamol. Aynı kişinin aynı gündeki başka bir ilacının adı ya da etken maddesiyle birebir eşleşirse Bugün ekranında kırmızı uyarı çıkar. Eşleşme yoksa uyarı çıkmaz; bu, birlikte alınabileceği anlamına gelmez.',
+  conflictDoNotTakeWith: '{name} ile birlikte almayınız',
+  conflictReason: 'Nedeni',
+  conflictFromNote: 'Bu uyarı hanenin {name} için yazdığı etiketten geliyor; uygulama eksiksiz olduğunu garanti etmez.',
   lowStockWarning: 'Stok azalıyor',
   depletionOn: 'Tahmini bitiş',
   daysRemaining: 'gün kaldı',
@@ -451,7 +457,7 @@ export const tr = {
 
   // Safety
   safetyNotice:
-    'Bu uygulama ilaç düzenlemesi ve takibi içindir. Teşhis koymaz, doz önermez ve ilaç etkileşimi değerlendirmez.',
+    'Bu uygulama ilaç düzenlemesi ve takibi içindir. Teşhis koymaz, doz önermez ve ilaç etkileşimi değerlendirmez; yalnız sizin yazdığınız "birlikte alınmaz" etiketlerini hatırlatır.',
 } as const;
 
 export type MessageKey = keyof typeof tr;
@@ -737,6 +743,12 @@ export const en: Record<MessageKey, string> = {
   coverageSelfPaid: 'Self-paid',
   coverageInherit: 'As the medicine',
   coverageBoxHint: 'Choose only when this box differs from the medicine\'s setting.',
+  doNotTakeWithTags: 'Do not take with (tags)',
+  doNotTakeWithTagsHint:
+    'Medicine names or active ingredients, comma-separated: ligone, parol, paracetamol. When one matches exactly the name or an ingredient of another medicine the same person has on the same day, the Today screen shows a red warning. No match means no warning; it does not mean the two are safe together.',
+  conflictDoNotTakeWith: 'Do not take with {name}',
+  conflictReason: 'Reason',
+  conflictFromNote: 'From the household\'s own tag on {name}; the app does not vouch for completeness.',
   lowStockWarning: 'Running low',
   depletionOn: 'Projected to run out',
   daysRemaining: 'days left',
@@ -870,7 +882,7 @@ export const en: Record<MessageKey, string> = {
   countingDelta: 'Difference',
 
   safetyNotice:
-    'This application organises and tracks medication. It does not diagnose, recommend a dose, or assess drug interactions.',
+    'This application organises and tracks medication. It does not diagnose, recommend a dose, or assess drug interactions; it only reminds you of your own "do not take with" tags.',
 };
 
 export const dictionaries = { tr, en } as const;

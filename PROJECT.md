@@ -134,7 +134,8 @@ deleting or softening the row.
 ## Non-goals for the first release
 
 - Diagnosis or dosage advice
-- Automatic drug-interaction claims without a licensed authoritative source
+- Automatic drug-interaction claims without a licensed authoritative source (reminding
+  the household of its own do-not-take-with tags is not such a claim; ADR 0016)
 - e-Nabız integration without an official supported API and authorization
 - Advanced calculations for liquids, creams, inhalers, and injections
 - Billing or paid plans

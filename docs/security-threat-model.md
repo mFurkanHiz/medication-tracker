@@ -71,7 +71,7 @@ and asserts 403 on each, then asserts the target household's stock is unchanged.
 
 ### Outstanding
 
-- **The application connected to PostgreSQL as the cluster superuser** — being closed.
+- **The application connected to PostgreSQL as the cluster superuser** — closed on 2026-10-05 (run `37337177964`; evidence on row 37 of `docs/v1-acceptance.md`). Kept here because the superuser still exists for the container and the migration step, and because re-running the workflow is how its replacement's password is rotated.
   `compose.production.yml` sets `POSTGRES_USER: medication_tracker`, which the official
   postgres image creates as the bootstrap **superuser**, and until acceptance row 37 the
   connection string used that same account. A leaked `DATABASE_PASSWORD` or a successful
@@ -88,8 +88,7 @@ and asserts 403 on each, then asserts the target household's stock is unchanged.
   recreates only the api container and proves from `pg_stat_activity` that the API's
   connections are the confined role. The deployment's migration step keeps the
   superuser over the container's local socket; that password never leaves the host.
-  Re-running the workflow rotates the credential. The production run's number and
-  printed proof are recorded on row 37 of `docs/v1-acceptance.md`.
+  Re-running the workflow rotates the credential.
 - **Mobile secure storage and notification privacy** remain unreviewed on a physical
   device. Deferred with the client (ADR 0015): there is no shipped mobile build whose
   storage could be reviewed.

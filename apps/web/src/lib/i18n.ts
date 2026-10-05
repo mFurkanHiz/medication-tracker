@@ -108,6 +108,7 @@ export const tr = {
   storageLocation: 'Saklama yeri',
   note: 'Not',
   showPackages: 'Kutuları göster',
+  moreActions: 'Diğer işlemler',
   hidePackages: 'Kutuları gizle',
   archiveMedication: 'İlacı arşivle',
   archiveKeeps:
@@ -506,6 +507,7 @@ export const en: Record<MessageKey, string> = {
   storageLocation: 'Stored in',
   note: 'Note',
   showPackages: 'Show packages',
+  moreActions: 'More actions',
   hidePackages: 'Hide packages',
   archiveMedication: 'Archive medication',
   archiveKeeps:

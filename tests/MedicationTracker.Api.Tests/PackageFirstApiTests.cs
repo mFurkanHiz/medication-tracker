@@ -584,6 +584,27 @@ public sealed class PackageFirstApiTests
     }
 
     [PostgreSqlFact]
+    public async Task Pinning_another_box_releases_the_previous_pin_whichever_box_sorts_first()
+    {
+        await using var harness = new ApiTestHarness();
+        var (client, household) = await harness.NewHouseholdAsync();
+        var definition = await CreateParolAsync(client, household);
+        var packages = await AddAcceptanceStockAsync(client, household, definition);
+
+        // Both directions on purpose. The two boxes' ids decide which UPDATE EF issues
+        // first, so a single swap passes or fails by luck; swapping both ways means one of
+        // the two would hit the unique index if the release were not ordered before the
+        // acquire. The owner met the failing direction on the live site every time, with
+        // "something went wrong" and no clue why.
+        await client.PostOk($"/api/households/{household}/inventory/packages/{packages.BoxA}/pin");
+        await client.PostOk($"/api/households/{household}/inventory/packages/{packages.BoxB}/pin");
+        Assert.Equal(packages.BoxB, await PinnedPackageAsync(client, household, definition));
+
+        await client.PostOk($"/api/households/{household}/inventory/packages/{packages.BoxA}/pin");
+        Assert.Equal(packages.BoxA, await PinnedPackageAsync(client, household, definition));
+    }
+
+    [PostgreSqlFact]
     public async Task Another_household_cannot_read_or_change_this_households_stock()
     {
         await using var harness = new ApiTestHarness();
@@ -835,6 +856,16 @@ public sealed class PackageFirstApiTests
             packages[0].GetProperty("id").GetGuid(),
             packages[1].GetProperty("id").GetGuid(),
             packages[2].GetProperty("id").GetGuid());
+    }
+
+    /// <summary>The one pinned box of a medicine, or null when none is pinned.</summary>
+    private static async Task<Guid?> PinnedPackageAsync(HttpClient client, Guid household, Guid definition)
+    {
+        var stock = await client.GetOk($"/api/households/{household}/inventory/{definition}");
+        return stock.GetProperty("packages").EnumerateArray()
+            .Where(package => package.GetProperty("isPinned").GetBoolean())
+            .Select(package => (Guid?)package.GetProperty("id").GetGuid())
+            .SingleOrDefault();
     }
 
     private static async Task<(Guid PersonId, Guid PlanVersionId)> CreateDailyPlanAsync(

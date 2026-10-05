@@ -234,3 +234,49 @@ tracking and its reminders. Recorded in `docs/roadmap.md` under *Later*:
   integrates with this one. Decide module-versus-product by whether the data must be
   joined with medication events (then a module behind the same household model) or stands
   alone (then a product on the API).
+
+## Decisions, 2026-10-05 — the owner answered
+
+- **D1 — approved, with an addition.** The prose caution fields stay exactly as they are.
+  A new tag list on the definition, *do not take with*, holds names and ingredients as the
+  household writes them: `ligone, parol, paracetamol, cvitamine`. When two of a person's
+  medicines fall on the same day, the Today row of each shows a **red** warning naming the
+  other and the reason — on Allerset "do not take with Parol, reason: Parol, Paracetamol";
+  on Parol the same, reason "Allerset". It never blocks: *"alırsa alır, ama biz uyarırız"*.
+  The owner offered an on-demand "analyse" button should live matching prove hard. It is
+  not hard: the Today projection already holds the person's rows for the day, so the
+  comparison is a handful of string equalities per request. No button.
+- **D2 — both levels.** A medicine carries a default and a box may override it; flagging a
+  box flags everything in it. The owner wants no name that reads as "informal" or
+  "illegal". The field is **Coverage** (TR *Karşılama*): `InsuranceCovered` ("Sigorta
+  kapsamında" / "Insurance-covered"), `SelfPaid` ("Kendi ödemesi" / "Self-paid"),
+  `Unspecified` ("Belirtilmedi", treated as covered).
+- **D3 — approved.** Ending appends an effective-dated version; restart appends a new one.
+- **D4 — both forms.** Day-of-month and every-N-months anchored on the start date.
+- **D5 — never hidden.** The official date stays optional and null by default; the button
+  only fills it on request. **Two dates**, both optional, both with a compute button: the
+  *official end* (covered stock only, at the prescribed rate, as-needed counted daily) and
+  the *actual end* (all stock). Without a plan neither can be computed, and the button
+  says so. The borrowing scenario must work: Gülten runs out of Arlec, uses İsmail's box
+  for two days, then gets her own, and two tablets may or may not go back. Lending and
+  return of a box already exist (ADR 0011); giving back two tablets from a different box is
+  a transfer between boxes and is checked in the general review.
+- **D6 — approved.** Fix the active-box defect now.
+
+The owner also finished their general test ("şimdilik güzel gözüküyor"), asked for a
+general review by the agent, and set what follows: after these slices the mobile client
+resumes, then later features and versions. Versions: releases where web and mobile are at
+parity share one name (v1.0.0, v1.0.1, v1.1.0, ...); the web may run ahead of mobile during
+development and that must stay visible.
+
+## Sprint 7 — the order
+
+1. Active-box swap defect (no migration).
+2. Demote Lost/Discarded (web only).
+3. Box label + Edit box (migration 15).
+4. End / restart a plan (no migration expected).
+5. Coverage + the two compute buttons (migration 16).
+6. Monthly recurrence, both forms (migration 17).
+7. Do-not-take-with tags + Today warning + ADR (migration 18).
+8. General review by the agent, with small fixes.
+9. Mobile preparation: versioning ADR, resume plan. No mobile code yet.

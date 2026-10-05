@@ -198,21 +198,36 @@ public static class InventoryEndpoints
                 return ApiResults.Conflict("package_not_available");
             }
 
-            // Only one package per medication may be pinned, so clear the previous one
-            // before setting this one; a unique index enforces it as well.
+            // Only one package per medication may be pinned, and the filtered unique index
+            // ix_packages_single_pinned enforces that per row, immediately. Releasing the old
+            // pin and taking the new one in a single SaveChanges is therefore not enough: EF
+            // orders the two UPDATEs by primary key, not by which one frees the slot, so
+            // whenever the box being pinned sorted first PostgreSQL rejected it (23505)
+            // before the unpin ran. Which box sorts first is decided by their ids, so one
+            // pair of boxes failed every time while another never would — the owner met the
+            // failing pair on the live site as "something went wrong". Two saves inside one
+            // transaction make the order explicit: release, then take.
+            await using var transaction = await db.Database.BeginTransactionAsync(ct);
+
             var others = await db.Packages
                 .Where(candidate => candidate.MedicationDefinitionId == package.MedicationDefinitionId
                                     && candidate.IsPinned
                                     && candidate.Id != packageId)
                 .ToListAsync(ct);
 
-            foreach (var other in others)
+            if (others.Count > 0)
             {
-                other.Unpin();
+                foreach (var other in others)
+                {
+                    other.Unpin();
+                }
+
+                await db.SaveChangesAsync(ct);
             }
 
             package.Pin();
             await db.SaveChangesAsync(ct);
+            await transaction.CommitAsync(ct);
             return Results.NoContent();
         });
 

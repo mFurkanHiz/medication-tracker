@@ -237,6 +237,27 @@ function DoseRow({ dose, workspace, now, busy, onTaken, onSkipped, onDetails }: 
         </div>
       ) : null}
 
+      {/* The household's own do-not-take-with tags, matched among this person's medicines
+          today. Red, because the owner wanted it seen; never a block, because a dose
+          somebody took must be recordable; and always attributed to the household's own
+          tag, because the app has no opinion of its own here. ADR 0016. */}
+      {(dose.conflicts ?? []).length > 0 ? (
+        <div className="flex w-full flex-col gap-2" role="alert">
+          {(dose.conflicts ?? []).map((conflict) => (
+            <Notice key={conflict.medicationDefinitionId} tone="danger">
+              <span className="font-bold">
+                {t('conflictDoNotTakeWith').replace('{name}', conflict.medicationName)}
+              </span>
+              {' · '}
+              {t('conflictReason')}: {conflict.matched.join(', ')}
+              <span className="mt-0.5 block text-xs font-normal">
+                {t('conflictFromNote').replace('{name}', conflict.notedOn)}
+              </span>
+            </Notice>
+          ))}
+        </div>
+      ) : null}
+
       <div className="w-full">
         <CautionPanel
           title={t('cautionNotes')}

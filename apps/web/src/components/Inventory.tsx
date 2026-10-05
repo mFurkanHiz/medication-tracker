@@ -743,6 +743,7 @@ function DefinitionDialog({ household, definition, onClose, onSaved }: {
   const [tags, setTags] = useState((definition?.tags ?? []).join(', '));
   const [notes, setNotes] = useState(definition?.notes ?? '');
   const [doNotTakeWith, setDoNotTakeWith] = useState(definition?.cautions?.doNotTakeWith ?? '');
+  const [doNotTakeWithTags, setDoNotTakeWithTags] = useState((definition?.doNotTakeWithTags ?? []).join(', '));
   const [foodsToAvoid, setFoodsToAvoid] = useState(definition?.cautions?.foodsToAvoid ?? '');
   const [thingsToDo, setThingsToDo] = useState(definition?.cautions?.thingsToDo ?? '');
   const [thingsToAvoid, setThingsToAvoid] = useState(definition?.cautions?.thingsToAvoid ?? '');
@@ -783,6 +784,7 @@ function DefinitionDialog({ household, definition, onClose, onSaved }: {
       cautionThingsToAvoid: thingsToAvoid.trim() || null,
       cautionWarning: warning.trim() || null,
       coverage,
+      doNotTakeWithTags: splitList(doNotTakeWithTags),
     };
 
     setBusy(true);
@@ -873,6 +875,20 @@ function DefinitionDialog({ household, definition, onClose, onSaved }: {
                   rows={2}
                   value={doNotTakeWith}
                   onChange={(e) => setDoNotTakeWith(e.target.value)}
+                />
+              )}
+            </Field>
+
+            {/* The one caution that is matched rather than only shown. Tags, not prose,
+                so a match is plain equality on the household's own words — and the hint
+                says what silence does not mean. ADR 0016. */}
+            <Field label={t('doNotTakeWithTags')} hint={t('doNotTakeWithTagsHint')} optional={t('optional')}>
+              {({ id, describedBy }) => (
+                <Input
+                  id={id}
+                  aria-describedby={describedBy}
+                  value={doNotTakeWithTags}
+                  onChange={(e) => setDoNotTakeWithTags(e.target.value)}
                 />
               )}
             </Field>

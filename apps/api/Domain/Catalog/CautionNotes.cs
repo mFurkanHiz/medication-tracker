@@ -11,7 +11,10 @@ namespace MedicationTracker.Api.Domain.Catalog;
 /// a doctor or pharmacist said. <strong>The software never derives any of it.</strong>
 /// Nothing here is parsed, matched against a drug database, cross-referenced with
 /// another medication, or checked before a dose is recorded. It is stored and shown,
-/// and that is the whole contract.
+/// and that is the whole contract. The one structured field that <em>is</em> matched —
+/// the household's own do-not-take-with tags, by plain equality against the names and
+/// ingredients they themselves typed — lives beside these notes on the definition, not
+/// inside them, and claims nothing of its own (ADR 0016).
 /// </para>
 /// <para>
 /// That restraint is the product boundary, not a shortcut. A tracker that started

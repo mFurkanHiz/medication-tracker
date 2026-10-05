@@ -40,7 +40,8 @@ public sealed class MedicationDefinition
         string[]? tags = null,
         string? notes = null,
         CautionNotes cautions = default,
-        Coverage coverage = Coverage.Unspecified)
+        Coverage coverage = Coverage.Unspecified,
+        string[]? doNotTakeWithTags = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
 
@@ -60,6 +61,7 @@ public sealed class MedicationDefinition
         SetDefaultPackageCapacity(defaultPackageCapacity);
         SetCautions(cautions);
         Coverage = coverage;
+        DoNotTakeWithTags = doNotTakeWithTags ?? [];
     }
 
     public Guid Id { get; private set; }
@@ -134,6 +136,15 @@ public sealed class MedicationDefinition
     public string? CautionWarning { get; private set; }
 
     /// <summary>
+    /// Medicine names and active ingredients the household was told not to combine with
+    /// this one, as short tags: <c>ligone, parol, paracetamol, cvitamine</c>. Unlike the
+    /// prose in <see cref="CautionDoNotTakeWith"/>, these are matched — by plain equality
+    /// on the household's own words — against the other medicines the same person has
+    /// on the same day, and the Today row says so in red. ADR 0016.
+    /// </summary>
+    public string[] DoNotTakeWithTags { get; private set; } = [];
+
+    /// <summary>
     /// What the household was told about taking this safely, as one value so a caller
     /// cannot pick up four of the five notes by accident. Never derived by the
     /// software — <see cref="CautionNotes"/> says why that line is not crossed.
@@ -178,7 +189,8 @@ public sealed class MedicationDefinition
         string[] tags,
         string? notes,
         CautionNotes cautions,
-        Coverage coverage = Coverage.Unspecified)
+        Coverage coverage = Coverage.Unspecified,
+        string[]? doNotTakeWithTags = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         ArgumentNullException.ThrowIfNull(activeIngredients);
@@ -197,6 +209,7 @@ public sealed class MedicationDefinition
         SetDefaultPackageCapacity(defaultPackageCapacity);
         SetCautions(cautions);
         Coverage = coverage;
+        DoNotTakeWithTags = doNotTakeWithTags ?? [];
     }
 
     /// <summary>

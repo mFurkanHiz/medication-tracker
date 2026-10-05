@@ -134,6 +134,7 @@ public static class WorkspaceEndpoints
                     tags = definition.Tags,
                     notes = definition.Notes,
                     coverage = definition.Coverage.ToString(),
+                    doNotTakeWithTags = definition.DoNotTakeWithTags,
                     cautions = CautionView.Of(definition),
                     isArchived = definition.IsArchived,
 

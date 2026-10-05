@@ -1053,7 +1053,7 @@ visible.
   override, covered-only versus all-stock suggestions, policy round trip, unknown coverage
   refused). Migration-count assertions now say 16.
 
-### Slice 6 — monthly recurrence in both forms (migration 17, this checkpoint's PR)
+### Slice 6 — monthly recurrence in both forms — PR #54 (migration 17)
 
 - `RecurrencePattern.DayOfMonth` (1–31) and `RecurrencePattern.EveryNMonths` (1–120,
   anchored on the start date's day). **Calendar months, never thirty-day spans**; a day
@@ -1068,6 +1068,28 @@ visible.
 - Tests: `MonthlyRecurrenceTests` (clamping, anchoring, quarterly and yearly, due-day
   enumeration, field ownership, and an API round trip that is due only on its day).
   Migration-count assertions now say 17.
+
+### Slice 7 — do-not-take-with tags and the Today warning (migration 18, this checkpoint's PR, ADR 0016)
+
+- The one place the product cross-references two medicines, and the whole of what it
+  does is **string equality on words the household typed**: a tag on one medicine against
+  the name, brand and active ingredients of another medicine the **same person** has on
+  the **same day**. Normalised (case, diacritics, spacing, dotted and dotless i), never
+  guessed: `cvitamine` does not match `C Vitamini`. No database, no synonyms.
+- Both rows warn, with the owner's wording: on Allerset "Parol ile birlikte almayınız ·
+  Nedeni: Parol, paracetamol"; on Parol the same with "Allerset" as the reason. **Red,
+  never a block**, always attributed to the household's own tag, and every warning and
+  the tag field's hint say that silence is not a safety claim. The footer disclaimer now
+  says the app only reminds the household of its own tags.
+- The prose caution notes stay unevaluated; the tag list lives beside them. The boundary
+  paragraphs in `docs/domain-model.md`, `docs/v1-acceptance.md` and `PROJECT.md` gained
+  one sentence each; `CautionNotes` and `CautionNotesTests` keep their structural refusal.
+- `DoNotTakeWithMatcher` runs inside the Today projection — a handful of comparisons per
+  request — so the "analyse" button the owner offered as a fallback is not needed.
+- Tests: `ConflictWarningTests` (normalisation, the owner's example to the word, no
+  guessing, no self-match, brand as a name, mutual tags give one warning per row; and the
+  API: same person and day only, never blocks, round trip, not due today → no warning).
+  Migration-count assertions now say 18.
 
 ## Where this stands
 
@@ -1092,11 +1114,12 @@ owner:**
 Row 38 (the final V1 commit must pass CI) closes itself on whatever commit turns out to be
 last; it is not work, it is a condition.
 
-**Exact next action.** Sprint 7 is in progress on the owner's decisions (see the Sprint 7
-section above for what has landed). Next slice: **do-not-take-with tags** on the
-definition with the person-scoped red warning on Today and its ADR (migration 18). Then
-the general review, then the mobile preparation (versioning ADR, resume plan; no mobile
-code). One migration per PR.
+**Exact next action.** Sprint 7's seven owner slices have landed or are in their PR (see
+the Sprint 7 section above). Next: the **general review** the owner asked for — drive the
+web through every screen against a local stack, re-run the accessibility audit, review
+error handling and ordering-sensitive writes, check lending for the borrowing scenario —
+fixing small defects and recording larger ones. Then the mobile preparation: versioning
+ADR and resume plan, no mobile code.
 
 Still open for the owner, unchanged: the mobile release-channel decision when mobile
 resumes; which production household is theirs, so the synthetic ones left by smoke tests

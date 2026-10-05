@@ -54,6 +54,20 @@ export type AuthResponse = {
   accessToken: string | null;
 };
 
+export type RecurrencePattern = 'Daily' | 'SelectedWeekdays' | 'EveryNDays' | 'DayOfMonth' | 'EveryNMonths';
+
+/**
+ * One "do not take with" warning on a dose row: the other medicine, the household's own
+ * words that matched, and whose tag it came from. Never a block (ADR 0016).
+ */
+export type DoseConflict = {
+  medicationDefinitionId: string;
+  medicationName: string;
+  matched: string[];
+  notedOnMedicationDefinitionId: string;
+  notedOn: string;
+};
+
 export type DueDose = {
   planId: string;
   planVersionId: string;
@@ -69,6 +83,8 @@ export type DueDose = {
   hasEnoughStock: boolean;
   recordedOutcome: 'Taken' | 'Skipped' | 'PartialDose' | 'ExtraDose' | null;
   recordedAdministrationId: string | null;
+  /** Empty when nothing matched. Additive on the wire; an older server simply omits it. */
+  conflicts?: DoseConflict[];
 };
 
 export type TodayResponse = {
@@ -110,9 +126,11 @@ export type WorkspaceResponse = {
     medicationDefinitionId: string;
     dose: ApiQuantity;
     kind: 'Scheduled' | 'AsNeeded';
-    pattern: 'Daily' | 'SelectedWeekdays' | 'EveryNDays';
+    pattern: RecurrencePattern;
     weekdayMask: number | null;
     intervalDays: number | null;
+    dayOfMonth: number | null;
+    intervalMonths: number | null;
     effectiveFrom: string | null;
     effectiveTo: string | null;
     localTime: string | null;

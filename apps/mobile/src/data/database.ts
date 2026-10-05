@@ -14,7 +14,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
  */
 
 /** Bumped only for a change that needs a migration; see {@link migrateDatabase}. */
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 /**
  * The database file name.
@@ -52,6 +52,9 @@ export async function migrateDatabase(db: SQLiteDatabase): Promise<void> {
     // the version it upgrades from, and ordered oldest first.
     if (version < 2) {
       await db.execAsync(MIGRATE_1_TO_2);
+    }
+    if (version < 3) {
+      await db.execAsync(MIGRATE_2_TO_3);
     }
   }
 
@@ -110,6 +113,10 @@ CREATE TABLE plans (
   pattern TEXT NOT NULL,
   weekday_mask INTEGER,
   interval_days INTEGER,
+  -- The monthly patterns (server Sprint 7): the day of the month, or the months between
+  -- occurrences counted from effective_from. Each pattern owns exactly its fields.
+  day_of_month INTEGER,
+  interval_months INTEGER,
   effective_from TEXT,
   effective_to TEXT,
   local_time TEXT,
@@ -137,6 +144,9 @@ CREATE TABLE due_doses (
   has_enough_stock INTEGER NOT NULL,
   recorded_outcome TEXT,
   recorded_administration_id TEXT,
+  -- The server's "do not take with" warnings for this row, as a JSON array; '[]' when
+  -- nothing matched. Shown in red, never a block (ADR 0016).
+  conflicts TEXT NOT NULL DEFAULT '[]',
   PRIMARY KEY (plan_version_id, local_date)
 );
 
@@ -213,6 +223,20 @@ CREATE INDEX ix_reminders_plan ON reminders (plan_version_id);
  */
 const MIGRATE_1_TO_2 = `
 ALTER TABLE plans ADD COLUMN is_paused INTEGER NOT NULL DEFAULT 0;
+`;
+
+/**
+ * v2 → v3: the monthly patterns and the do-not-take-with warnings.
+ *
+ * Additive and defaulted. A plan row that predates the columns has no monthly fields,
+ * which is correct — it was written for a daily, weekly or every-N-days pattern — and a
+ * cached Today row from before the upgrade simply carries no warnings until the next
+ * sync replaces the snapshot.
+ */
+const MIGRATE_2_TO_3 = `
+ALTER TABLE plans ADD COLUMN day_of_month INTEGER;
+ALTER TABLE plans ADD COLUMN interval_months INTEGER;
+ALTER TABLE due_doses ADD COLUMN conflicts TEXT NOT NULL DEFAULT '[]';
 `;
 
 /** Keys used in {@link snapshot_meta}. */

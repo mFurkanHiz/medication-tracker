@@ -50,6 +50,9 @@ public sealed class MobileContractTests
         "scheduledFor", "hasEnoughStock", "recordedOutcome", "recordedAdministrationId",
 
         "cautions", "minimumIntervalMinutes", "lastTakenAt", "nextDoseAllowedFrom",
+
+        // Read since mobile schema v3: the "do not take with" warnings (ADR 0016).
+        "conflicts",
     ];
 
     /// <summary>Every field the phone's cached plan row needs.</summary>
@@ -59,6 +62,9 @@ public sealed class MobileContractTests
         "pattern", "weekdayMask", "intervalDays", "effectiveFrom", "effectiveTo",
         "localTime", "timeZoneId", "dayPeriod", "mealRelation",
         "minimumIntervalMinutes", "instructions", "isPaused",
+
+        // Read since mobile schema v3: the monthly patterns of server Sprint 7.
+        "dayOfMonth", "intervalMonths",
     ];
 
     /// <summary>Every field the phone's cached medication row needs.</summary>
@@ -159,6 +165,45 @@ public sealed class MobileContractTests
         // and the household would have to work out which screen to believe.
         Assert.Equal(fromWorkspace.GetRawText(), fromToday.GetRawText());
         Assert.Equal("Synthetic pharmacist warning", fromToday.GetProperty("warning").GetString());
+    }
+
+    [PostgreSqlFact]
+    public async Task A_monthly_plan_reaches_the_phone_with_its_pattern_fields_and_an_empty_conflict_list()
+    {
+        await using var harness = new ApiTestHarness();
+        var (client, household) = await harness.NewHouseholdAsync();
+        var (person, definition) = await SyntheticHouseholdAsync(client, household);
+
+        await client.PostOk($"/api/households/{household}/plans", new
+        {
+            personId = person,
+            medicationDefinitionId = definition,
+            doseNumerator = 1,
+            doseDenominator = 1,
+            timeZoneId = "UTC",
+            kind = "Scheduled",
+            pattern = "DayOfMonth",
+            dayOfMonth = 15,
+            localTime = "08:00:00",
+        });
+
+        var workspace = await client.GetOk($"/api/households/{household}/workspace");
+        var plan = workspace.GetProperty("plans").EnumerateArray().Single();
+
+        // The phone's due-day rule mirrors the server's clamp-to-month arithmetic, so it
+        // needs the day exactly as written, and the other pattern's field honestly null.
+        Assert.Equal("DayOfMonth", plan.GetProperty("pattern").GetString());
+        Assert.Equal(15, plan.GetProperty("dayOfMonth").GetInt32());
+        Assert.Equal(JsonValueKind.Null, plan.GetProperty("intervalMonths").ValueKind);
+
+        // A day the plan is due on, so there is a Today row to look at.
+        var today = await client.GetOk($"/api/households/{household}/today?date=2026-11-15");
+        var row = today.GetProperty("due").EnumerateArray().Single();
+
+        // An empty array, never absent and never null: the phone stores it as JSON and
+        // renders each entry, so "nothing matched" must look like a list with nothing in it.
+        Assert.Equal(JsonValueKind.Array, row.GetProperty("conflicts").ValueKind);
+        Assert.Empty(row.GetProperty("conflicts").EnumerateArray());
     }
 
     private static void AssertEveryFieldPresent(JsonElement row, string[] fields)

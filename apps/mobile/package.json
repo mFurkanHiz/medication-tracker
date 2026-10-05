@@ -14,12 +14,15 @@
   },
   "devDependencies": {
     "@types/react": "~19.2.2",
-    "typescript": "~6.0.3"
+    "typescript": "~6.0.3",
+    "vitest": "^5.0.3"
   },
   "scripts": {
     "start": "expo start",
     "android": "expo start --android",
     "android:device": "expo run:android --device",
+    "android:release-device": "expo run:android --device --variant release",
+    "test": "vitest run",
     "ios": "expo start --ios",
     "web": "expo start --web"
   },

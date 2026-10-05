@@ -31,9 +31,9 @@ public sealed record PlanVersionSlice(
 /// Replaying it is not the same as reading today's plan. A plan is a chain of
 /// effective-dated versions, so the version that governed a Tuesday three weeks ago may
 /// have asked for a different pattern than the one in force now. For each day the
-/// highest-numbered version covering that day wins, which is the same rule the daily
-/// due list uses, so a dose the user was shown and a dose this report expects are
-/// always the same dose.
+/// highest-numbered version that had started by then wins, and governs only while it has
+/// not ended — the same rule the daily due list uses, so a dose the user was shown and a
+/// dose this report expects are always the same dose.
 /// </para>
 /// <para>
 /// Slots are produced as instants through the version's own time zone, so a period that
@@ -119,30 +119,41 @@ public static class ScheduledSlots
     }
 
     /// <summary>
-    /// The version in force on a day: the highest-numbered one whose effective dates
-    /// cover it. Null when the plan said nothing about that day.
+    /// The version in force on a day: the highest-numbered one that had started by then,
+    /// provided it has not ended. Null when the plan said nothing about that day.
     /// </summary>
+    /// <remarks>
+    /// "Started and not ended" rather than "covers the day", on purpose. Under a covering
+    /// rule an older open-ended version keeps governing every day after a newer version's
+    /// end date, so ending a plan by appending a bounded version would quietly hand the
+    /// schedule back to the version it replaced — and an end date set on an edit never
+    /// ended anything, because the first version still covered the days after it. The
+    /// latest decision in force governs; when that decision was "this ends on the 10th",
+    /// the days after the 10th are governed by nothing. The daily due list applies the
+    /// same rule, so a dose the user is shown and a dose this replay expects agree.
+    /// </remarks>
     private static PlanVersionSlice? Governing(IEnumerable<PlanVersionSlice> versions, DateOnly day)
     {
-        PlanVersionSlice? governing = null;
+        PlanVersionSlice? latestStarted = null;
 
         foreach (var version in versions)
         {
-            if (!Covers(version.Recurrence, day))
+            if (version.Recurrence.EffectiveFrom is { } from && from > day)
             {
                 continue;
             }
 
-            if (governing is null || version.VersionNumber > governing.VersionNumber)
+            if (latestStarted is null || version.VersionNumber > latestStarted.VersionNumber)
             {
-                governing = version;
+                latestStarted = version;
             }
         }
 
-        return governing;
-    }
+        if (latestStarted is null)
+        {
+            return null;
+        }
 
-    private static bool Covers(RecurrenceSpecification recurrence, DateOnly day) =>
-        (recurrence.EffectiveFrom is null || recurrence.EffectiveFrom.Value <= day)
-        && (recurrence.EffectiveTo is null || recurrence.EffectiveTo.Value >= day);
+        return latestStarted.Recurrence.EffectiveTo is { } to && to < day ? null : latestStarted;
+    }
 }

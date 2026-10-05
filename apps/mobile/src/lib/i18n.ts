@@ -100,6 +100,13 @@ export const tr = {
   conflictDiscard: 'Yerel kaydı sil',
   rejectedTitle: 'Sunucu reddetti',
 
+  // "Birlikte alınmaz" etiketleri (ADR 0016): hanenin kendi sözleri, sunucu eşleştirdi,
+  // telefon yalnız gösterir. Uyarıdır, engel değildir; sessizlik güvenlik iddiası değildir.
+  doNotTakeWith: '{name} ile birlikte almayınız',
+  doNotTakeWithReason: 'Nedeni',
+  doNotTakeWithFrom:
+    'Bu uyarı hanenin {name} için yazdığı etiketten geliyor; uygulama eksiksiz olduğunu garanti etmez.',
+
   // Reminders
   reminders: 'Hatırlatıcılar',
   remindersOn: 'Hatırlatıcılar açık',
@@ -227,6 +234,10 @@ export const en: Record<MessageKey, string> = {
   conflictRetry: 'Send again',
   conflictDiscard: 'Discard the local record',
   rejectedTitle: 'The server refused this',
+
+  doNotTakeWith: 'Do not take with {name}',
+  doNotTakeWithReason: 'Reason',
+  doNotTakeWithFrom: "From the household's own tag on {name}; the app does not vouch for completeness.",
 
   reminders: 'Reminders',
   remindersOn: 'Reminders are on',

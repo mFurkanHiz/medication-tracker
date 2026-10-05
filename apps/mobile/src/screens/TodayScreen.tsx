@@ -21,6 +21,7 @@ import {
   requestPermissionAsync,
   type ReminderPlan,
 } from '../notifications/reminders';
+import type { RecurrencePattern } from '../notifications/schedule';
 import { Badge, Button, Card, Notice, SectionTitle, palette, useTranslate } from '../ui/theme';
 import { DoseDetailsSheet } from './DoseDetailsSheet';
 
@@ -321,6 +322,23 @@ function DoseRow({
 
       {dose.isConflicted ? <Text style={styles.muted}>{t('conflictHint')}</Text> : null}
 
+      {/* The household's own "do not take with" tags, matched by the server among this
+          person's doses today (ADR 0016). Read back in red with the words that matched
+          and whose tag it was; the buttons stay — a warning is not a block. */}
+      {dose.conflicts.map((conflict) => (
+        <View key={`${conflict.notedOnMedicationDefinitionId}-${conflict.medicationDefinitionId}`} style={styles.warning}>
+          <Text style={styles.warningTitle}>
+            {t('doNotTakeWith').replace('{name}', conflict.medicationName)}
+          </Text>
+          <Text style={styles.warningDetail}>
+            {t('doNotTakeWithReason')}: {conflict.matched.join(', ')}
+          </Text>
+          <Text style={styles.warningDetail}>
+            {t('doNotTakeWithFrom').replace('{name}', conflict.notedOn)}
+          </Text>
+        </View>
+      ))}
+
       <View style={styles.actions}>
         {recorded ? null : (
           <>
@@ -343,9 +361,11 @@ async function readReminderPlans(db: ReturnType<typeof useSQLiteContext>): Promi
     doseNumerator: number;
     doseDenominator: number;
     kind: 'Scheduled' | 'AsNeeded';
-    pattern: 'Daily' | 'SelectedWeekdays' | 'EveryNDays';
+    pattern: RecurrencePattern;
     weekdayMask: number | null;
     intervalDays: number | null;
+    dayOfMonth: number | null;
+    intervalMonths: number | null;
     effectiveFrom: string | null;
     effectiveTo: string | null;
     localTime: string | null;
@@ -360,6 +380,8 @@ async function readReminderPlans(db: ReturnType<typeof useSQLiteContext>): Promi
             pl.kind, pl.pattern,
             pl.weekday_mask AS weekdayMask,
             pl.interval_days AS intervalDays,
+            pl.day_of_month AS dayOfMonth,
+            pl.interval_months AS intervalMonths,
             pl.effective_from AS effectiveFrom,
             pl.effective_to AS effectiveTo,
             pl.local_time AS localTime,
@@ -385,6 +407,8 @@ async function readReminderPlans(db: ReturnType<typeof useSQLiteContext>): Promi
     pattern: row.pattern,
     weekdayMask: row.weekdayMask,
     intervalDays: row.intervalDays,
+    dayOfMonth: row.dayOfMonth,
+    intervalMonths: row.intervalMonths,
     effectiveFrom: row.effectiveFrom,
     effectiveTo: row.effectiveTo,
     localTime: row.localTime,
@@ -427,5 +451,8 @@ const styles = StyleSheet.create({
   actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   conflictCard: { borderColor: palette.danger },
   conflictTitle: { fontSize: 16, fontWeight: '800', color: palette.danger },
+  warning: { backgroundColor: palette.dangerSoft, borderRadius: 10, padding: 10, gap: 2 },
+  warningTitle: { color: palette.danger, fontSize: 15, fontWeight: '800' },
+  warningDetail: { color: palette.danger, fontSize: 13, lineHeight: 18 },
   footer: { color: palette.inkFaint, fontSize: 12, lineHeight: 18, marginTop: 8 },
 });

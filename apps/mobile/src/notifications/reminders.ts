@@ -3,6 +3,17 @@ import { Platform } from 'react-native';
 import type { SQLiteDatabase } from 'expo-sqlite';
 import { META, readMeta, writeMeta } from '../data/database';
 import type { Translate } from '../lib/i18n';
+import {
+  canRepeatOnDevice,
+  expoWeekdays,
+  instantForWallClock,
+  parseLocalTime,
+  resolveDeviceZone,
+  startOfDayParts,
+  upcomingDueDays,
+  type DueRule,
+  type RecurrencePattern,
+} from './schedule';
 
 /**
  * Device-local medication reminders.
@@ -20,6 +31,13 @@ import type { Translate } from '../lib/i18n';
  *    rebuilds the schedule when the device zone has changed.
  *  - **Plan changes.** A plan edited on another device arrives through sync; the
  *    schedule is rebuilt when the plan signature changes.
+ *  - **A version's dates.** A repeating trigger never stops, so only a started,
+ *    open-ended daily or weekly version gets one. A version with an end date, a future
+ *    start, or a monthly or every-N-days pattern is scheduled as exact instants, which
+ *    do stop — a plan the household ended on the web must not keep reminding here.
+ *
+ * The days themselves come from `./schedule`, which mirrors the server's rule and is
+ * unit-tested; nothing in this file decides whether a day is due.
  *
  * Two deliberate limitations, stated rather than hidden:
  *  - The library does not request `SCHEDULE_EXACT_ALARM`, so Android may defer a
@@ -47,18 +65,17 @@ Notifications.setNotificationHandler({
   }),
 });
 
-/** How many occurrences of an interval plan to schedule ahead, topped up on each reconcile. */
-const INTERVAL_HORIZON = 14;
-
 export type ReminderPlan = {
   planVersionId: string;
   medicationName: string;
   personName: string;
   doseLabel: string;
   kind: 'Scheduled' | 'AsNeeded';
-  pattern: 'Daily' | 'SelectedWeekdays' | 'EveryNDays';
+  pattern: RecurrencePattern;
   weekdayMask: number | null;
   intervalDays: number | null;
+  dayOfMonth: number | null;
+  intervalMonths: number | null;
   effectiveFrom: string | null;
   effectiveTo: string | null;
   /** `HH:mm:ss`. Null means a named period only, which gets no reminder. */
@@ -74,6 +91,8 @@ export type ReminderStatus = {
   /** Plans skipped because they have no clock time to remind at. */
   skippedWithoutTime: number;
 };
+
+export { resolveDeviceZone } from './schedule';
 
 export async function ensureChannelAsync(t: Translate): Promise<void> {
   if (Platform.OS !== 'android') {
@@ -105,7 +124,8 @@ export async function requestPermissionAsync(): Promise<boolean> {
  *
  * Cheap when nothing changed: a signature over the plans plus the device time zone is
  * compared against what was last scheduled, and the whole thing is skipped if they
- * match and the OS still holds the expected number of notifications.
+ * match, the OS still holds the expected number of notifications, and no instant-based
+ * plan has run out of scheduled occurrences.
  */
 export async function reconcileReminders(
   db: SQLiteDatabase,
@@ -140,15 +160,7 @@ export async function reconcileReminders(
     // The OS still holds everything we expect, and nothing about the plans or the
     // device's zone has changed. Leave it alone — rescheduling would churn the
     // notification list for no reason.
-    const intervalPending = await db.getFirstAsync<{ count: number }>(
-      "SELECT count(*) AS count FROM reminders WHERE trigger_kind = 'date' AND fires_at > ?",
-      now.toISOString(),
-    );
-
-    const needsTopUp = (intervalPending?.count ?? 0) === 0
-      && plans.some((plan) => plan.pattern === 'EveryNDays');
-
-    if (stillScheduled.length === known.length && !needsTopUp) {
+    if (stillScheduled.length === known.length && !(await needsTopUp(db, plans, deviceZone, now))) {
       return {
         permitted: true,
         scheduled: known.length,
@@ -179,37 +191,39 @@ export async function reconcileReminders(
       data: { planVersionId: plan.planVersionId },
     };
 
-    // A repeating OS trigger is only correct when the plan's zone is the device's: the
-    // OS fires on device wall-clock, so a plan anchored to another zone has to be
-    // converted and scheduled as individual instants instead.
-    const sameZone = plan.timeZoneId === deviceZone;
+    const rule = ruleOf(plan);
 
-    if (sameZone && plan.pattern === 'Daily') {
-      scheduled += await schedule(db, plan, content, 'daily', signature, null, {
-        type: Notifications.SchedulableTriggerInputTypes.DAILY,
-        channelId: CHANNEL_ID,
-        hour,
-        minute,
-      });
-      continue;
-    }
-
-    if (sameZone && plan.pattern === 'SelectedWeekdays' && plan.weekdayMask !== null) {
-      for (const weekday of expoWeekdays(plan.weekdayMask)) {
-        scheduled += await schedule(db, plan, content, 'weekly', signature, null, {
-          type: Notifications.SchedulableTriggerInputTypes.WEEKLY,
+    // A repeating OS trigger is only correct when the plan's zone is the device's — the
+    // OS fires on device wall-clock — and when the version itself repeats without end.
+    if (plan.timeZoneId === deviceZone && canRepeatOnDevice(rule, startOfDayParts(now, plan.timeZoneId))) {
+      if (plan.pattern === 'Daily') {
+        scheduled += await schedule(db, plan, content, 'daily', signature, null, {
+          type: Notifications.SchedulableTriggerInputTypes.DAILY,
           channelId: CHANNEL_ID,
-          weekday,
           hour,
           minute,
         });
+        continue;
       }
-      continue;
+
+      if (plan.pattern === 'SelectedWeekdays' && plan.weekdayMask !== null) {
+        for (const weekday of expoWeekdays(plan.weekdayMask)) {
+          scheduled += await schedule(db, plan, content, 'weekly', signature, null, {
+            type: Notifications.SchedulableTriggerInputTypes.WEEKLY,
+            channelId: CHANNEL_ID,
+            weekday,
+            hour,
+            minute,
+          });
+        }
+        continue;
+      }
     }
 
-    // Everything else — every-N-days, or a plan anchored to a different zone — is
-    // scheduled as a bounded run of exact instants and topped up on later reconciles.
-    for (const instant of upcomingInstants(plan, hour, minute, now)) {
+    // Everything else — every-N-days, the monthly patterns, a version with an end or a
+    // future start, or a plan anchored to another zone — is a bounded run of exact
+    // instants, topped up on later reconciles.
+    for (const instant of upcomingInstants(rule, plan.timeZoneId, hour, minute, now)) {
       scheduled += await schedule(db, plan, content, 'date', signature, instant, {
         type: Notifications.SchedulableTriggerInputTypes.DATE,
         channelId: CHANNEL_ID,
@@ -267,6 +281,46 @@ async function schedule(
 }
 
 /**
+ * Whether an instant-based plan still asks for days it has no notification for.
+ *
+ * A bounded run of instants is exhausted either because the last of them fired — in
+ * which case the OS list is already shorter than ours and the caller rebuilds — or
+ * because none were scheduled yet. This catches the second case without rebuilding
+ * every foreground for a version that has simply ended.
+ */
+async function needsTopUp(
+  db: SQLiteDatabase,
+  plans: readonly ReminderPlan[],
+  deviceZone: string,
+  now: Date,
+): Promise<boolean> {
+  const pending = await db.getAllAsync<{ planVersionId: string; count: number }>(
+    "SELECT plan_version_id AS planVersionId, count(*) AS count FROM reminders WHERE trigger_kind = 'date' AND fires_at > ? GROUP BY plan_version_id",
+    now.toISOString(),
+  );
+  const pendingByPlan = new Map(pending.map((row) => [row.planVersionId, row.count]));
+
+  return plans.some((plan) => {
+    if (!schedulable(plan) || withoutTime(plan)) {
+      return false;
+    }
+
+    const rule = ruleOf(plan);
+
+    if (plan.timeZoneId === deviceZone && canRepeatOnDevice(rule, startOfDayParts(now, plan.timeZoneId))) {
+      return false;
+    }
+
+    if ((pendingByPlan.get(plan.planVersionId) ?? 0) > 0) {
+      return false;
+    }
+
+    const [hour, minute] = parseLocalTime(plan.localTime!);
+    return upcomingInstants(rule, plan.timeZoneId, hour, minute, now).length > 0;
+  });
+}
+
+/**
  * Whether this plan should hold notifications at all.
  *
  * Used by BOTH the scheduling loop and {@link signatureFor}, deliberately. The signature
@@ -283,186 +337,25 @@ function withoutTime(plan: ReminderPlan): boolean {
   return plan.kind === 'Scheduled' && !plan.localTime;
 }
 
-function parseLocalTime(value: string): [number, number] {
-  const [hour, minute] = value.split(':');
-  return [Number(hour), Number(minute)];
-}
-
-/** The domain's Monday-first mask, as Expo's Sunday-first 1–7 weekday numbers. */
-function expoWeekdays(mask: number): number[] {
-  const days: number[] = [];
-  for (let bit = 0; bit < 7; bit++) {
-    if ((mask & (1 << bit)) !== 0) {
-      // bit 0 = Monday in the domain; Expo wants 1 = Sunday.
-      days.push(((bit + 1) % 7) + 1);
-    }
-  }
-
-  return days;
-}
-
-/**
- * The next instants a plan is due at, bounded by {@link INTERVAL_HORIZON}.
- *
- * Used for every-N-days plans, and for any plan whose own time zone is not the
- * device's — in both cases a repeating OS trigger would fire at the wrong moment.
- */
-function upcomingInstants(plan: ReminderPlan, hour: number, minute: number, now: Date): Date[] {
-  const zone = plan.timeZoneId;
-  const anchor = plan.effectiveFrom ? parseDate(plan.effectiveFrom) : null;
-  const until = plan.effectiveTo ? parseDate(plan.effectiveTo) : null;
-  const interval = plan.pattern === 'EveryNDays' ? (plan.intervalDays ?? 1) : 1;
-
-  const instants: Date[] = [];
-  const today = startOfDayParts(now, zone);
-
-  for (let offset = 0; offset < INTERVAL_HORIZON * Math.max(interval, 1) && instants.length < INTERVAL_HORIZON; offset++) {
-    const day = addDays(today, offset);
-
-    if (anchor && compareDays(day, anchor) < 0) {
-      continue;
-    }
-
-    if (until && compareDays(day, until) > 0) {
-      break;
-    }
-
-    if (!isDue(plan, day, anchor, interval)) {
-      continue;
-    }
-
-    const instant = instantForWallClock(day, hour, minute, zone);
-    if (instant.getTime() > now.getTime()) {
-      instants.push(instant);
-    }
-  }
-
-  return instants;
-}
-
-type DayParts = { year: number; month: number; day: number };
-
-function isDue(plan: ReminderPlan, day: DayParts, anchor: DayParts | null, interval: number): boolean {
-  if (plan.pattern === 'Daily') {
-    return true;
-  }
-
-  if (plan.pattern === 'SelectedWeekdays') {
-    if (plan.weekdayMask === null) {
-      return false;
-    }
-    // Monday is bit 0, matching the server's rule.
-    const weekday = (new Date(Date.UTC(day.year, day.month - 1, day.day)).getUTCDay() + 6) % 7;
-    return (plan.weekdayMask & (1 << weekday)) !== 0;
-  }
-
-  if (!anchor) {
-    return false;
-  }
-
-  const elapsed = dayNumber(day) - dayNumber(anchor);
-  return elapsed >= 0 && elapsed % interval === 0;
-}
-
-function dayNumber(parts: DayParts): number {
-  return Math.floor(Date.UTC(parts.year, parts.month - 1, parts.day) / 86_400_000);
-}
-
-function compareDays(left: DayParts, right: DayParts): number {
-  return dayNumber(left) - dayNumber(right);
-}
-
-function addDays(parts: DayParts, days: number): DayParts {
-  const shifted = new Date(Date.UTC(parts.year, parts.month - 1, parts.day + days));
+function ruleOf(plan: ReminderPlan): DueRule {
   return {
-    year: shifted.getUTCFullYear(),
-    month: shifted.getUTCMonth() + 1,
-    day: shifted.getUTCDate(),
+    kind: plan.kind,
+    pattern: plan.pattern,
+    weekdayMask: plan.weekdayMask,
+    intervalDays: plan.intervalDays,
+    dayOfMonth: plan.dayOfMonth,
+    intervalMonths: plan.intervalMonths,
+    effectiveFrom: plan.effectiveFrom,
+    effectiveTo: plan.effectiveTo,
+    isPaused: plan.isPaused,
   };
 }
 
-function parseDate(value: string): DayParts {
-  const [year, month, day] = value.slice(0, 10).split('-').map(Number);
-  return { year, month, day };
-}
-
-function startOfDayParts(at: Date, zone: string): DayParts {
-  const parts = zonedParts(at, zone);
-  return { year: parts.year, month: parts.month, day: parts.day };
-}
-
-/**
- * The instant at which a wall-clock time occurs in a named zone.
- *
- * Two passes: guess the instant as if the wall clock were UTC, read the zone's real
- * offset at that guess, then correct. A second pass settles the case where the
- * correction itself crosses a daylight-saving boundary.
- */
-function instantForWallClock(day: DayParts, hour: number, minute: number, zone: string): Date {
-  const naive = Date.UTC(day.year, day.month - 1, day.day, hour, minute);
-  let instant = naive;
-
-  for (let pass = 0; pass < 2; pass++) {
-    instant = naive - zoneOffsetMs(new Date(instant), zone);
-  }
-
-  return new Date(instant);
-}
-
-function zoneOffsetMs(at: Date, zone: string): number {
-  const parts = zonedParts(at, zone);
-  const asUtc = Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second);
-  return asUtc - at.getTime();
-}
-
-function zonedParts(at: Date, zone: string) {
-  try {
-    const formatter = new Intl.DateTimeFormat('en-US', {
-      timeZone: zone,
-      hour12: false,
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-    });
-
-    const parts: Record<string, string> = {};
-    for (const part of formatter.formatToParts(at)) {
-      parts[part.type] = part.value;
-    }
-
-    return {
-      year: Number(parts.year),
-      month: Number(parts.month),
-      day: Number(parts.day),
-      // Some engines render midnight as hour 24.
-      hour: Number(parts.hour) % 24,
-      minute: Number(parts.minute),
-      second: Number(parts.second),
-    };
-  } catch {
-    // A runtime without full Intl time-zone data falls back to the device's own clock.
-    // The reminder is then anchored to device-local time, which is right whenever the
-    // phone is in the plan's zone and visibly wrong when it is not.
-    return {
-      year: at.getFullYear(),
-      month: at.getMonth() + 1,
-      day: at.getDate(),
-      hour: at.getHours(),
-      minute: at.getMinutes(),
-      second: at.getSeconds(),
-    };
-  }
-}
-
-export function resolveDeviceZone(): string {
-  try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
-  } catch {
-    return 'UTC';
-  }
+/** The next instants a version is due at, in the future only, bounded by the horizon. */
+function upcomingInstants(rule: DueRule, zone: string, hour: number, minute: number, now: Date): Date[] {
+  return upcomingDueDays(rule, startOfDayParts(now, zone))
+    .map((day) => instantForWallClock(day, hour, minute, zone))
+    .filter((instant) => instant.getTime() > now.getTime());
 }
 
 /**
@@ -478,6 +371,8 @@ function signatureFor(plans: readonly ReminderPlan[]): string {
         plan.pattern,
         plan.weekdayMask ?? '',
         plan.intervalDays ?? '',
+        plan.dayOfMonth ?? '',
+        plan.intervalMonths ?? '',
         plan.localTime ?? '',
         plan.effectiveFrom ?? '',
         plan.effectiveTo ?? '',

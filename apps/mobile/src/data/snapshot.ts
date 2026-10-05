@@ -1,5 +1,5 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
-import { api, type ApiConfig, type TodayResponse, type WorkspaceResponse } from '../lib/api';
+import { api, type ApiConfig, type DoseConflict, type TodayResponse, type WorkspaceResponse } from '../lib/api';
 import type { Quantity } from '../lib/quantity';
 import { META, writeMeta } from './database';
 
@@ -23,6 +23,8 @@ export type LocalDueDose = {
   mealRelation: string | null;
   scheduledFor: string | null;
   hasEnoughStock: boolean;
+  /** The server's "do not take with" warnings for this row. Shown, never enforced. */
+  conflicts: DoseConflict[];
   /** What the server recorded, if anything. */
   serverOutcome: string | null;
   /** What this device recorded and has not had acknowledged. */
@@ -139,9 +141,9 @@ async function writePlans(db: SQLiteDatabase, workspace: WorkspaceResponse): Pro
     await db.runAsync(
       `INSERT INTO plans (
          id, version_id, person_id, medication_id, dose_numerator, dose_denominator,
-         kind, pattern, weekday_mask, interval_days, effective_from, effective_to,
-         local_time, time_zone_id, day_period, is_paused
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         kind, pattern, weekday_mask, interval_days, day_of_month, interval_months,
+         effective_from, effective_to, local_time, time_zone_id, day_period, is_paused
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       plan.id,
       plan.versionId,
       plan.personId,
@@ -152,6 +154,8 @@ async function writePlans(db: SQLiteDatabase, workspace: WorkspaceResponse): Pro
       plan.pattern,
       plan.weekdayMask,
       plan.intervalDays,
+      plan.dayOfMonth ?? null,
+      plan.intervalMonths ?? null,
       plan.effectiveFrom,
       plan.effectiveTo,
       plan.localTime,
@@ -168,8 +172,8 @@ async function writeDue(db: SQLiteDatabase, today: TodayResponse, localDate: str
       `INSERT INTO due_doses (
          plan_version_id, scheduled_for, local_date, plan_id, person_id, medication_id,
          dose_numerator, dose_denominator, kind, local_time, day_period, meal_relation,
-         has_enough_stock, recorded_outcome, recorded_administration_id
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         has_enough_stock, recorded_outcome, recorded_administration_id, conflicts
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       dose.planVersionId,
       dose.scheduledFor,
       localDate,
@@ -185,6 +189,7 @@ async function writeDue(db: SQLiteDatabase, today: TodayResponse, localDate: str
       dose.hasEnoughStock ? 1 : 0,
       dose.recordedOutcome,
       dose.recordedAdministrationId,
+      JSON.stringify(dose.conflicts ?? []),
     );
   }
 }
@@ -213,6 +218,7 @@ export async function readToday(db: SQLiteDatabase, localDate: string): Promise<
     mealRelation: string | null;
     scheduledFor: string | null;
     hasEnoughStock: number;
+    conflicts: string;
     serverOutcome: string | null;
     localOutcome: string | null;
     localDoseId: string | null;
@@ -233,6 +239,7 @@ export async function readToday(db: SQLiteDatabase, localDate: string): Promise<
             d.meal_relation   AS mealRelation,
             d.scheduled_for   AS scheduledFor,
             d.has_enough_stock AS hasEnoughStock,
+            d.conflicts       AS conflicts,
             d.recorded_outcome AS serverOutcome,
             l.outcome         AS localOutcome,
             l.id              AS localDoseId,
@@ -267,6 +274,7 @@ export async function readToday(db: SQLiteDatabase, localDate: string): Promise<
     mealRelation: row.mealRelation,
     scheduledFor: row.scheduledFor,
     hasEnoughStock: row.hasEnoughStock === 1,
+    conflicts: parseConflicts(row.conflicts),
     serverOutcome: row.serverOutcome,
     localOutcome: row.localOutcome,
     localDoseId: row.localDoseId,
@@ -278,6 +286,16 @@ export async function readToday(db: SQLiteDatabase, localDate: string): Promise<
       row.serverOutcome !== row.localOutcome,
     isPending: row.localDoseId !== null && queued.has(row.localDoseId),
   }));
+}
+
+/** A warning the phone cannot read is dropped, never turned into a crash on the Today screen. */
+function parseConflicts(value: string | null): DoseConflict[] {
+  try {
+    const parsed: unknown = JSON.parse(value ?? '[]');
+    return Array.isArray(parsed) ? (parsed as DoseConflict[]) : [];
+  } catch {
+    return [];
+  }
 }
 
 export async function readStock(db: SQLiteDatabase): Promise<MedicationStock[]> {

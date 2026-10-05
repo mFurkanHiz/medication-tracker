@@ -52,8 +52,10 @@ this, for the owner to choose when accepting the release:
 - Keep history untouched and call the accepted release `v1.0.1`, noting that `v1.0.0`
   was the retired baseline.
 
-Either way the mobile client, when it resumes, aims at `mobile-v1.0.x` parity first and
-then follows the server line.
+**Decided by the owner on 2026-10-05, with the acceptance:** history stays untouched.
+`v1.0.0` remains the retired 2026-09-14 baseline and the accepted release is **`v1.0.1`**
+("eskiler v1.0.0, bundan sonra yapacaklarımız v1.0.1"). The mobile client therefore aims
+at `mobile-v1.0.1` parity first and then follows the server line.
 
 ## Consequences
 

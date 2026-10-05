@@ -112,6 +112,7 @@ jobs:
       - run: pnpm lint
       - run: pnpm test:web
       - run: pnpm typecheck:mobile
+      - run: pnpm test:mobile
 
       # The on-device schema gets one chance to upgrade correctly on somebody's phone,
       # and the developer's own device is always the clean install that hides the bug.

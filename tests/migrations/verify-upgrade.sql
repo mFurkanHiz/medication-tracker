@@ -21,7 +21,7 @@ DECLARE
     skipped_dose CONSTANT uuid := '67676767-6767-4676-8676-767676767676';
     consume_entry CONSTANT uuid := 'f3f3f3f3-f3f3-4f3f-8f3f-f3f3f3f3f3f3';
 BEGIN
-    IF (SELECT count(*) FROM infrastructure.__ef_migrations_history) <> 14 THEN
+    IF (SELECT count(*) FROM infrastructure.__ef_migrations_history) <> 15 THEN
         RAISE EXCEPTION 'Unexpected migration history count: %',
             (SELECT count(*) FROM infrastructure.__ef_migrations_history);
     END IF;

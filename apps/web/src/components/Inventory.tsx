@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { ApiError, api, type AddStockInput, type MedicationDefinitionInput } from '@/lib/api';
+import { ApiError, api, type AddStockInput, type MedicationDefinitionInput, type UpdatePackageInput } from '@/lib/api';
 import { cautionList, enumKey, errorKey, useLocale } from '@/lib/i18n';
 import { addQuantities, formatQuantity, parseQuantity, type Quantity } from '@/lib/quantity';
 import type {
@@ -361,6 +361,7 @@ function PackageRow({ household, pkg, activeLoanId, people, onChanged, onError }
 }) {
   const { t } = useLocale();
   const [busy, setBusy] = useState(false);
+  const [editing, setEditing] = useState(false);
   const stateKey = enumKey(pkg.state);
 
   async function run(action: () => Promise<unknown>) {
@@ -382,8 +383,15 @@ function PackageRow({ household, pkg, activeLoanId, people, onChanged, onError }
     <li className="rounded-xl border border-line bg-surface-raised p-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
+          {/* The name is the household's; the ordinal stays beside it so "Kutu 2" in a
+              conversation still finds the right box. */}
           <p className="font-semibold">
-            {t('packageOrdinal')} {pkg.ordinal}
+            {pkg.label ? pkg.label : `${t('packageOrdinal')} ${pkg.ordinal}`}
+            {pkg.label ? (
+              <span className="ml-2 text-sm font-normal text-ink-muted">
+                {t('packageOrdinal')} {pkg.ordinal}
+              </span>
+            ) : null}
           </p>
           <p className="text-sm text-ink-muted">
             {formatQuantity(pkg.remaining)} / {formatQuantity(pkg.nominalCapacity)}
@@ -424,6 +432,10 @@ function PackageRow({ household, pkg, activeLoanId, people, onChanged, onError }
               }
             >
               {pkg.isPinned ? t('unpin') : t('pin')}
+            </Button>
+
+            <Button variant="quiet" disabled={busy} onClick={() => setEditing(true)}>
+              {t('editPackage')}
             </Button>
 
             {activeLoanId ? (
@@ -480,7 +492,129 @@ function PackageRow({ household, pkg, activeLoanId, people, onChanged, onError }
           <p className="text-sm text-ink-muted">{t('reinstateHint')}</p>
         </div>
       )}
+
+      {editing ? (
+        <EditPackageDialog
+          household={household}
+          pkg={pkg}
+          onClose={() => setEditing(false)}
+          onSaved={() => {
+            setEditing(false);
+            onChanged();
+          }}
+        />
+      ) : null}
     </li>
+  );
+}
+
+/**
+ * The details of one box the household may change after adding it: its name, where it
+ * is kept, and the facts printed on it.
+ *
+ * The route existed before this dialog did; the web simply had no way to reach it, so a
+ * location typed at add time was the last word on the box. PUT replaces every detail, so
+ * the fields the dialog does not show (barcode, source) are sent back unchanged rather
+ * than silently cleared.
+ */
+function EditPackageDialog({ household, pkg, onClose, onSaved }: {
+  household: string;
+  pkg: MedicationPackage;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const { t } = useLocale();
+  const [label, setLabel] = useState(pkg.label ?? '');
+  const [storageLocation, setStorageLocation] = useState(pkg.storageLocation ?? '');
+  const [note, setNote] = useState(pkg.note ?? '');
+  const [expiresOn, setExpiresOn] = useState(pkg.expiresOn ?? '');
+  const [acquiredOn, setAcquiredOn] = useState(pkg.acquiredOn ?? '');
+  const [lotNumber, setLotNumber] = useState(pkg.lotNumber ?? '');
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function submit() {
+    setBusy(true);
+    setError(null);
+    try {
+      const input: UpdatePackageInput = {
+        label: label.trim() || null,
+        storageLocation: storageLocation.trim() || null,
+        note: note.trim() || null,
+        expiresOn: expiresOn === '' ? null : expiresOn,
+        acquiredOn: acquiredOn === '' ? null : acquiredOn,
+        lotNumber: lotNumber.trim() || null,
+        barcode: pkg.barcode ?? null,
+        source: pkg.source ?? null,
+      };
+      await api.updatePackage(household, pkg.id, input);
+      onSaved();
+    } catch (caught) {
+      setError(t(caught instanceof ApiError ? errorKey(caught.code) : 'errorNetwork'));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Dialog
+      open
+      onClose={onClose}
+      title={`${t('editPackage')} — ${t('packageOrdinal')} ${pkg.ordinal}`}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>
+            {t('cancel')}
+          </Button>
+          <Button onClick={() => void submit()} disabled={busy}>
+            {t('save')}
+          </Button>
+        </>
+      }
+    >
+      <div className="flex flex-col gap-4">
+        {error ? <Notice tone="danger">{error}</Notice> : null}
+
+        <Field label={t('packageLabel')} hint={t('packageLabelHint')} optional={t('optional')}>
+          {({ id, describedBy }) => (
+            <Input
+              id={id}
+              aria-describedby={describedBy}
+              maxLength={60}
+              value={label}
+              onChange={(e) => setLabel(e.target.value)}
+            />
+          )}
+        </Field>
+
+        <Field label={t('storageLocation')} hint={t('storageLocationHint')} optional={t('optional')}>
+          {({ id, describedBy }) => (
+            <Input
+              id={id}
+              aria-describedby={describedBy}
+              value={storageLocation}
+              onChange={(e) => setStorageLocation(e.target.value)}
+            />
+          )}
+        </Field>
+
+        <div className="grid gap-4 sm:grid-cols-3">
+          <Field label={t('expiresOn')} optional={t('optional')}>
+            {({ id }) => <Input id={id} type="date" value={expiresOn} onChange={(e) => setExpiresOn(e.target.value)} />}
+          </Field>
+          <Field label={t('acquiredOn')} optional={t('optional')}>
+            {({ id }) => <Input id={id} type="date" value={acquiredOn} onChange={(e) => setAcquiredOn(e.target.value)} />}
+          </Field>
+          <Field label={t('lotNumber')} optional={t('optional')}>
+            {({ id }) => <Input id={id} value={lotNumber} onChange={(e) => setLotNumber(e.target.value)} />}
+          </Field>
+        </div>
+
+        <Field label={t('note')} optional={t('optional')}>
+          {({ id }) => <Textarea id={id} rows={3} value={note} onChange={(e) => setNote(e.target.value)} />}
+        </Field>
+      </div>
+    </Dialog>
   );
 }
 

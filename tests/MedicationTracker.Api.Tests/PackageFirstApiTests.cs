@@ -605,6 +605,40 @@ public sealed class PackageFirstApiTests
     }
 
     [PostgreSqlFact]
+    public async Task A_box_can_be_named_and_located_after_it_was_added()
+    {
+        await using var harness = new ApiTestHarness();
+        var (client, household) = await harness.NewHouseholdAsync();
+        var definition = await CreateParolAsync(client, household);
+        var packages = await AddAcceptanceStockAsync(client, household, definition);
+
+        // The owner, testing the live site: boxes should be nameable, and should say where
+        // in the home they are. The route existed; the web could not reach it, and there
+        // was no name. Whitespace is trimmed so a name is never "  Yatak odasındaki  ".
+        await client.PutOk($"/api/households/{household}/inventory/packages/{packages.BoxA}", new
+        {
+            label = "  Yatak odasındaki  ",
+            storageLocation = "Şifonyer, üstten 2. çekmece",
+        });
+
+        var box = await BoxAsync(client, household, definition, packages.BoxA);
+        Assert.Equal("Yatak odasındaki", box.GetProperty("label").GetString());
+        Assert.Equal("Şifonyer, üstten 2. çekmece", box.GetProperty("storageLocation").GetString());
+
+        // A name is a courtesy to the reader, not a paragraph; past the limit the request
+        // is refused by name rather than failing deep in the database.
+        var tooLong = await client.PutAsJsonAsync(
+            $"/api/households/{household}/inventory/packages/{packages.BoxA}",
+            new { label = new string('a', MedicationPackage.MaximumLabelLength + 1) });
+        Assert.Equal(HttpStatusCode.BadRequest, tooLong.StatusCode);
+        Assert.Equal("Yatak odasındaki", (await BoxAsync(client, household, definition, packages.BoxA)).GetProperty("label").GetString());
+
+        // Clearing the name returns the box to its ordinal.
+        await client.PutOk($"/api/households/{household}/inventory/packages/{packages.BoxA}", new { label = "   " });
+        Assert.Equal(JsonValueKind.Null, (await BoxAsync(client, household, definition, packages.BoxA)).GetProperty("label").ValueKind);
+    }
+
+    [PostgreSqlFact]
     public async Task Another_household_cannot_read_or_change_this_households_stock()
     {
         await using var harness = new ApiTestHarness();
@@ -856,6 +890,13 @@ public sealed class PackageFirstApiTests
             packages[0].GetProperty("id").GetGuid(),
             packages[1].GetProperty("id").GetGuid(),
             packages[2].GetProperty("id").GetGuid());
+    }
+
+    private static async Task<JsonElement> BoxAsync(HttpClient client, Guid household, Guid definition, Guid packageId)
+    {
+        var stock = await client.GetOk($"/api/households/{household}/inventory/{definition}");
+        return stock.GetProperty("packages").EnumerateArray()
+            .Single(package => package.GetProperty("id").GetGuid() == packageId);
     }
 
     /// <summary>The one pinned box of a medicine, or null when none is pinned.</summary>

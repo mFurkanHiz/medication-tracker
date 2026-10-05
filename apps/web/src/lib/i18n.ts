@@ -106,6 +106,11 @@ export const tr = {
   acquiredOn: 'Edinme tarihi',
   lotNumber: 'Lot numarası',
   storageLocation: 'Saklama yeri',
+  storageLocationHint: 'Evin neresinde: "TV ünitesi, sol çekmece" gibi.',
+  editPackage: 'Kutuyu düzenle',
+  packageLabel: 'Kutu adı',
+  packageLabelHint: '"Kutu 2" yerine görünür; örneğin "Yatak odasındaki".',
+  errorLabelTooLong: 'Kutu adı en fazla 60 karakter olabilir.',
   note: 'Not',
   showPackages: 'Kutuları göster',
   moreActions: 'Diğer işlemler',
@@ -505,6 +510,11 @@ export const en: Record<MessageKey, string> = {
   acquiredOn: 'Acquired',
   lotNumber: 'Lot number',
   storageLocation: 'Stored in',
+  storageLocationHint: 'Where in the home: "TV unit, left drawer".',
+  editPackage: 'Edit box',
+  packageLabel: 'Box name',
+  packageLabelHint: 'Shown instead of "Box 2"; for example "the bedroom one".',
+  errorLabelTooLong: 'A box name can be at most 60 characters.',
   note: 'Note',
   showPackages: 'Show packages',
   moreActions: 'More actions',
@@ -836,6 +846,7 @@ export function errorKey(code: string): MessageKey {
     invalid_credentials: 'errorInvalidCredentials',
     stale_revision: 'errorStaleRevision',
     package_on_loan: 'errorPackageOnLoan',
+    label_too_long: 'errorLabelTooLong',
   };
 
   return map[code] ?? 'errorGeneric';

@@ -37,23 +37,42 @@ public static class RecurrenceRule
         {
             return specification.Pattern == RecurrencePattern.Daily
                    && specification.WeekdayMask is null
-                   && specification.IntervalDays is null;
+                   && specification.IntervalDays is null
+                   && specification.DayOfMonth is null
+                   && specification.IntervalMonths is null;
         }
 
+        // Each pattern owns exactly the fields it needs; a stray field from another
+        // pattern is rejected rather than ignored, so a client bug cannot be read as a
+        // schedule nobody wrote.
         return specification.Pattern switch
         {
             RecurrencePattern.Daily =>
-                specification.WeekdayMask is null && specification.IntervalDays is null,
+                specification.WeekdayMask is null && specification.IntervalDays is null
+                && specification.DayOfMonth is null && specification.IntervalMonths is null,
 
             RecurrencePattern.SelectedWeekdays =>
                 specification.WeekdayMask is >= RecurrenceSpecification.MinimumWeekdayMask
                     and <= RecurrenceSpecification.MaximumWeekdayMask
-                && specification.IntervalDays is null,
+                && specification.IntervalDays is null
+                && specification.DayOfMonth is null && specification.IntervalMonths is null,
 
             RecurrencePattern.EveryNDays =>
                 specification.EffectiveFrom is not null
                 && specification.IntervalDays is >= 1 and <= RecurrenceSpecification.MaximumIntervalDays
-                && specification.WeekdayMask is null,
+                && specification.WeekdayMask is null
+                && specification.DayOfMonth is null && specification.IntervalMonths is null,
+
+            RecurrencePattern.DayOfMonth =>
+                specification.DayOfMonth is >= 1 and <= 31
+                && specification.WeekdayMask is null && specification.IntervalDays is null
+                && specification.IntervalMonths is null,
+
+            RecurrencePattern.EveryNMonths =>
+                specification.EffectiveFrom is not null
+                && specification.IntervalMonths is >= 1 and <= RecurrenceSpecification.MaximumIntervalMonths
+                && specification.WeekdayMask is null && specification.IntervalDays is null
+                && specification.DayOfMonth is null,
 
             _ => false,
         };
@@ -96,9 +115,32 @@ public static class RecurrenceRule
                 && interval > 0
                 && (day.DayNumber - anchor.DayNumber) % interval == 0,
 
+            // Calendar months, not thirty-day spans: "the 15th" lands on the 15th of
+            // every month however long the month before it was. A day the month does not
+            // have falls on its last day, so a plan written for the 31st is not silently
+            // skipped in February.
+            RecurrencePattern.DayOfMonth =>
+                specification.DayOfMonth is { } dayOfMonth
+                && day.Day == ClampToMonth(day.Year, day.Month, dayOfMonth),
+
+            RecurrencePattern.EveryNMonths =>
+                specification.EffectiveFrom is { } start
+                && specification.IntervalMonths is { } months
+                && months > 0
+                && MonthsBetween(start, day) is var elapsed
+                && elapsed >= 0
+                && elapsed % months == 0
+                && day.Day == ClampToMonth(day.Year, day.Month, start.Day),
+
             _ => false,
         };
     }
+
+    private static int MonthsBetween(DateOnly start, DateOnly day) =>
+        (day.Year - start.Year) * 12 + day.Month - start.Month;
+
+    private static int ClampToMonth(int year, int month, int day) =>
+        Math.Min(day, DateTime.DaysInMonth(year, month));
 
     /// <summary>
     /// Enumerates due days from <paramref name="from"/> inclusive, up to

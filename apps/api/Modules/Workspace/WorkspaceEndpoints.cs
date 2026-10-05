@@ -90,6 +90,8 @@ public static class WorkspaceEndpoints
                     pattern = row.version.Pattern.ToString(),
                     weekdayMask = row.version.WeekdayMask,
                     intervalDays = row.version.IntervalDays,
+                    dayOfMonth = row.version.DayOfMonth,
+                    intervalMonths = row.version.IntervalMonths,
                     effectiveFrom = row.version.EffectiveFrom,
                     effectiveTo = row.version.EffectiveTo,
                     localTime = row.version.LocalTime,

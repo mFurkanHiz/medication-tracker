@@ -525,7 +525,8 @@ public static class TreatmentEndpoints
         }
 
         var recurrence = new RecurrenceSpecification(
-            kind, pattern, request.WeekdayMask, request.IntervalDays, request.EffectiveFrom, request.EffectiveTo);
+            kind, pattern, request.WeekdayMask, request.IntervalDays, request.EffectiveFrom, request.EffectiveTo,
+            request.DayOfMonth, request.IntervalMonths);
 
         field = "recurrence";
         if (!RecurrenceRule.IsValid(recurrence))
@@ -559,6 +560,8 @@ public static class TreatmentEndpoints
         Pattern = version.Pattern.ToString(),
         version.WeekdayMask,
         version.IntervalDays,
+        version.DayOfMonth,
+        version.IntervalMonths,
         version.EffectiveFrom,
         version.EffectiveTo,
         version.LocalTime,
@@ -601,6 +604,8 @@ public sealed record TreatmentPlanRequest(
     string Pattern = "Daily",
     int? WeekdayMask = null,
     int? IntervalDays = null,
+    int? DayOfMonth = null,
+    int? IntervalMonths = null,
     DateOnly? EffectiveFrom = null,
     DateOnly? EffectiveTo = null,
     TimeOnly? LocalTime = null,

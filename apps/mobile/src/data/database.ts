@@ -8,13 +8,13 @@ import type { SQLiteDatabase } from 'expo-sqlite';
  *  - **Snapshot tables** (`people`, `medications`, `packages`, `plans`, `due_doses`,
  *    `activity_entries`) are a cache of what the server last said. They are replaced wholesale on every
  *    refresh and nothing is ever lost by discarding them.
- *  - **Local tables** (`local_doses`, `outbox`, `rejections`, `reminders`) hold what
- *    this device knows and the server may not. They are authoritative until the
+ *  - **Local tables** (`local_doses`, `outbox`, `commands`, `rejections`, `reminders`) hold
+ *    what this device knows and the server may not. They are authoritative until the
  *    server acknowledges them and are never dropped by a refresh.
  */
 
 /** Bumped only for a change that needs a migration; see {@link migrateDatabase}. */
-export const SCHEMA_VERSION = 5;
+export const SCHEMA_VERSION = 6;
 
 /**
  * The database file name.
@@ -62,6 +62,9 @@ export async function migrateDatabase(db: SQLiteDatabase): Promise<void> {
     if (version < 5) {
       await db.execAsync(MIGRATE_4_TO_5);
     }
+    if (version < 6) {
+      await db.execAsync(MIGRATE_5_TO_6);
+    }
   }
 
   await db.execAsync(`PRAGMA user_version = ${SCHEMA_VERSION};`);
@@ -92,7 +95,10 @@ CREATE TABLE medications (
   total_denominator INTEGER NOT NULL CHECK(total_denominator > 0),
   package_count INTEGER NOT NULL,
   -- Who pays, as the household recorded it; a box may override it below.
-  coverage TEXT
+  coverage TEXT,
+  -- The catalogue's usual box size, so adding stock can offer it as the default.
+  default_capacity_numerator INTEGER,
+  default_capacity_denominator INTEGER CHECK(default_capacity_denominator IS NULL OR default_capacity_denominator > 0)
 );
 
 CREATE TABLE packages (
@@ -228,6 +234,28 @@ CREATE TABLE outbox (
 
 CREATE INDEX ix_outbox_order ON outbox (created_at);
 
+-- The other commands the phone can queue: pause or resume a plan, add stock, make a
+-- box the active one, mark a box lost or disposed. Written and committed before the
+-- request is attempted, like a dose, and sent in creation order together with the
+-- doses. A delivered row is deleted; a refused one stays, marked, until the user has
+-- seen it and dismissed it.
+CREATE TABLE commands (
+  idempotency_key TEXT PRIMARY KEY,
+  kind TEXT NOT NULL,
+  target_id TEXT NOT NULL,
+  medication_id TEXT,
+  payload TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  last_attempt_at TEXT,
+  last_error TEXT,
+  rejected_code TEXT,
+  rejected_status INTEGER,
+  rejected_at TEXT
+);
+
+CREATE INDEX ix_commands_order ON commands (created_at);
+
 -- A command the server decided against. Kept and shown rather than retried forever
 -- or silently dropped: a refused health record is something the user must see.
 CREATE TABLE rejections (
@@ -319,6 +347,34 @@ CREATE TABLE activity_entries (
 );
 
 CREATE INDEX ix_activity_recorded ON activity_entries (kind, recorded_at);
+`;
+
+/**
+ * v5 → v6: the command queue, and the catalogue's default box size.
+ *
+ * A new local table, empty on upgrade, and two nullable columns the next sync fills;
+ * nothing a phone already holds is touched.
+ */
+const MIGRATE_5_TO_6 = `
+ALTER TABLE medications ADD COLUMN default_capacity_numerator INTEGER;
+ALTER TABLE medications ADD COLUMN default_capacity_denominator INTEGER CHECK(default_capacity_denominator IS NULL OR default_capacity_denominator > 0);
+
+CREATE TABLE commands (
+  idempotency_key TEXT PRIMARY KEY,
+  kind TEXT NOT NULL,
+  target_id TEXT NOT NULL,
+  medication_id TEXT,
+  payload TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  last_attempt_at TEXT,
+  last_error TEXT,
+  rejected_code TEXT,
+  rejected_status INTEGER,
+  rejected_at TEXT
+);
+
+CREATE INDEX ix_commands_order ON commands (created_at);
 `;
 
 /** Keys used in {@link snapshot_meta}. */

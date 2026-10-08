@@ -1,6 +1,7 @@
 using MedicationTracker.Api.Application;
 using MedicationTracker.Api.Domain.Inventory;
 using MedicationTracker.Api.Domain.Quantities;
+using MedicationTracker.Api.Modules.Sync;
 using MedicationTracker.Api.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -50,6 +51,12 @@ public static class InventoryEndpoints
             if (!TryResolveCapacity(request, definition.DefaultPackageCapacity, out var capacity))
             {
                 return ApiResults.Invalid("capacity", "invalid");
+            }
+
+            if (request.IdempotencyKey is { } suppliedKey
+                && (string.IsNullOrWhiteSpace(suppliedKey) || suppliedKey.Length > 100))
+            {
+                return ApiResults.Invalid("idempotencyKey", "invalid");
             }
 
             var opened = request.OpenedPackages ?? [];
@@ -111,6 +118,45 @@ public static class InventoryEndpoints
             // additions cannot claim the same "Box 3".
             await InventoryReader.LockHouseholdAsync(db, householdId, ct);
 
+            // A phone that lost its network after this request committed retries it on
+            // reconnect with the same key. The receipt turns that retry into the original
+            // answer instead of a second set of boxes: the boxes were written under the
+            // request's correlation id, so they can be read back by it.
+            if (request.IdempotencyKey is { } key)
+            {
+                var prior = await db.SyncCommandReceipts.AsNoTracking().SingleOrDefaultAsync(
+                    receipt => receipt.HouseholdId == householdId && receipt.IdempotencyKey == key, ct);
+
+                if (prior is not null)
+                {
+                    var createdIds = await db.LedgerEntries.AsNoTracking()
+                        .Where(entry => entry.HouseholdId == householdId
+                                        && entry.CorrelationId == prior.ResultEntityId
+                                        && entry.PackageId != null)
+                        .Select(entry => entry.PackageId!.Value)
+                        .Distinct()
+                        .ToListAsync(ct);
+
+                    var stock = await InventoryReader.LoadAsync(db, householdId, definitionId, tracked: false, ct);
+
+                    return Results.Ok(new
+                    {
+                        packages = stock.Packages
+                            .Where(package => createdIds.Contains(package.Id))
+                            .Select(package => new
+                            {
+                                id = package.Id,
+                                ordinal = package.Ordinal,
+                                state = package.State.ToString(),
+                                nominalCapacity = Quantity(package.NominalCapacity),
+                                remaining = Quantity(stock.BalanceOf(package.Id)),
+                            }),
+                        looseAdded = (string?)null,
+                        replayed = true,
+                    });
+                }
+            }
+
             var legacyItemId = await db.LegacyInventoryItems.AsNoTracking()
                 .Where(item => item.MedicationDefinitionId == definitionId)
                 .Select(item => item.Id)
@@ -140,12 +186,19 @@ public static class InventoryEndpoints
                     correlationId, accountId, now, now, request.Note));
             }
 
+            if (request.IdempotencyKey is { } newKey)
+            {
+                db.SyncCommandReceipts.Add(new SyncCommandReceipt(
+                    Guid.CreateVersion7(), householdId, accountId, newKey,
+                    "inventory.add-stock", correlationId, now));
+            }
+
             await db.SaveChangesAsync(ct);
             await transaction.CommitAsync(ct);
 
             return Results.Created(
                 $"/api/households/{householdId}/inventory/{definitionId}",
-                new { packages = created, looseAdded = loose?.ToString() });
+                new { packages = created, looseAdded = loose?.ToString(), replayed = false });
         });
 
         api.MapGet("/{definitionId:guid}", async (
@@ -286,6 +339,14 @@ public static class InventoryEndpoints
             if (package is null)
             {
                 return Results.NotFound();
+            }
+
+            // Marking a box lost twice — a phone replaying a command whose answer never
+            // arrived — is one decision, not two. Nothing is written and the retirement
+            // keeps its original time.
+            if (package.State == state)
+            {
+                return Results.NoContent();
             }
 
             var accountId = HouseholdAccess.RequireAccountId(context);
@@ -740,7 +801,9 @@ public sealed record AddStockRequest(
     string? Source = null,
     string? StorageLocation = null,
     string? Note = null,
-    string? Coverage = null);
+    string? Coverage = null,
+    /// <summary>Set by the phone's outbox; a replay with the same key returns the same boxes.</summary>
+    string? IdempotencyKey = null);
 
 /// <summary>
 /// A partly-used package. Capacity defaults to the request's capacity, so the common

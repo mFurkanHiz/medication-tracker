@@ -1,29 +1,36 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSQLiteContext } from 'expo-sqlite';
+import { listCommands, type CommandRow } from '../data/command-queue';
+import { dismissCommand, enqueueCommand } from '../data/outbox';
 import type { Session } from '../data/session';
-import { readPlans, type PlanRow } from '../data/snapshot';
+import { readPlans, readReminderPlans, type PlanRow } from '../data/snapshot';
 import { syncNow } from '../data/sync';
+import { describeCommand } from '../lib/commands';
 import { enumKey } from '../lib/i18n';
 import { formatLocalDate, localDate } from '../lib/local-date';
 import { STATUS_KEYS, describeSchedule, planStatus, type PlanStatus } from '../lib/plans';
 import { formatQuantity } from '../lib/quantity';
+import { reconcileReminders } from '../notifications/reminders';
 import { startOfDayParts } from '../notifications/schedule';
-import { Badge, Card, Notice, SectionTitle, palette, useTranslate } from '../ui/theme';
+import { RefusedCommands } from '../ui/RefusedCommands';
+import { Badge, Button, Card, Notice, SectionTitle, palette, useTranslate } from '../ui/theme';
 
 /**
  * Every plan the household has, grouped by person, with the schedule in words and
  * where it stands today — the web's plans screen, read from the cached snapshot.
  *
- * Read-only for now: pausing, ending and editing a plan are decisions that create a
- * new effective-dated version on the server, and they go through the web until the
- * phone's outbox carries them. The screen says so.
+ * Pausing and resuming queue a command: the plan flips on the phone at once, its
+ * reminders stop or start, and the server hears on the next sync. Editing, ending and
+ * restarting a plan still go through the web, and the screen says so.
  */
 export function PlansScreen({ session }: { session: Session }) {
   const { t, locale } = useTranslate();
   const db = useSQLiteContext();
 
   const [rows, setRows] = useState<PlanRow[]>([]);
+  const [queued, setQueued] = useState<CommandRow[]>([]);
+  const [refused, setRefused] = useState<CommandRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [offline, setOffline] = useState(false);
@@ -35,6 +42,8 @@ export function PlansScreen({ session }: { session: Session }) {
 
   const reload = useCallback(async () => {
     setRows(await readPlans(db));
+    setQueued((await listCommands(db, 'queued')).filter((row) => row.kind === 'plan.pause'));
+    setRefused((await listCommands(db, 'rejected')).filter((row) => row.kind === 'plan.pause'));
     setLoading(false);
   }, [db]);
 
@@ -53,6 +62,24 @@ export function PlansScreen({ session }: { session: Session }) {
   useEffect(() => {
     void reload();
   }, [reload]);
+
+  async function togglePause(row: PlanRow) {
+    await enqueueCommand(
+      db,
+      { kind: 'plan.pause', targetId: row.id, medicationId: row.medicationId, body: { isPaused: !row.isPaused } },
+      new Date().toISOString(),
+    );
+
+    // The phone's own reminders follow the decision now, not after the next sync.
+    await reconcileReminders(db, await readReminderPlans(db), t, new Date());
+    await reload();
+    void refresh();
+  }
+
+  async function dismiss(idempotencyKey: string) {
+    await dismissCommand(db, idempotencyKey);
+    await reload();
+  }
 
   const now = new Date();
   const withStatus = rows.map((row) => ({
@@ -78,14 +105,18 @@ export function PlansScreen({ session }: { session: Session }) {
     );
   }
 
+  const pendingFor = (planId: string) => queued.filter((row) => row.targetId === planId);
+
   return (
     <ScrollView
       contentContainerStyle={styles.container}
       refreshControl={<RefreshControl refreshing={syncing} onRefresh={() => void refresh()} />}
     >
       <SectionTitle>{t('plans')}</SectionTitle>
-      <Text style={styles.muted}>{t('editOnWeb')}</Text>
+      <Text style={styles.muted}>{t('otherEditsOnWeb')}</Text>
       {offline ? <Notice tone="warning" message={t('offline')} /> : null}
+
+      <RefusedCommands rows={refused} onDismiss={(key) => void dismiss(key)} />
 
       {rows.length === 0 ? (
         <Card>
@@ -97,7 +128,14 @@ export function PlansScreen({ session }: { session: Session }) {
         <View key={personName} style={styles.group}>
           <Text style={styles.person}>{personName}</Text>
           {entries.map(({ row, status }) => (
-            <PlanCard key={row.versionId} row={row} status={status} locale={locale} />
+            <PlanCard
+              key={row.versionId}
+              row={row}
+              status={status}
+              locale={locale}
+              pending={pendingFor(row.id)}
+              onTogglePause={() => void togglePause(row)}
+            />
           ))}
         </View>
       ))}
@@ -106,7 +144,7 @@ export function PlansScreen({ session }: { session: Session }) {
         <View style={styles.group}>
           <Text style={styles.person}>{t('pastPlans')}</Text>
           {past.map(({ row, status }) => (
-            <PlanCard key={row.versionId} row={row} status={status} locale={locale} />
+            <PlanCard key={row.versionId} row={row} status={status} locale={locale} pending={[]} />
           ))}
         </View>
       ) : null}
@@ -114,7 +152,19 @@ export function PlansScreen({ session }: { session: Session }) {
   );
 }
 
-function PlanCard({ row, status, locale }: { row: PlanRow; status: PlanStatus; locale: string }) {
+function PlanCard({
+  row,
+  status,
+  locale,
+  pending,
+  onTogglePause,
+}: {
+  row: PlanRow;
+  status: PlanStatus;
+  locale: string;
+  pending: CommandRow[];
+  onTogglePause?: () => void;
+}) {
   const { t } = useTranslate();
   const meal = enumKey(row.mealRelation);
   const tone = status === 'active' ? 'positive' : status === 'paused' ? 'warning' : 'neutral';
@@ -141,6 +191,22 @@ function PlanCard({ row, status, locale }: { row: PlanRow; status: PlanStatus; l
           {row.effectiveTo ? `${t('endsOn')}: ${formatLocalDate(row.effectiveTo, locale)}` : ''}
         </Text>
       ) : null}
+
+      {pending.length > 0 ? (
+        <View style={styles.badges}>
+          {pending.map((command) => (
+            <Badge
+              key={command.idempotencyKey}
+              tone="warning"
+              label={`${describeCommand(command.kind, JSON.parse(command.payload), t)} · ${t('queuedCommand')}`}
+            />
+          ))}
+        </View>
+      ) : null}
+
+      {onTogglePause && status !== 'ended' ? (
+        <Button tone="secondary" label={t(row.isPaused ? 'resumePlan' : 'pausePlan')} onPress={onTogglePause} />
+      ) : null}
     </Card>
   );
 }
@@ -155,5 +221,6 @@ const styles = StyleSheet.create({
   titleBody: { flex: 1 },
   medication: { fontSize: 18, fontWeight: '800', color: palette.ink },
   schedule: { fontSize: 15, fontWeight: '700', color: palette.accentInk },
+  badges: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   ended: { opacity: 0.7 },
 });

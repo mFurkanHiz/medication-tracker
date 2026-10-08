@@ -10,7 +10,9 @@ import {
   type HistoryPending,
   type History,
 } from '../data/snapshot';
+import type { CommandRow } from '../data/command-queue';
 import { syncNow } from '../data/sync';
+import { describeCommand, describeTarget } from '../lib/commands';
 import { entryKey, latenessLabel, outcomeKey, packageLabel, signedQuantity } from '../lib/history';
 import { formatMoment, localDate } from '../lib/local-date';
 import { formatQuantity } from '../lib/quantity';
@@ -71,6 +73,7 @@ export function HistoryScreen({ session }: { session: Session }) {
 
   const empty =
     history.pending.length === 0 &&
+    history.commands.length === 0 &&
     history.corrections.length === 0 &&
     history.administrations.length === 0 &&
     history.inventory.length === 0;
@@ -89,10 +92,13 @@ export function HistoryScreen({ session }: { session: Session }) {
         </Card>
       ) : null}
 
-      {history.pending.length > 0 ? (
+      {history.pending.length > 0 || history.commands.length > 0 ? (
         <Section title={t('historyPending')}>
           {history.pending.map((row) => (
             <PendingRow key={row.id} row={row} locale={locale} />
+          ))}
+          {history.commands.map((row) => (
+            <PendingCommandRow key={row.idempotencyKey} row={row} locale={locale} />
           ))}
         </Section>
       ) : null}
@@ -153,6 +159,25 @@ function PendingRow({ row, locale }: { row: HistoryPending; locale: string }) {
         {outcome ? <Badge tone={row.outcome === 'Skipped' ? 'neutral' : 'positive'} label={t(outcome)} /> : null}
       </View>
       <Text style={styles.time}>{formatMoment(row.occurredAt, locale)}</Text>
+    </Card>
+  );
+}
+
+/** A queued command: what was decided, about what, and when — until the server has it. */
+function PendingCommandRow({ row, locale }: { row: CommandRow; locale: string }) {
+  const { t } = useTranslate();
+  const target = describeTarget(row, t);
+
+  return (
+    <Card>
+      <View style={styles.titleRow}>
+        <View style={styles.titleBody}>
+          <Text style={styles.title}>{describeCommand(row.kind, JSON.parse(row.payload), t)}</Text>
+          {target ? <Text style={styles.muted}>{target}</Text> : null}
+        </View>
+        <Badge tone="warning" label={t('pendingLabel')} />
+      </View>
+      <Text style={styles.time}>{formatMoment(row.createdAt, locale)}</Text>
     </Card>
   );
 }

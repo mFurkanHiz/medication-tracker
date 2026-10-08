@@ -186,6 +186,32 @@ export const tr = {
   entryPackageTransfer: 'Kutu aktarımı',
   entryManualAdjustment: 'Elle düzeltme',
 
+  // Outbox komutları: web'in sözleriyle. Komut önce telefona yazılır, sonra eşitlenir;
+  // sunucu reddederse kullanıcıya gösterilir, sessizce düşürülmez.
+  pausePlan: 'Şimdilik ara ver',
+  resumePlan: 'Yeniden başla',
+  makeActive: 'Etkin kutu yap',
+  otherActions: 'Diğer işlemler',
+  markLost: 'Kayıp olarak işaretle',
+  markDisposed: 'Atıldı olarak işaretle',
+  retireConfirm: 'Kutuda kalan miktar stoktan düşülür. Geri alma web uygulamasından yapılır.',
+  confirm: 'Onayla',
+  addStock: 'Stok ekle',
+  sealedBoxes: 'kapalı kutu',
+  openedBox: 'açık kutu',
+  fullPackagesLabel: 'Kapalı kutu sayısı',
+  openedRemainingLabel: 'Açık kutuda kalan',
+  capacityLabel: 'Kutu kapasitesi',
+  looseLabel: 'Kutusuz miktar',
+  stockAddInvalid: 'En az bir kutu ya da kutusuz miktar girin.',
+  capacityRequired: 'Kutu kapasitesi gerekli.',
+  remainingExceedsCapacity: 'Kalan miktar kapasiteyi aşamaz.',
+  queuedCommand: 'Eşitlenmeyi bekliyor',
+  queuedCommands: 'Bekleyen işlemler',
+  commandRejected: 'Sunucu bu işlemi reddetti',
+  dismiss: 'Tamam',
+  otherEditsOnWeb: 'Diğer değişiklikler web uygulamasından yapılır.',
+
   // Generic
   loading: 'Yükleniyor…',
   retry: 'Tekrar dene',
@@ -207,6 +233,8 @@ export const tr = {
   errorChosenSourceInsufficient: 'Seçtiğiniz kaynakta yeterli miktar yok.',
   errorPackageNotEligible: 'Bu kutu kullanıma uygun değil.',
   errorPackageNotFound: 'Kutu bulunamadı.',
+  errorPackageNotAvailable: 'Kutu artık kullanımda değil.',
+  errorNotFound: 'Kayıt sunucuda bulunamadı; web üzerinde silinmiş olabilir.',
 
   safetyNotice:
     'Bu uygulama ilaç düzenlemesi ve takibi içindir. Teşhis koymaz, doz önermez.',
@@ -378,6 +406,30 @@ export const en: Record<MessageKey, string> = {
   entryPackageTransfer: 'Package transfer',
   entryManualAdjustment: 'Manual adjustment',
 
+  pausePlan: 'Pause for now',
+  resumePlan: 'Start again',
+  makeActive: 'Make this the active box',
+  otherActions: 'Other actions',
+  markLost: 'Mark as lost',
+  markDisposed: 'Mark as disposed',
+  retireConfirm: 'What is left in the box leaves the stock. Undoing this is done in the web app.',
+  confirm: 'Confirm',
+  addStock: 'Add stock',
+  sealedBoxes: 'sealed boxes',
+  openedBox: 'opened box',
+  fullPackagesLabel: 'Sealed boxes',
+  openedRemainingLabel: 'Left in an opened box',
+  capacityLabel: 'Box capacity',
+  looseLabel: 'Loose amount',
+  stockAddInvalid: 'Enter at least one box or a loose amount.',
+  capacityRequired: 'The box capacity is needed.',
+  remainingExceedsCapacity: 'What is left cannot exceed the capacity.',
+  queuedCommand: 'Waiting to sync',
+  queuedCommands: 'Pending actions',
+  commandRejected: 'The server refused this action',
+  dismiss: 'OK',
+  otherEditsOnWeb: 'Other changes are made in the web app.',
+
   loading: 'Loading…',
   retry: 'Try again',
   cancel: 'Cancel',
@@ -397,6 +449,8 @@ export const en: Record<MessageKey, string> = {
   errorChosenSourceInsufficient: 'The source you chose does not hold enough.',
   errorPackageNotEligible: 'That package cannot be used.',
   errorPackageNotFound: 'Package not found.',
+  errorPackageNotAvailable: 'The box is no longer in use.',
+  errorNotFound: 'Not found on the server; it may have been deleted on the web.',
 
   safetyNotice:
     'This application organises and tracks medication. It does not diagnose or recommend a dose.',
@@ -450,6 +504,8 @@ export function errorKey(code: string): MessageKey {
     package_not_eligible: 'errorPackageNotEligible',
     package_not_found: 'errorPackageNotFound',
     package_not_specified: 'errorPackageNotFound',
+    package_not_available: 'errorPackageNotAvailable',
+    not_found: 'errorNotFound',
   };
 
   return map[code] ?? 'errorGeneric';

@@ -76,6 +76,7 @@ const ADDED_IN = {
   2: { plans: ['is_paused INTEGER NOT NULL DEFAULT 0'] },
   3: { plans: ['day_of_month INTEGER', 'interval_months INTEGER'], due_doses: ["conflicts TEXT NOT NULL DEFAULT '[]'"] },
   4: { medications: ['coverage TEXT'], packages: ['label TEXT', 'expires_on TEXT', 'coverage TEXT'], plans: ['meal_relation TEXT'] },
+  6: { medications: ['default_capacity_numerator INTEGER', 'default_capacity_denominator INTEGER CHECK(default_capacity_denominator IS NULL OR default_capacity_denominator > 0)'] },
 };
 
 /** Whole tables a step migration created, by the version it upgrades TO. Frozen too. */
@@ -87,6 +88,13 @@ const TABLES_ADDED_IN = {
       'from_package_label INTEGER', 'to_package_label INTEGER', 'quantity_numerator INTEGER',
       'quantity_denominator INTEGER CHECK(quantity_denominator IS NULL OR quantity_denominator > 0)',
       'scheduled_for TEXT', 'lateness_minutes INTEGER', 'reason TEXT', 'administration_event_id TEXT',
+    ],
+  },
+  6: {
+    commands: [
+      'idempotency_key TEXT PRIMARY KEY', 'kind TEXT NOT NULL', 'target_id TEXT NOT NULL', 'medication_id TEXT',
+      'payload TEXT NOT NULL', 'created_at TEXT NOT NULL', 'attempts INTEGER NOT NULL DEFAULT 0',
+      'last_attempt_at TEXT', 'last_error TEXT', 'rejected_code TEXT', 'rejected_status INTEGER', 'rejected_at TEXT',
     ],
   },
 };

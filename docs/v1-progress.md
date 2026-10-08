@@ -12,10 +12,11 @@ reconstructing the product history from a long conversation.
   `v1.0.0` tag untouched (ADR 0017). Release notes: `docs/releases/v1.0.1.md`. `docs/v1-acceptance.md` is the authority on scope; ADR 0013
   explains the rebuild, ADR 0015 the owner-approved mobile deferral.
 - Production tracks `main`: every merge deploys by itself, so the live revision is
-  whatever `main` last squashed to — `c9cfabf` (PR #62, CI run `37782328587`) as of
+  whatever `main` last squashed to — `7202149` (PR #63, CI run `37839379068`) as of
   2026-10-08, with migrations 1–18 applied, the API on the confined database role, and
-  `GET /api/version` answering `1.0.1` (the server has not changed since the `v1.0.1`
-  cut at `214dee4`; the merges since are mobile code, tests and documentation).
+  `GET /api/version` answering `1.0.1` (the server's behaviour has not changed since the
+  `v1.0.1` cut at `214dee4`; the merges since are mobile code, tests and documentation,
+  and PR #64 adds an idempotency key to the add-stock endpoint for the phone).
   Documentation-only merges do not redeploy (`paths-ignore` on push).
 - **The owner's live-test round of 2026-10-05 is closed.** Sprint 7 shipped every note
   and decision (D1–D6) in seven slices (PR #50–#55, migrations 15–18), then the general
@@ -25,10 +26,12 @@ reconstructing the product history from a long conversation.
   disclosure), not defects.
 - The mobile client resumed on 2026-10-05 on the owner's word ("Mobile başla"). The
   owner chose USB from their own computer over EAS Build; schema v3 and the server's
-  due-day rule (PR #58), then every read-only screen the web has — Stock, Plans (PR #62),
-  People, History (PR #63) — are in, none yet seen on a device; the install itself runs
-  from a session on the owner's computer (`docs/mobile-device-install.md`), which a cloud
-  session cannot do. Plan and progress: `docs/mobile-resume-plan.md`.
+  due-day rule (PR #58), every read-only screen the web has — Stock, Plans (PR #62),
+  People, History (PR #63) — and the first commands through the outbox (pause and resume
+  a plan, add stock, make a box active, mark a box lost or disposed; PR #64) are in, none
+  yet seen on a device; the install itself runs from a session on the owner's computer
+  (`docs/mobile-device-install.md`), which a cloud session cannot do. Plan and progress:
+  `docs/mobile-resume-plan.md`.
 
 ## What the rebuild has delivered
 
@@ -67,11 +70,12 @@ retire and recreate it, or name the first accepted release `v1.0.1`).
 
 1. **Mobile catch-up continues** — the owner's priority (2026-10-08: "mobil gerideyse
    öncelik mobil versiyonu web'e eşitlemek"), code only until a device is attached. Every
-   read-only screen the web has is now on the phone: Stock and Plans (PR #62), People and
-   History (PR #63). Next, each as its own slice with typecheck and unit tests: the
-   commands the web has and the phone lacks, through the outbox so they work offline —
-   pause and resume a plan, add stock, pin a box, mark a box lost or disposed; then
-   reports, export and counting.
+   read-only screen the web has is on the phone (PR #62, #63), and the everyday commands
+   go through the outbox (PR #64: pause and resume a plan, add stock, make a box active,
+   mark a box lost or disposed). Next, each as its own slice with typecheck and unit
+   tests: reports, export and counting on the phone; then the server-side fix for the
+   latest-version-only gap (`docs/mobile-resume-plan.md`, "Known gap"). Editing, ending
+   and restarting a plan, editing a box, lending and reinstating stay on the web.
 2. **On the owner's computer**, when they next open a session there: push the `v1.0.1`
    tag (one command, at the top of `docs/mobile-device-install.md`), then the install
    per that runbook, then the physical-device acceptance rows (28, 29), then the
@@ -1254,6 +1258,27 @@ check now upgrades frozen fixtures for versions 1–4 and knows a table can be a
 later step; `MobileContractTests` pins the three activity streams and their fields. Still
 nothing seen on a device.
 
+### Slice 6 — the phone's first commands besides a dose — PR #64
+
+Pause and resume a plan, add stock, make a box the active one, mark a box lost or
+disposed: the everyday commands the web has, through the outbox so they work offline.
+A new `commands` queue (schema v6) holds them; the drain sends doses and commands as one
+queue in creation order, stops on the first undecided answer, and treats a 4xx as a
+refusal to show rather than retry. Each command's effect is applied to the cached
+snapshot the moment it is queued — the plan flips and its reminders stop, the active-box
+badge moves, the lost box empties and leaves the total — and re-applied after every
+refresh until the server has it; a refused command is left out, which is how its effect
+is undone, and it stays on the screen with its reason until dismissed. Added stock has
+no box until the server names it, so it waits as a pending line under the medicine. On
+the server, `POST …/inventory/{id}/stock` takes an `idempotencyKey` and replays through
+the sync receipts (the boxes are read back by the request's correlation id), and
+retiring a box already in that state is a no-op; `MobileContractTests` pins both and the
+`defaultPackageCapacity` field the add-stock sheet offers. `commands.test.ts` pins the
+wording, the add-stock form's checks and the send order (13 tests; 50 mobile tests in
+all). The whole queue — enqueue, effects, a refresh that keeps them, a drain with a
+refusal and a dead network, dismissal, the retry — ran against node's SQLite with a fake
+server (19 checks). Still nothing seen on a device.
+
 ### What the cloud session could not do
 
 Install on the phone. The owner asked "yapamaz mısın oradan?" — no: this session runs in
@@ -1276,7 +1301,8 @@ was cut as `v1.0.1` on 2026-10-08, with the tag's push left to the owner's compu
 **V1 is complete.** What follows is Sprint 8: the phone catching up with the web.
 
 **Exact next action.** The mobile catch-up, as the *Next exact action* section at the
-top describes: the read-only screens are all in (PR #62, #63); next the outbox commands.
+top describes: the read-only screens (PR #62, #63) and the everyday commands (PR #64)
+are in; next reports, export and counting on the phone.
 
 Still open for the owner, unchanged: which production household is theirs, so the
 synthetic ones left by smoke tests can be cleaned; and the `VPS_SSH_KEY` rotation.

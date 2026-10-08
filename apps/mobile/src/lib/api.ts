@@ -124,6 +124,8 @@ export type WorkspaceResponse = {
     loose: ApiQuantity;
     /** 'InsuranceCovered', 'SelfPaid' or 'Unspecified' (treated as covered). */
     coverage?: string;
+    /** The catalogue's usual box size; null when the household never said. */
+    defaultPackageCapacity?: ApiQuantity | null;
     packages: { view: WorkspacePackage; activeLoanId: string | null }[];
   }[];
   plans: {
@@ -214,6 +216,27 @@ export type RecordedDoseResponse = {
   }[];
 };
 
+/** Pausing and resuming share one route; the body says which. */
+export type SetPlanPausedRequest = { isPaused: boolean };
+
+/**
+ * Stock the household brought home: sealed boxes, opened boxes with what is left, or
+ * a loose amount. Capacity is the box size; the server falls back to the catalogue's
+ * default when it is omitted. The key makes a replay return the same boxes rather than
+ * create them again.
+ */
+export type AddStockRequest = {
+  idempotencyKey: string;
+  capacityNumerator?: number | null;
+  capacityDenominator?: number | null;
+  fullPackages?: number;
+  openedPackages?: { remainingNumerator: number; remainingDenominator?: number }[];
+  looseNumerator?: number | null;
+  looseDenominator?: number | null;
+};
+
+export type RetirePackageRequest = { state: 'Lost' | 'Disposed'; reason?: string | null };
+
 export type ApiConfig = {
   apiUrl: string;
   accessToken: string;
@@ -262,6 +285,11 @@ async function refusalCode(response: Response): Promise<string> {
 
   if (response.status === 403) {
     return 'forbidden';
+  }
+
+  if (response.status === 404) {
+    // The server answers a missing plan or box with a bare 404, no body.
+    return 'not_found';
   }
 
   try {
@@ -341,6 +369,31 @@ export const api = {
 
   recordDose: (config: ApiConfig, household: string, body: RecordDoseRequest) =>
     request<RecordedDoseResponse>(config, `/households/${household}/administrations`, {
+      method: 'POST',
+      body,
+    }),
+
+  setPlanPaused: (config: ApiConfig, household: string, planId: string, body: SetPlanPausedRequest) =>
+    request<{ versionId: string; versionNumber: number; isPaused: boolean }>(
+      config,
+      `/households/${household}/plans/${planId}/paused`,
+      { method: 'POST', body },
+    ),
+
+  addStock: (config: ApiConfig, household: string, medicationId: string, body: AddStockRequest) =>
+    request<{ packages: unknown[]; replayed?: boolean }>(
+      config,
+      `/households/${household}/inventory/${medicationId}/stock`,
+      { method: 'POST', body },
+    ),
+
+  pinPackage: (config: ApiConfig, household: string, packageId: string) =>
+    request<void>(config, `/households/${household}/inventory/packages/${packageId}/pin`, {
+      method: 'POST',
+    }),
+
+  retirePackage: (config: ApiConfig, household: string, packageId: string, body: RetirePackageRequest) =>
+    request<void>(config, `/households/${household}/inventory/packages/${packageId}/retire`, {
       method: 'POST',
       body,
     }),

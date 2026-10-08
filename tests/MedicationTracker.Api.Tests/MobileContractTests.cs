@@ -1,3 +1,5 @@
+using System.Net.Http.Json;
+using System.Net;
 using System.Text.Json;
 
 namespace MedicationTracker.Api.Tests;
@@ -75,6 +77,9 @@ public sealed class MobileContractTests
 
         // Read since mobile schema v4, for the Stock screen.
         "coverage",
+
+        // Read since mobile schema v6, to offer the box size when stock is added.
+        "defaultPackageCapacity",
     ];
 
     /// <summary>Every field the phone's cached box row needs (mobile schema v4).</summary>
@@ -271,6 +276,82 @@ public sealed class MobileContractTests
         {
             AssertEveryFieldPresent(row, ActivityCorrectionFields);
         }
+    }
+
+    /// <summary>
+    /// The phone queues "add stock" offline and retries it on reconnect with the same key.
+    /// A retry after a lost answer must bring back the boxes already created, never a
+    /// second set.
+    /// </summary>
+    [PostgreSqlFact]
+    public async Task Adding_stock_with_the_same_key_twice_creates_the_boxes_once()
+    {
+        await using var harness = new ApiTestHarness();
+        var (client, household) = await harness.NewHouseholdAsync();
+        var (_, definition) = await SyntheticHouseholdAsync(client, household);
+
+        var body = new
+        {
+            fullPackages = 2,
+            capacityNumerator = 20,
+            capacityDenominator = 1,
+            openedPackages = new[] { new { remainingNumerator = 8, remainingDenominator = 1 } },
+            idempotencyKey = Guid.NewGuid().ToString(),
+        };
+
+        var first = await client.PostOk($"/api/households/{household}/inventory/{definition}/stock", body);
+        var second = await client.PostOk($"/api/households/{household}/inventory/{definition}/stock", body);
+
+        Assert.False(first.GetProperty("replayed").GetBoolean());
+        Assert.True(second.GetProperty("replayed").GetBoolean());
+
+        static HashSet<Guid> Ids(JsonElement response) =>
+            response.GetProperty("packages").EnumerateArray().Select(p => p.GetProperty("id").GetGuid()).ToHashSet();
+
+        Assert.Equal(3, Ids(first).Count);
+        Assert.Equal(Ids(first), Ids(second));
+
+        // One synthetic box of 20 from the household, plus 2 × 20 and 8: nothing doubled.
+        var inventory = await client.GetOk($"/api/households/{household}/inventory/{definition}");
+        Assert.Equal(4, inventory.GetProperty("packageCount").GetInt32());
+        Assert.Equal("68", inventory.GetProperty("total").Quantity());
+    }
+
+    /// <summary>
+    /// The other commands the phone queues answer the same way on a replay: making a box
+    /// active twice is fine, marking it lost twice writes one loss, and pinning a box that
+    /// is no longer in use is refused with the code the phone translates.
+    /// </summary>
+    [PostgreSqlFact]
+    public async Task The_commands_the_phone_queues_can_be_replayed()
+    {
+        await using var harness = new ApiTestHarness();
+        var (client, household) = await harness.NewHouseholdAsync();
+        var (_, definition) = await SyntheticHouseholdAsync(client, household);
+
+        var inventory = await client.GetOk($"/api/households/{household}/inventory/{definition}");
+        var box = inventory.GetProperty("packages").EnumerateArray().Single().GetProperty("id").GetGuid();
+        var pinPath = $"/api/households/{household}/inventory/packages/{box}/pin";
+        var retirePath = $"/api/households/{household}/inventory/packages/{box}/retire";
+
+        Assert.Equal(HttpStatusCode.NoContent, (await client.PostAsync(pinPath, null)).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, (await client.PostAsync(pinPath, null)).StatusCode);
+
+        var retire = new { state = "Lost", reason = "synthetic reason" };
+        Assert.Equal(HttpStatusCode.NoContent, (await client.PostAsJsonAsync(retirePath, retire)).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, (await client.PostAsJsonAsync(retirePath, retire)).StatusCode);
+
+        var activity = await client.GetOk($"/api/households/{household}/activity");
+        var losses = activity.GetProperty("inventory").EnumerateArray()
+            .Count(entry => entry.GetProperty("entryType").GetString() == "Loss");
+        Assert.Equal(1, losses);
+
+        var after = await client.GetOk($"/api/households/{household}/inventory/{definition}");
+        Assert.Equal("0", after.GetProperty("total").Quantity());
+
+        var pinRetired = await client.PostAsync(pinPath, null);
+        Assert.Equal(HttpStatusCode.Conflict, pinRetired.StatusCode);
+        Assert.Equal("package_not_available", await pinRetired.RefusalCode());
     }
 
     private static void AssertEveryFieldPresent(JsonElement row, string[] fields)

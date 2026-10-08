@@ -16,8 +16,8 @@
 //      the step migrations, because an ALTER that adds an existing column throws;
 //   2. an existing v1 database holding a plan row and a due row, which must gain every
 //      column added since, keep its rows intact, and land on the current version;
-//   3. an existing v2 database, the same way — every version that was ever on a phone
-//      is an upgrade path, not only the oldest;
+//   3. an existing database at every later version, the same way — every version that
+//      was ever on a phone is an upgrade path, not only the oldest;
 //   4. running the migration again, which must do nothing.
 //
 // The fixtures below are frozen on purpose. They are what is on people's phones today, so
@@ -35,60 +35,80 @@ const REPO = new URL('..', import.meta.url).pathname.replace(/\/$/, '');
 const SOURCE = `${REPO}/apps/mobile/src/data/database.ts`;
 
 /**
- * The `plans` table exactly as schema version 1 created it.
+ * The tables as each schema version created them, as frozen column lists.
  *
- * Frozen. Do not regenerate this from the current CREATE_SCHEMA.
+ * Frozen on purpose: these are what is on people's phones, so they must not be
+ * regenerated from the current CREATE_SCHEMA — that would make the test agree with
+ * whatever the code says and prove nothing. A new step migration adds its columns under
+ * its version number here, and nothing else changes.
  */
-const V1_PLANS = `
-CREATE TABLE plans (
-  id TEXT PRIMARY KEY,
-  version_id TEXT NOT NULL,
-  person_id TEXT NOT NULL,
-  medication_id TEXT NOT NULL,
-  dose_numerator INTEGER NOT NULL,
-  dose_denominator INTEGER NOT NULL CHECK(dose_denominator > 0),
-  kind TEXT NOT NULL,
-  pattern TEXT NOT NULL,
-  weekday_mask INTEGER,
-  interval_days INTEGER,
-  effective_from TEXT,
-  effective_to TEXT,
-  local_time TEXT,
-  time_zone_id TEXT NOT NULL,
-  day_period TEXT
-);
-`;
+const BASE_COLUMNS = {
+  plans: [
+    'id TEXT PRIMARY KEY', 'version_id TEXT NOT NULL', 'person_id TEXT NOT NULL',
+    'medication_id TEXT NOT NULL', 'dose_numerator INTEGER NOT NULL',
+    'dose_denominator INTEGER NOT NULL CHECK(dose_denominator > 0)', 'kind TEXT NOT NULL',
+    'pattern TEXT NOT NULL', 'weekday_mask INTEGER', 'interval_days INTEGER', 'effective_from TEXT',
+    'effective_to TEXT', 'local_time TEXT', 'time_zone_id TEXT NOT NULL', 'day_period TEXT',
+  ],
+  due_doses: [
+    'plan_version_id TEXT NOT NULL', 'scheduled_for TEXT', 'local_date TEXT NOT NULL',
+    'plan_id TEXT NOT NULL', 'person_id TEXT NOT NULL', 'medication_id TEXT NOT NULL',
+    'dose_numerator INTEGER NOT NULL', 'dose_denominator INTEGER NOT NULL CHECK(dose_denominator > 0)',
+    'kind TEXT NOT NULL', 'local_time TEXT', 'day_period TEXT', 'meal_relation TEXT',
+    'has_enough_stock INTEGER NOT NULL', 'recorded_outcome TEXT', 'recorded_administration_id TEXT',
+    'PRIMARY KEY (plan_version_id, local_date)',
+  ],
+  packages: [
+    'id TEXT PRIMARY KEY', 'medication_id TEXT NOT NULL', 'ordinal INTEGER NOT NULL', 'state TEXT NOT NULL',
+    'remaining_numerator INTEGER NOT NULL', 'remaining_denominator INTEGER NOT NULL CHECK(remaining_denominator > 0)',
+    'capacity_numerator INTEGER NOT NULL', 'capacity_denominator INTEGER NOT NULL CHECK(capacity_denominator > 0)',
+    'holder_person_id TEXT', 'is_pinned INTEGER NOT NULL DEFAULT 0',
+  ],
+  medications: [
+    'id TEXT PRIMARY KEY', 'name TEXT NOT NULL', 'strength TEXT', 'unit TEXT NOT NULL',
+    'is_archived INTEGER NOT NULL DEFAULT 0', 'total_numerator INTEGER NOT NULL',
+    'total_denominator INTEGER NOT NULL CHECK(total_denominator > 0)', 'package_count INTEGER NOT NULL',
+  ],
+};
 
-/** The `due_doses` table as schema versions 1 and 2 created it. Frozen, as above. */
-const V1_DUE_DOSES = `
-CREATE TABLE due_doses (
-  plan_version_id TEXT NOT NULL,
-  scheduled_for TEXT,
-  local_date TEXT NOT NULL,
-  plan_id TEXT NOT NULL,
-  person_id TEXT NOT NULL,
-  medication_id TEXT NOT NULL,
-  dose_numerator INTEGER NOT NULL,
-  dose_denominator INTEGER NOT NULL CHECK(dose_denominator > 0),
-  kind TEXT NOT NULL,
-  local_time TEXT,
-  day_period TEXT,
-  meal_relation TEXT,
-  has_enough_stock INTEGER NOT NULL,
-  recorded_outcome TEXT,
-  recorded_administration_id TEXT,
-  PRIMARY KEY (plan_version_id, local_date)
-);
-`;
+/** What each step migration added, by the version it upgrades TO. */
+const ADDED_IN = {
+  2: { plans: ['is_paused INTEGER NOT NULL DEFAULT 0'] },
+  3: { plans: ['day_of_month INTEGER', 'interval_months INTEGER'], due_doses: ["conflicts TEXT NOT NULL DEFAULT '[]'"] },
+  4: { medications: ['coverage TEXT'], packages: ['label TEXT', 'expires_on TEXT', 'coverage TEXT'], plans: ['meal_relation TEXT'] },
+};
 
-/** The `plans` table as schema version 2 left it: v1 plus the paused flag. Frozen. */
-const V2_PLANS = V1_PLANS.replace(
-  '  day_period TEXT\n);',
-  '  day_period TEXT,\n  is_paused INTEGER NOT NULL DEFAULT 0\n);',
-);
+const columnName = (definition) => definition.split(' ')[0];
 
-/** Every column added after v2; an upgrade from either older version must gain them all. */
-const V3_COLUMNS = { plans: ['day_of_month', 'interval_months'], due_doses: ['conflicts'] };
+/** The column names a table has at `version`. */
+function columnsAt(table, version) {
+  const names = BASE_COLUMNS[table].filter((d) => !d.startsWith('PRIMARY KEY')).map(columnName);
+  for (const [step, added] of Object.entries(ADDED_IN)) {
+    if (Number(step) <= version) names.push(...(added[table] ?? []).map(columnName));
+  }
+  return names;
+}
+
+/** The columns added by every step after `version`. */
+function columnsAddedAfter(table, version) {
+  const names = [];
+  for (const [step, added] of Object.entries(ADDED_IN)) {
+    if (Number(step) > version) names.push(...(added[table] ?? []).map(columnName));
+  }
+  return names;
+}
+
+/** CREATE TABLE statements for every table as schema `version` had them. */
+function fixtureAt(version) {
+  return Object.keys(BASE_COLUMNS).map((table) => {
+    const definitions = BASE_COLUMNS[table].filter((d) => !d.startsWith('PRIMARY KEY'));
+    for (const [step, added] of Object.entries(ADDED_IN)) {
+      if (Number(step) <= version) definitions.push(...(added[table] ?? []));
+    }
+    definitions.push(...BASE_COLUMNS[table].filter((d) => d.startsWith('PRIMARY KEY')));
+    return `CREATE TABLE ${table} (\n  ${definitions.join(',\n  ')}\n);`;
+  }).join('\n');
+}
 
 const failures = [];
 
@@ -140,9 +160,9 @@ function adapt(db) {
 const columnsOf = (db, table) =>
   db.prepare(`PRAGMA table_info(${table})`).all().map((column) => column.name);
 
-const hasV3Columns = (db) =>
-  Object.entries(V3_COLUMNS).every(([table, columns]) =>
-    columns.every((column) => columnsOf(db, table).includes(column)));
+const hasEveryColumn = (db, version) =>
+  Object.keys(BASE_COLUMNS).every((table) =>
+    columnsAt(table, version).every((column) => columnsOf(db, table).includes(column)));
 
 const userVersionOf = (db) => db.prepare('PRAGMA user_version').get().user_version;
 
@@ -176,22 +196,19 @@ try {
     if (created) {
       check('is created at the current version', userVersionOf(db) === expected,
         `user_version was ${userVersionOf(db)}`);
-      check('has the is_paused column', columnsOf(db, 'plans').includes('is_paused'));
-      check('has the v3 columns', hasV3Columns(db));
+      check('has every column every step ever added', hasEveryColumn(db, expected));
       check('did not replay the step migrations over its own schema', true);
     }
 
     db.close();
   }
 
-  // ------------------------------------------- an upgrade from versions 1 and 2 ----
-  for (const from of [1, 2]) {
+  // ---------------------------------------- an upgrade from every earlier version ----
+  for (let from = 1; from < expected; from++) {
     console.log(`\nA database already on a phone, at version ${from}`);
 
-    const path = join(workDir, `existing-v${from}.db`);
-    const db = new DatabaseSync(path);
-    db.exec(from === 1 ? V1_PLANS : V2_PLANS);
-    db.exec(V1_DUE_DOSES);
+    const db = new DatabaseSync(join(workDir, `existing-v${from}.db`));
+    db.exec(fixtureAt(from));
     db.exec(`PRAGMA user_version = ${from};`);
     db.prepare(
       `INSERT INTO plans (id, version_id, person_id, medication_id, dose_numerator,
@@ -204,15 +221,25 @@ try {
          dose_numerator, dose_denominator, kind, has_enough_stock)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run('version-1', '2026-10-05', 'plan-1', 'person-1', 'medication-1', 1, 2, 'Scheduled', 1);
+    db.prepare(
+      `INSERT INTO medications (id, name, unit, total_numerator, total_denominator, package_count)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+    ).run('medication-1', 'Synthetic tablet', 'Tablet', 20, 1, 1);
+    db.prepare(
+      `INSERT INTO packages (id, medication_id, ordinal, state, remaining_numerator,
+         remaining_denominator, capacity_numerator, capacity_denominator)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run('package-1', 'medication-1', 1, 'Sealed', 20, 1, 20, 1);
 
-    check('starts with the is_paused column only from v2',
-      columnsOf(db, 'plans').includes('is_paused') === (from === 2));
-    check('starts without the v3 columns', !hasV3Columns(db));
+    const later = Object.keys(BASE_COLUMNS).flatMap((table) =>
+      columnsAddedAfter(table, from).map((column) => [table, column]));
+    check(`starts without the ${later.length} column(s) later steps add`,
+      later.every(([table, column]) => !columnsOf(db, table).includes(column)));
+    check('starts with every column its own version had', hasEveryColumn(db, from));
 
     await migrateDatabase(adapt(db));
 
-    check('gains the is_paused column', columnsOf(db, 'plans').includes('is_paused'));
-    check('gains the v3 columns', hasV3Columns(db));
+    check('gains every column every later step adds', hasEveryColumn(db, expected));
     check('lands on the current version', userVersionOf(db) === expected,
       `user_version was ${userVersionOf(db)}`);
 
@@ -228,9 +255,10 @@ try {
     check('defaults the existing plan to not paused', row?.is_paused === 0,
       `is_paused was ${row?.is_paused}`);
 
-    // A plan from before the monthly patterns has no monthly fields, which is the truth.
-    check('leaves the monthly fields of an older plan empty',
-      row?.day_of_month === null && row?.interval_months === null);
+    // A plan from before the monthly patterns has no monthly fields, which is the truth;
+    // likewise no meal relation until the next sync says otherwise.
+    check('leaves the fields an older plan never had empty',
+      row?.day_of_month === null && row?.interval_months === null && row?.meal_relation === null);
 
     // A cached Today row from before the upgrade carries no warnings, as an empty list
     // rather than a null the screen would have to special-case.
@@ -238,12 +266,20 @@ try {
     check('keeps the due row and defaults its warnings to an empty list',
       due !== undefined && due?.conflicts === '[]', `conflicts was ${due?.conflicts}`);
 
+    // A box without a name shows its ordinal; nothing invents a label, an expiry or a payer.
+    const box = db.prepare('SELECT * FROM packages WHERE id = ?').get('package-1');
+    check('keeps the box and leaves its name, expiry and coverage empty',
+      box !== undefined && box?.label === null && box?.expires_on === null && box?.coverage === null);
+    const medication = db.prepare('SELECT * FROM medications WHERE id = ?').get('medication-1');
+    check('keeps the medication and leaves its coverage empty',
+      medication !== undefined && medication?.coverage === null);
+
     // --------------------------------------------------------------- idempotent ----
     await migrateDatabase(adapt(db));
 
     check('is unchanged by running the migration again', userVersionOf(db) === expected
       && columnsOf(db, 'plans').filter((name) => name === 'is_paused').length === 1
-      && columnsOf(db, 'plans').filter((name) => name === 'day_of_month').length === 1);
+      && columnsOf(db, 'packages').filter((name) => name === 'label').length === 1);
 
     db.close();
   }

@@ -95,14 +95,19 @@ export type TodayResponse = {
 export type WorkspacePackage = {
   id: string;
   ordinal: number;
+  /** The household's own name for the box, shown instead of the ordinal when set. */
+  label?: string | null;
   state: 'Sealed' | 'Opened' | 'Disposed' | 'Lost' | 'Archived';
   isEmpty: boolean;
   nominalCapacity: ApiQuantity;
   remaining: ApiQuantity;
   unit: string;
+  expiresOn?: string | null;
   ownerPersonId: string | null;
   holderPersonId: string | null;
   isPinned: boolean;
+  /** Overrides the medicine's coverage for this box; null inherits it. */
+  coverage?: string | null;
 };
 
 export type WorkspaceResponse = {
@@ -117,6 +122,8 @@ export type WorkspaceResponse = {
     total: ApiQuantity;
     packageCount: number;
     loose: ApiQuantity;
+    /** 'InsuranceCovered', 'SelfPaid' or 'Unspecified' (treated as covered). */
+    coverage?: string;
     packages: { view: WorkspacePackage; activeLoanId: string | null }[];
   }[];
   plans: {
@@ -136,6 +143,7 @@ export type WorkspaceResponse = {
     localTime: string | null;
     timeZoneId: string;
     dayPeriod: string | null;
+    mealRelation: string | null;
     /** Set aside by the household. The server still lists it, so it can be resumed. */
     isPaused: boolean;
   }[];

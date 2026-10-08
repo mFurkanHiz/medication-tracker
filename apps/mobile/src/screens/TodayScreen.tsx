@@ -14,6 +14,7 @@ import { readToday, type LocalDueDose } from '../data/snapshot';
 import type { Session } from '../data/session';
 import { syncNow } from '../data/sync';
 import { enumKey, errorKey } from '../lib/i18n';
+import { localDate } from '../lib/local-date';
 import { formatQuantity } from '../lib/quantity';
 import {
   hasPermissionAsync,
@@ -415,14 +416,6 @@ async function readReminderPlans(db: ReturnType<typeof useSQLiteContext>): Promi
     isPaused: row.isPaused === 1,
     timeZoneId: row.timeZoneId,
   }));
-}
-
-/** Today in the device's own zone, which is the day the server is asked about. */
-function localDate(): string {
-  const now = new Date();
-  const month = `${now.getMonth() + 1}`.padStart(2, '0');
-  const day = `${now.getDate()}`.padStart(2, '0');
-  return `${now.getFullYear()}-${month}-${day}`;
 }
 
 function formatMoment(value: string, locale: string): string {

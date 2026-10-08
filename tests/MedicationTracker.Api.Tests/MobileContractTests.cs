@@ -72,6 +72,16 @@ public sealed class MobileContractTests
     [
         "id", "name", "strength", "unit", "isArchived",
         "total", "packageCount", "packages", "cautions", "notes",
+
+        // Read since mobile schema v4, for the Stock screen.
+        "coverage",
+    ];
+
+    /// <summary>Every field the phone's cached box row needs (mobile schema v4).</summary>
+    private static readonly string[] WorkspacePackageFields =
+    [
+        "id", "ordinal", "label", "state", "isEmpty", "nominalCapacity", "remaining", "unit",
+        "expiresOn", "ownerPersonId", "holderPersonId", "isPinned", "coverage",
     ];
 
     [PostgreSqlFact]
@@ -108,8 +118,11 @@ public sealed class MobileContractTests
 
         AssertEveryFieldPresent(
             workspace.GetProperty("plans").EnumerateArray().Single(), WorkspacePlanFields);
+        var medication = workspace.GetProperty("medications").EnumerateArray().Single();
+        AssertEveryFieldPresent(medication, WorkspaceMedicationFields);
         AssertEveryFieldPresent(
-            workspace.GetProperty("medications").EnumerateArray().Single(), WorkspaceMedicationFields);
+            medication.GetProperty("packages").EnumerateArray().Single().GetProperty("view"),
+            WorkspacePackageFields);
 
         // The phone filters archived people out of its reminder query, so it has to be
         // told which they are rather than having them silently withheld.

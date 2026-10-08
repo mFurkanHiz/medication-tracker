@@ -59,8 +59,11 @@ at `mobile-v1.0.1` parity first and then follows the server line.
 
 ## Consequences
 
-- A `VERSION` file, the version endpoint and the footer are a small slice to do at the
-  first release cut; until then nothing claims a number it has not earned.
+- Done at the `v1.0.1` cut (2026-10-08): the root `VERSION` file is the one source; the
+  API project bakes it into the assembly and `GET /api/version` reports it with the commit
+  the image was built from; `next.config.ts` bakes it into the web footer; the phone shows
+  the server version it is at parity with from its `app.json`. Release notes live under
+  `docs/releases/`.
 - Release notes per tag list the migrations included, because a self-hosted operator
   reads them before upgrading.
 - The Notion task property `Version` follows the server line for web work and the

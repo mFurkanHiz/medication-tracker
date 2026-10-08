@@ -46,13 +46,22 @@ public static class IdentityEndpoints
                         [new Claim(ClaimTypes.NameIdentifier, session.AccountId.ToString())], "session"));
                 }
             }
-            if (!context.Request.Path.StartsWithSegments("/api/auth") && context.User.Identity?.IsAuthenticated != true)
+            if (!IsAnonymousPath(context.Request.Path) && context.User.Identity?.IsAuthenticated != true)
             {
                 context.Response.StatusCode = 401; return;
             }
         }
         await next(context);
     }
+
+    /// <summary>
+    /// The API paths that answer without a session: signing in itself, and the version,
+    /// which is not a secret and is the first thing a support conversation asks for
+    /// (ADR 0017). Everything else under /api needs an authenticated principal.
+    /// </summary>
+    private static bool IsAnonymousPath(PathString path) =>
+        path.StartsWithSegments("/api/auth")
+        || path.Equals("/api/version", StringComparison.OrdinalIgnoreCase);
 
     public static void MapIdentityEndpoints(this WebApplication app)
     {

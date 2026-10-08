@@ -6,6 +6,7 @@ import { forgetSession, restoreSession, signOut, type Session } from './src/data
 import { LOCALES, dictionaries, type Locale, type MessageKey } from './src/lib/i18n';
 import { SignInScreen } from './src/screens/SignInScreen';
 import { TodayScreen } from './src/screens/TodayScreen';
+import { versionLabel } from './src/lib/version';
 import { Button, LocaleProvider, palette } from './src/ui/theme';
 
 /**
@@ -45,7 +46,10 @@ export default function App() {
         <StatusBar barStyle="dark-content" />
 
         <View style={styles.header}>
-          <Text style={styles.brand}>{t('appName')}</Text>
+          <View>
+            <Text style={styles.brand}>{t('appName')}</Text>
+            <Text style={styles.version}>{versionLabel()}</Text>
+          </View>
           <View style={styles.locales}>
             {LOCALES.map((option) => (
               <Button
@@ -91,6 +95,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   brand: { fontSize: 18, fontWeight: '800', color: palette.ink },
+  version: { fontSize: 12, color: palette.inkFaint },
   locales: { flexDirection: 'row', gap: 6 },
   localeButton: { minHeight: 40, paddingHorizontal: 12 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10 },

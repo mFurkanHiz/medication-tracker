@@ -65,10 +65,9 @@ retire and recreate it, or name the first accepted release `v1.0.1`).
 
 ## Next exact action
 
-1. **Cut `v1.0.1`** (ADR 0017; the owner's name for the first accepted release): the root
-   `VERSION` file, `GET /api/version`, the web footer, release notes listing migrations
-   1–18, the tag on the accepted commit once its CI is green (row 38), and the acceptance
-   table's summary set to complete. Retired `v1.0.0` stays where it is.
+1. **Finish the `v1.0.1` cut:** PR #61 carries the plumbing; once it merges and its CI is
+   green, tag `v1.0.1` on that merge commit, then record row 38's run and the complete
+   table in a documentation PR. Retired `v1.0.0` stays where it is.
 2. **Mobile continues** on the owner's computer: the install per
    `docs/mobile-device-install.md`, then the physical-device acceptance rows (28, 29) and
    `mobile-v1.0.1` at parity.
@@ -1195,6 +1194,18 @@ under `.deploy/env-history`; 23 containers of other projects untouched; `GET / -
 `GET /api/auth/session -> 401`. The deploy of the same push (run `37337177804`) then ran
 behind it and the site stayed up on the confined credential. The request file was
 removed in the follow-up PR, which ran the workflow once more to find nothing to do.
+
+### Slice 3 — the `v1.0.1` cut — PR #61
+
+ADR 0017 made real: the root `VERSION` file is the one source; the API project reads it
+into the assembly version and `GET /api/version` reports it with the commit the image was
+built from (`APP_GIT_SHA`, a build argument CI passes; null locally, never invented);
+`next.config.ts` bakes it into the static export and the footer shows `v1.0.1 · <commit>`;
+the phone's `app.json` says `1.0.1` and the header shows it. Both Dockerfiles copy
+`VERSION` into the build. `VersionEndpointTests` asserts the endpoint reports the file's
+content and needs no session; a web unit test pins the label. Release notes:
+`docs/releases/v1.0.1.md`. The tag goes on the merge commit once its CI is green, and
+row 38 closes with that run.
 
 ### What the cloud session could not do
 

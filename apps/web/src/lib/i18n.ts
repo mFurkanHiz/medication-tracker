@@ -471,6 +471,7 @@ export const tr = {
   countingDelta: 'Fark',
 
   // Safety
+  version: 'Sürüm',
   safetyNotice:
     'Bu uygulama ilaç düzenlemesi ve takibi içindir. Teşhis koymaz, doz önermez ve ilaç etkileşimi değerlendirmez; yalnız sizin yazdığınız "birlikte alınmaz" etiketlerini hatırlatır.',
 } as const;
@@ -909,6 +910,7 @@ export const en: Record<MessageKey, string> = {
   countingMatched: 'Count matched',
   countingDelta: 'Difference',
 
+  version: 'Version',
   safetyNotice:
     'This application organises and tracks medication. It does not diagnose, recommend a dose, or assess drug interactions; it only reminds you of your own "do not take with" tags.',
 };

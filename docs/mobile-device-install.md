@@ -10,6 +10,20 @@ The install is done by a session running *on that computer* — the Claude Deskt
 owner plugs the phone in and approves the prompts the phone itself shows. Everything the
 cloud session can prepare (the code, this page, the version) is prepared here.
 
+## First, one thing the cloud session could not do
+
+Push the release tag. A cloud session may not push tags (its proxy refuses tag refs and
+the releases API), so the `v1.0.1` tag for the accepted commit is pushed from here:
+
+```text
+git fetch origin main
+git tag -a v1.0.1 214dee48e7a7d49c7a52101b5bff3dc2fd591121 -m "v1.0.1 - the first accepted release (docs/releases/v1.0.1.md)"
+git push origin v1.0.1
+```
+
+Optionally, on GitHub, "Draft a new release" from that tag with `docs/releases/v1.0.1.md`
+as the notes.
+
 ## What the computer needs
 
 - Node 22 and pnpm (the versions `package.json` pins), a JDK, and the Android SDK with

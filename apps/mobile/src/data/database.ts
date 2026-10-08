@@ -14,7 +14,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
  */
 
 /** Bumped only for a change that needs a migration; see {@link migrateDatabase}. */
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 
 /**
  * The database file name.
@@ -56,6 +56,9 @@ export async function migrateDatabase(db: SQLiteDatabase): Promise<void> {
     if (version < 3) {
       await db.execAsync(MIGRATE_2_TO_3);
     }
+    if (version < 4) {
+      await db.execAsync(MIGRATE_3_TO_4);
+    }
   }
 
   await db.execAsync(`PRAGMA user_version = ${SCHEMA_VERSION};`);
@@ -84,7 +87,9 @@ CREATE TABLE medications (
   is_archived INTEGER NOT NULL DEFAULT 0,
   total_numerator INTEGER NOT NULL,
   total_denominator INTEGER NOT NULL CHECK(total_denominator > 0),
-  package_count INTEGER NOT NULL
+  package_count INTEGER NOT NULL,
+  -- Who pays, as the household recorded it; a box may override it below.
+  coverage TEXT
 );
 
 CREATE TABLE packages (
@@ -97,7 +102,12 @@ CREATE TABLE packages (
   capacity_numerator INTEGER NOT NULL,
   capacity_denominator INTEGER NOT NULL CHECK(capacity_denominator > 0),
   holder_person_id TEXT,
-  is_pinned INTEGER NOT NULL DEFAULT 0
+  is_pinned INTEGER NOT NULL DEFAULT 0,
+  -- What the Stock screen shows beyond the ordinal: the household's own name for the
+  -- box, when it expires, and a coverage that overrides the medicine's.
+  label TEXT,
+  expires_on TEXT,
+  coverage TEXT
 );
 
 CREATE INDEX ix_packages_medication ON packages (medication_id, ordinal);
@@ -122,6 +132,7 @@ CREATE TABLE plans (
   local_time TEXT,
   time_zone_id TEXT NOT NULL,
   day_period TEXT,
+  meal_relation TEXT,
   -- A plan the household deliberately set aside. Without this the phone kept its
   -- reminders: the one defect on the mobile list that told somebody something untrue.
   is_paused INTEGER NOT NULL DEFAULT 0
@@ -237,6 +248,20 @@ const MIGRATE_2_TO_3 = `
 ALTER TABLE plans ADD COLUMN day_of_month INTEGER;
 ALTER TABLE plans ADD COLUMN interval_months INTEGER;
 ALTER TABLE due_doses ADD COLUMN conflicts TEXT NOT NULL DEFAULT '[]';
+`;
+
+/**
+ * v3 → v4: what the Stock and Plans screens show that the Today screen never needed.
+ *
+ * All nullable, so an existing row is already correct: a box without a name shows its
+ * ordinal, a plan without a meal relation shows none. The next sync fills them in.
+ */
+const MIGRATE_3_TO_4 = `
+ALTER TABLE medications ADD COLUMN coverage TEXT;
+ALTER TABLE packages ADD COLUMN label TEXT;
+ALTER TABLE packages ADD COLUMN expires_on TEXT;
+ALTER TABLE packages ADD COLUMN coverage TEXT;
+ALTER TABLE plans ADD COLUMN meal_relation TEXT;
 `;
 
 /** Keys used in {@link snapshot_meta}. */

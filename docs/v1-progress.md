@@ -5,16 +5,16 @@ reconstructing the product history from a long conversation.
 
 ## Current state
 
-- Owner-accepted V1: **accepted by the owner on 2026-10-05 ("kabul"); one row left.**
-  The table stands at 37 DONE, 1 PARTIAL, 2 DEFERRED, 0 OPEN; the PARTIAL row is 38, the
-  final commit's CI, which closes on the commit the release is cut from. Row 37 landed in
-  production on 2026-10-05 (run `37337177964`): the API connects as a confined role. The
-  release is cut as `v1.0.1` next — the owner kept the retired `v1.0.0` tag untouched
-  (ADR 0017). `docs/v1-acceptance.md` is the authority on scope; ADR 0013
+- Owner-accepted V1: **COMPLETE, released as `v1.0.1` on 2026-10-08** (release commit
+  `214dee4`, CI run `37778332190`; the tag itself is pushed from the owner's computer,
+  because the cloud session may not push tags). The table stands at 38 DONE, 0 PARTIAL, 2 DEFERRED, 0 OPEN; the
+  two DEFERRED rows are the owner's mobile decision (ADR 0015). The owner kept the retired
+  `v1.0.0` tag untouched (ADR 0017). Release notes: `docs/releases/v1.0.1.md`. `docs/v1-acceptance.md` is the authority on scope; ADR 0013
   explains the rebuild, ADR 0015 the owner-approved mobile deferral.
 - Production tracks `main`: every merge deploys by itself, so the live revision is
-  whatever `main` last squashed to — `8775cf1` (PR #59, CI run `37337177804`) as of
-  2026-10-05, with migrations 1–18 applied and the API on the confined database role.
+  whatever `main` last squashed to — `214dee4` (PR #61, the `v1.0.1` cut, CI run
+  `37778332190`) as of 2026-10-08, with migrations 1–18 applied, the API on the confined
+  database role, and `GET /api/version` answering `1.0.1`.
   Documentation-only merges do not redeploy (`paths-ignore` on push).
 - **The owner's live-test round of 2026-10-05 is closed.** Sprint 7 shipped every note
   and decision (D1–D6) in seven slices (PR #50–#55, migrations 15–18), then the general
@@ -53,11 +53,9 @@ Domain, application, persistence and API layers for the package-first model:
 These are `OPEN` or `PARTIAL` in the acceptance contract and have **not** been narrowed
 or moved out of V1. None is ordinary coding work:
 
-1. **Row 38 — the final V1 commit passes CI.** A condition, not work: it closes on the
-   commit `v1.0.1` is cut from.
-
-Row 37 landed in production on 2026-10-05 (run `37337177964`, delegated by the owner).
-Rows 30, 39 and 40 were accepted by the owner the same day ("kabul").
+Nothing. Every required row is `DONE` or owner-`DEFERRED`; row 38 closed on the release
+commit (CI run `37778332190`), row 37 landed in production on 2026-10-05 (run
+`37337177964`), rows 30, 39 and 40 were accepted by the owner on 2026-10-05 ("kabul").
 
 From the live test nothing is open: the defect and every candidate change shipped in
 Sprint 7. Open beyond V1 and decided at acceptance: the retired `v1.0.0` tag (ADR 0017,
@@ -65,12 +63,17 @@ retire and recreate it, or name the first accepted release `v1.0.1`).
 
 ## Next exact action
 
-1. **Finish the `v1.0.1` cut:** PR #61 carries the plumbing; once it merges and its CI is
-   green, tag `v1.0.1` on that merge commit, then record row 38's run and the complete
-   table in a documentation PR. Retired `v1.0.0` stays where it is.
-2. **Mobile continues** on the owner's computer: the install per
-   `docs/mobile-device-install.md`, then the physical-device acceptance rows (28, 29) and
-   `mobile-v1.0.1` at parity.
+1. **Mobile catch-up continues** — the owner's priority (2026-10-08: "mobil gerideyse
+   öncelik mobil versiyonu web'e eşitlemek"), code only until a device is attached. The
+   Stock and Plans screens are in (PR #62). Next, each as its own slice with typecheck
+   and unit tests: the People and History screens (read-only, from the snapshot); then
+   the commands the web has and the phone lacks, through the outbox so they work
+   offline — pause and resume a plan, add stock, pin a box, mark a box lost or disposed;
+   then reports, export and counting.
+2. **On the owner's computer**, when they next open a session there: push the `v1.0.1`
+   tag (one command, at the top of `docs/mobile-device-install.md`), then the install
+   per that runbook, then the physical-device acceptance rows (28, 29), then the
+   `mobile-v1.0.1` tag.
 3. **Rotation, when wanted:** re-running the *Apply least privilege* workflow (dispatch
    with the confirmation, or the request file again) gives the confined role a new
    password and restarts only the api container.
@@ -1204,8 +1207,30 @@ built from (`APP_GIT_SHA`, a build argument CI passes; null locally, never inven
 the phone's `app.json` says `1.0.1` and the header shows it. Both Dockerfiles copy
 `VERSION` into the build. `VersionEndpointTests` asserts the endpoint reports the file's
 content and needs no session; a web unit test pins the label. Release notes:
-`docs/releases/v1.0.1.md`. The tag goes on the merge commit once its CI is green, and
-row 38 closes with that run.
+`docs/releases/v1.0.1.md`. Merged as `214dee4`; CI run `37778332190` green; row 38 closed
+with it and the acceptance table is complete. The annotated `v1.0.1` tag for that commit
+could not be pushed from here — the proxy refuses tag refs (`git push origin v1.0.1`
+hangs up) and the releases API answers 403 for this session type — so it is pushed from
+the owner's computer, one command, in `docs/mobile-device-install.md`'s runbook.
+
+### Slice 4 — the phone shows stock and plans — PR #62
+
+The owner's priority is closing the phone's gap to the web, code only until a device is
+attached. Two read-only screens on a three-tab bar (Today, Stok, Planlar), both from the
+cached snapshot so they render offline: **Stock** lists every unarchived medication with
+its total, box count, coverage badge, every box with its own name or ordinal, state,
+remaining of capacity, expiry, holder and the active-box badge, plus the loose amount
+worked out exactly from the cached total; **Plans** groups plans by person with the
+schedule in words (the web's wording: every day, selected weekdays Monday-first, every N
+days, day of the month, every N months on the start day, as-needed with its preferred
+period), a status badge (active, paused, ended, starts later — ended wins over paused,
+as on the web), the dates, and past plans at the bottom. Both say that changes are made
+on the web rather than hiding the buttons. Schema v4 adds `coverage` to medications,
+`label`, `expires_on` and `coverage` to packages and `meal_relation` to plans; the
+migration check now builds frozen fixtures for every earlier version (1, 2, 3) from
+per-step column lists and upgrades each. `MobileContractTests` pins the box fields and
+the medicine's coverage. `plans.test.ts` pins the wording and the status rule (11 tests;
+31 mobile tests in all). Nothing here has been seen on a device.
 
 ### What the cloud session could not do
 
@@ -1220,16 +1245,16 @@ package name and nothing else.
 Sprints 2 through 7 are closed, each with its report on its Notion sprint page; Sprint 8
 (mobile) is open.
 
-The acceptance table stands at **36 DONE, 2 PARTIAL, 2 DEFERRED, 0 OPEN** of 40 rows.
+The acceptance table stands at **38 DONE, 0 PARTIAL, 2 DEFERRED, 0 OPEN** of 40 rows.
 `DEFERRED` is an owner decision recorded on a date, not a criterion met: **V1 is a web
 release with mobile infrastructure in place and does not deliver the offline mobile
-client** (ADR 0015). The owner accepted rows 30, 39 and 40 on 2026-10-05.
+client** (ADR 0015). The owner accepted rows 30, 39 and 40 on 2026-10-05; the release
+was cut as `v1.0.1` on 2026-10-08, with the tag's push left to the owner's computer.
 
-**What remains is the agent's:** the `v1.0.1` cut; row 38 closes itself on that commit.
-Row 37 landed in production on 2026-10-05.
+**V1 is complete.** What follows is Sprint 8: the phone catching up with the web.
 
-**Exact next action.** Cut `v1.0.1`, as the *Next exact action* section at the top
-describes. Mobile continues on the owner's computer in parallel.
+**Exact next action.** The mobile catch-up, as the *Next exact action* section at the
+top describes: People and History screens, then the outbox commands.
 
 Still open for the owner, unchanged: which production household is theirs, so the
 synthetic ones left by smoke tests can be cleaned; and the `VPS_SSH_KEY` rotation.

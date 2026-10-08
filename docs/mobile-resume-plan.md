@@ -76,6 +76,19 @@ until a release channel exists.
    Then the plans, stock, people and history surfaces, and later reports, export and
    counting, as their own slices — the owner's priority is closing the gap to the web.
 
+## Progress after the resume
+
+- PR #58: schema v3, the server's due-day rule, the monthly patterns, `conflicts` on
+  Today, reminders that stop at a version's end.
+- PR #61: the app reports `1.0.1`.
+- PR #62: a three-tab bar; read-only **Stock** (boxes with name, state, remaining, expiry,
+  holder, active-box and coverage badges, loose amount) and **Plans** (grouped by person,
+  schedule in the web's words, status, dates, past plans); schema v4. Nothing seen on a
+  device yet.
+- Next, each its own slice: People and History read-only; then the outbox commands the
+  web has and the phone lacks (pause and resume a plan, add stock, pin a box, mark lost
+  or disposed); then reports, export and counting.
+
 ## Known gap
 
 The workspace sends each plan's latest version only. The server's rule gives a day to

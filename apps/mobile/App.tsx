@@ -4,9 +4,12 @@ import { SQLiteProvider } from 'expo-sqlite';
 import { databaseNameFor, migrateDatabase } from './src/data/database';
 import { forgetSession, restoreSession, signOut, type Session } from './src/data/session';
 import { LOCALES, dictionaries, type Locale, type MessageKey } from './src/lib/i18n';
+import { PlansScreen } from './src/screens/PlansScreen';
 import { SignInScreen } from './src/screens/SignInScreen';
+import { StockScreen } from './src/screens/StockScreen';
 import { TodayScreen } from './src/screens/TodayScreen';
 import { versionLabel } from './src/lib/version';
+import { TabBar, type Tab } from './src/ui/TabBar';
 import { Button, LocaleProvider, palette } from './src/ui/theme';
 
 /**
@@ -19,6 +22,7 @@ export default function App() {
   const [locale, setLocale] = useState<Locale>('tr');
   const [session, setSession] = useState<Session | null>(null);
   const [checked, setChecked] = useState(false);
+  const [tab, setTab] = useState<Tab>('today');
 
   const t = useMemo(() => (key: MessageKey) => dictionaries[locale][key], [locale]);
 
@@ -75,7 +79,16 @@ export default function App() {
             databaseName={databaseNameFor(session.householdId)}
             onInit={migrateDatabase}
           >
-            <TodayScreen session={session} onSignedOut={() => void endSession()} />
+            <View style={styles.body}>
+              {tab === 'today' ? (
+                <TodayScreen session={session} onSignedOut={() => void endSession()} />
+              ) : tab === 'stock' ? (
+                <StockScreen session={session} />
+              ) : (
+                <PlansScreen session={session} />
+              )}
+            </View>
+            <TabBar tab={tab} onChange={setTab} />
           </SQLiteProvider>
         ) : (
           <SignInScreen onSignedIn={setSession} />
@@ -87,6 +100,7 @@ export default function App() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: palette.surface },
+  body: { flex: 1 },
   header: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -12,9 +12,10 @@ reconstructing the product history from a long conversation.
   `v1.0.0` tag untouched (ADR 0017). Release notes: `docs/releases/v1.0.1.md`. `docs/v1-acceptance.md` is the authority on scope; ADR 0013
   explains the rebuild, ADR 0015 the owner-approved mobile deferral.
 - Production tracks `main`: every merge deploys by itself, so the live revision is
-  whatever `main` last squashed to — `214dee4` (PR #61, the `v1.0.1` cut, CI run
-  `37778332190`) as of 2026-10-08, with migrations 1–18 applied, the API on the confined
-  database role, and `GET /api/version` answering `1.0.1`.
+  whatever `main` last squashed to — `c9cfabf` (PR #62, CI run `37782328587`) as of
+  2026-10-08, with migrations 1–18 applied, the API on the confined database role, and
+  `GET /api/version` answering `1.0.1` (the server has not changed since the `v1.0.1`
+  cut at `214dee4`; the merges since are mobile code, tests and documentation).
   Documentation-only merges do not redeploy (`paths-ignore` on push).
 - **The owner's live-test round of 2026-10-05 is closed.** Sprint 7 shipped every note
   and decision (D1–D6) in seven slices (PR #50–#55, migrations 15–18), then the general
@@ -23,9 +24,10 @@ reconstructing the product history from a long conversation.
   (box-to-box transfer, the count-batch race answering 500, the heavy per-card
   disclosure), not defects.
 - The mobile client resumed on 2026-10-05 on the owner's word ("Mobile başla"). The
-  owner chose USB from their own computer over EAS Build; the first slice (schema v3 and
-  the server's due-day rule on the phone, PR #58) is in; the install itself runs from a
-  session on the owner's computer (`docs/mobile-device-install.md`), which a cloud
+  owner chose USB from their own computer over EAS Build; schema v3 and the server's
+  due-day rule (PR #58), then every read-only screen the web has — Stock, Plans (PR #62),
+  People, History (PR #63) — are in, none yet seen on a device; the install itself runs
+  from a session on the owner's computer (`docs/mobile-device-install.md`), which a cloud
   session cannot do. Plan and progress: `docs/mobile-resume-plan.md`.
 
 ## What the rebuild has delivered
@@ -64,12 +66,12 @@ retire and recreate it, or name the first accepted release `v1.0.1`).
 ## Next exact action
 
 1. **Mobile catch-up continues** — the owner's priority (2026-10-08: "mobil gerideyse
-   öncelik mobil versiyonu web'e eşitlemek"), code only until a device is attached. The
-   Stock and Plans screens are in (PR #62). Next, each as its own slice with typecheck
-   and unit tests: the People and History screens (read-only, from the snapshot); then
-   the commands the web has and the phone lacks, through the outbox so they work
-   offline — pause and resume a plan, add stock, pin a box, mark a box lost or disposed;
-   then reports, export and counting.
+   öncelik mobil versiyonu web'e eşitlemek"), code only until a device is attached. Every
+   read-only screen the web has is now on the phone: Stock and Plans (PR #62), People and
+   History (PR #63). Next, each as its own slice with typecheck and unit tests: the
+   commands the web has and the phone lacks, through the outbox so they work offline —
+   pause and resume a plan, add stock, pin a box, mark a box lost or disposed; then
+   reports, export and counting.
 2. **On the owner's computer**, when they next open a session there: push the `v1.0.1`
    tag (one command, at the top of `docs/mobile-device-install.md`), then the install
    per that runbook, then the physical-device acceptance rows (28, 29), then the
@@ -1232,6 +1234,26 @@ per-step column lists and upgrades each. `MobileContractTests` pins the box fiel
 the medicine's coverage. `plans.test.ts` pins the wording and the status rule (11 tests;
 31 mobile tests in all). Nothing here has been seen on a device.
 
+### Slice 5 — the phone shows people and history — PR #63
+
+Two more read-only screens on a five-tab bar (Today, Stok, Planlar, Kişiler, Geçmiş),
+again from the cached snapshot. **People** lists the household's active people with how
+many plans each has and a badge when any is paused, then the archived people under their
+own heading. **History** is the web's screen: the server's activity feed, cached whole in
+a new `activity_entries` snapshot table (schema v5, replaced on every sync like the other
+snapshot tables), shown as three sections — stock movements in the web's words (acquired,
+consumed, found, lost, disposed, counted, moved, corrected, adjusted) with the box or
+"loose stock", the reason and the signed amount; recorded doses with the person, the
+amount, the outcome badge, an untracked-source badge and a lateness badge from a quarter
+of an hour either way; stock-source corrections as "from → to · amount · reason". Above
+all of them, the doses this device recorded that the server has not acknowledged yet, so
+a dose taken offline is visible before it has synced. Corrections stay on the web, and
+the screen says so. `history.test.ts` pins the wording, the signs, the box label, the
+outcome keys and the lateness threshold (6 tests; 37 mobile tests in all); the migration
+check now upgrades frozen fixtures for versions 1–4 and knows a table can be added by a
+later step; `MobileContractTests` pins the three activity streams and their fields. Still
+nothing seen on a device.
+
 ### What the cloud session could not do
 
 Install on the phone. The owner asked "yapamaz mısın oradan?" — no: this session runs in
@@ -1254,7 +1276,7 @@ was cut as `v1.0.1` on 2026-10-08, with the tag's push left to the owner's compu
 **V1 is complete.** What follows is Sprint 8: the phone catching up with the web.
 
 **Exact next action.** The mobile catch-up, as the *Next exact action* section at the
-top describes: People and History screens, then the outbox commands.
+top describes: the read-only screens are all in (PR #62, #63); next the outbox commands.
 
 Still open for the owner, unchanged: which production household is theirs, so the
 synthetic ones left by smoke tests can be cleaned; and the `VPS_SSH_KEY` rotation.

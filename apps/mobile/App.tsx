@@ -4,6 +4,8 @@ import { SQLiteProvider } from 'expo-sqlite';
 import { databaseNameFor, migrateDatabase } from './src/data/database';
 import { forgetSession, restoreSession, signOut, type Session } from './src/data/session';
 import { LOCALES, dictionaries, type Locale, type MessageKey } from './src/lib/i18n';
+import { HistoryScreen } from './src/screens/HistoryScreen';
+import { PeopleScreen } from './src/screens/PeopleScreen';
 import { PlansScreen } from './src/screens/PlansScreen';
 import { SignInScreen } from './src/screens/SignInScreen';
 import { StockScreen } from './src/screens/StockScreen';
@@ -84,8 +86,12 @@ export default function App() {
                 <TodayScreen session={session} onSignedOut={() => void endSession()} />
               ) : tab === 'stock' ? (
                 <StockScreen session={session} />
-              ) : (
+              ) : tab === 'plans' ? (
                 <PlansScreen session={session} />
+              ) : tab === 'people' ? (
+                <PeopleScreen session={session} />
+              ) : (
+                <HistoryScreen session={session} />
               )}
             </View>
             <TabBar tab={tab} onChange={setTab} />

@@ -5,8 +5,8 @@ import type { SQLiteDatabase } from 'expo-sqlite';
  *
  * Two kinds of table live here and they are not interchangeable:
  *
- *  - **Snapshot tables** (`people`, `medications`, `packages`, `plans`, `due_doses`)
- *    are a cache of what the server last said. They are replaced wholesale on every
+ *  - **Snapshot tables** (`people`, `medications`, `packages`, `plans`, `due_doses`,
+ *    `activity_entries`) are a cache of what the server last said. They are replaced wholesale on every
  *    refresh and nothing is ever lost by discarding them.
  *  - **Local tables** (`local_doses`, `outbox`, `rejections`, `reminders`) hold what
  *    this device knows and the server may not. They are authoritative until the
@@ -14,7 +14,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
  */
 
 /** Bumped only for a change that needs a migration; see {@link migrateDatabase}. */
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 5;
 
 /**
  * The database file name.
@@ -58,6 +58,9 @@ export async function migrateDatabase(db: SQLiteDatabase): Promise<void> {
     }
     if (version < 4) {
       await db.execAsync(MIGRATE_3_TO_4);
+    }
+    if (version < 5) {
+      await db.execAsync(MIGRATE_4_TO_5);
     }
   }
 
@@ -161,6 +164,31 @@ CREATE TABLE due_doses (
   PRIMARY KEY (plan_version_id, local_date)
 );
 
+-- What happened, as the server last listed it: its latest page of stock movements,
+-- recorded doses and corrections, one row each with a kind. Replaced on every refresh
+-- like the rest of the snapshot; the device's own unsynced doses live in local_doses.
+CREATE TABLE activity_entries (
+  id TEXT PRIMARY KEY,
+  kind TEXT NOT NULL,
+  occurred_at TEXT NOT NULL,
+  recorded_at TEXT NOT NULL,
+  person_id TEXT,
+  medication_id TEXT,
+  detail TEXT,
+  stock_source TEXT,
+  package_label INTEGER,
+  from_package_label INTEGER,
+  to_package_label INTEGER,
+  quantity_numerator INTEGER,
+  quantity_denominator INTEGER CHECK(quantity_denominator IS NULL OR quantity_denominator > 0),
+  scheduled_for TEXT,
+  lateness_minutes INTEGER,
+  reason TEXT,
+  administration_event_id TEXT
+);
+
+CREATE INDEX ix_activity_recorded ON activity_entries (kind, recorded_at);
+
 -- --------------------------------------------------------------------- local ----
 -- Survives every refresh. Authoritative until the server acknowledges it.
 
@@ -262,6 +290,35 @@ ALTER TABLE packages ADD COLUMN label TEXT;
 ALTER TABLE packages ADD COLUMN expires_on TEXT;
 ALTER TABLE packages ADD COLUMN coverage TEXT;
 ALTER TABLE plans ADD COLUMN meal_relation TEXT;
+`;
+
+/**
+ * v4 → v5: the History screen's cache.
+ *
+ * A new snapshot table, empty until the next sync fills it; nothing existing is touched.
+ */
+const MIGRATE_4_TO_5 = `
+CREATE TABLE activity_entries (
+  id TEXT PRIMARY KEY,
+  kind TEXT NOT NULL,
+  occurred_at TEXT NOT NULL,
+  recorded_at TEXT NOT NULL,
+  person_id TEXT,
+  medication_id TEXT,
+  detail TEXT,
+  stock_source TEXT,
+  package_label INTEGER,
+  from_package_label INTEGER,
+  to_package_label INTEGER,
+  quantity_numerator INTEGER,
+  quantity_denominator INTEGER CHECK(quantity_denominator IS NULL OR quantity_denominator > 0),
+  scheduled_for TEXT,
+  lateness_minutes INTEGER,
+  reason TEXT,
+  administration_event_id TEXT
+);
+
+CREATE INDEX ix_activity_recorded ON activity_entries (kind, recorded_at);
 `;
 
 /** Keys used in {@link snapshot_meta}. */

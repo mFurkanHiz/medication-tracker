@@ -219,6 +219,60 @@ public sealed class MobileContractTests
         Assert.Empty(row.GetProperty("conflicts").EnumerateArray());
     }
 
+    /// <summary>Every field the phone's History screen caches from the activity feed (mobile schema v5).</summary>
+    private static readonly string[] ActivityInventoryFields =
+    [
+        "id", "medicationDefinitionId", "entryType", "packageLabel", "quantity",
+        "occurredAt", "recordedAt", "reason",
+    ];
+
+    private static readonly string[] ActivityAdministrationFields =
+    [
+        "id", "personId", "medicationDefinitionId", "outcome", "stockSource", "actualQuantity",
+        "scheduledFor", "occurredAt", "recordedAt", "latenessMinutes",
+    ];
+
+    private static readonly string[] ActivityCorrectionFields =
+    [
+        "id", "administrationEventId", "fromPackageLabel", "toPackageLabel", "quantity",
+        "reason", "recordedAt",
+    ];
+
+    [PostgreSqlFact]
+    public async Task The_activity_feed_still_carries_every_field_the_phone_caches()
+    {
+        await using var harness = new ApiTestHarness();
+        var (client, household) = await harness.NewHouseholdAsync();
+        var (person, definition) = await SyntheticHouseholdAsync(client, household);
+
+        await PlanAsync(client, household, person, definition);
+
+        var activity = await client.GetOk($"/api/households/{household}/activity");
+
+        // Three streams, each always present as an array: the phone replaces its cache
+        // wholesale from them and an absent stream would read as "everything vanished".
+        foreach (var stream in new[] { "inventory", "administrations", "allocationCorrections" })
+        {
+            Assert.Equal(JsonValueKind.Array, activity.GetProperty(stream).ValueKind);
+        }
+
+        // Adding the synthetic stock wrote a ledger entry, so the inventory stream has a
+        // row to pin field by field.
+        var entry = activity.GetProperty("inventory").EnumerateArray().First();
+        AssertEveryFieldPresent(entry, ActivityInventoryFields);
+        Assert.Equal("Acquire", entry.GetProperty("entryType").GetString());
+
+        foreach (var row in activity.GetProperty("administrations").EnumerateArray())
+        {
+            AssertEveryFieldPresent(row, ActivityAdministrationFields);
+        }
+
+        foreach (var row in activity.GetProperty("allocationCorrections").EnumerateArray())
+        {
+            AssertEveryFieldPresent(row, ActivityCorrectionFields);
+        }
+    }
+
     private static void AssertEveryFieldPresent(JsonElement row, string[] fields)
     {
         var missing = fields.Where(field => !row.TryGetProperty(field, out _)).ToArray();

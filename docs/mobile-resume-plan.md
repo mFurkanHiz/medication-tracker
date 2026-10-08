@@ -85,9 +85,15 @@ until a release channel exists.
   holder, active-box and coverage badges, loose amount) and **Plans** (grouped by person,
   schedule in the web's words, status, dates, past plans); schema v4. Nothing seen on a
   device yet.
-- Next, each its own slice: People and History read-only; then the outbox commands the
-  web has and the phone lacks (pause and resume a plan, add stock, pin a box, mark lost
-  or disposed); then reports, export and counting.
+- PR #63: a five-tab bar; read-only **People** (active people with their plan count and a
+  paused badge, archived people below) and **History** (the server's activity feed cached
+  in a new `activity_entries` table — stock movements in the web's words with the box,
+  reason and signed amount; recorded doses with outcome, untracked-source and lateness
+  badges; stock-source corrections — plus, above them all, the doses this device recorded
+  and the server has not acknowledged yet); schema v5. Still nothing seen on a device.
+- Next, each its own slice: the outbox commands the web has and the phone lacks (pause
+  and resume a plan, add stock, pin a box, mark lost or disposed); then reports, export
+  and counting.
 
 ## Known gap
 

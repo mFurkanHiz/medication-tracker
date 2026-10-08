@@ -14,7 +14,7 @@ import { readToday, type LocalDueDose } from '../data/snapshot';
 import type { Session } from '../data/session';
 import { syncNow } from '../data/sync';
 import { enumKey, errorKey } from '../lib/i18n';
-import { localDate } from '../lib/local-date';
+import { formatMoment, localDate } from '../lib/local-date';
 import { formatQuantity } from '../lib/quantity';
 import {
   hasPermissionAsync,
@@ -416,17 +416,6 @@ async function readReminderPlans(db: ReturnType<typeof useSQLiteContext>): Promi
     isPaused: row.isPaused === 1,
     timeZoneId: row.timeZoneId,
   }));
-}
-
-function formatMoment(value: string, locale: string): string {
-  try {
-    return new Date(value).toLocaleString(locale === 'tr' ? 'tr-TR' : 'en-GB', {
-      dateStyle: 'short',
-      timeStyle: 'short',
-    });
-  } catch {
-    return value;
-  }
 }
 
 

@@ -4,11 +4,14 @@ import {
   type ActivityResponse,
   type ApiConfig,
   type DoseConflict,
+  type RecurrencePattern,
   type TodayResponse,
   type WorkspaceResponse,
 } from '../lib/api';
-import { ZERO, addQuantities, compareQuantities, subtractQuantity, type Quantity } from '../lib/quantity';
+import { ZERO, addQuantities, compareQuantities, formatQuantity, subtractQuantity, type Quantity } from '../lib/quantity';
 import type { PlanShape } from '../lib/plans';
+import type { ReminderPlan } from '../notifications/reminders';
+import { applyQueuedEffects, listCommands, type CommandRow } from './command-queue';
 import { META, writeMeta } from './database';
 
 /**
@@ -93,6 +96,9 @@ export async function refreshSnapshot(
     await writePlans(db, workspace);
     await writeDue(db, today, localDate);
     await writeActivity(db, activity);
+
+    // What this device decided and the server has not heard yet goes back on top.
+    await applyQueuedEffects(db);
   });
 
   await writeMeta(db, META.lastSyncedAt, now);
@@ -114,8 +120,9 @@ async function writeMedications(db: SQLiteDatabase, workspace: WorkspaceResponse
   for (const medication of workspace.medications) {
     await db.runAsync(
       `INSERT INTO medications (
-         id, name, strength, unit, is_archived, total_numerator, total_denominator, package_count, coverage
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         id, name, strength, unit, is_archived, total_numerator, total_denominator, package_count, coverage,
+         default_capacity_numerator, default_capacity_denominator
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       medication.id,
       medication.name,
       medication.strength,
@@ -125,6 +132,8 @@ async function writeMedications(db: SQLiteDatabase, workspace: WorkspaceResponse
       medication.total.denominator,
       medication.packageCount,
       medication.coverage ?? null,
+      medication.defaultPackageCapacity?.numerator ?? null,
+      medication.defaultPackageCapacity?.denominator ?? null,
     );
 
     for (const entry of medication.packages) {
@@ -332,6 +341,8 @@ export type HistoryPending = {
 
 export type History = {
   pending: HistoryPending[];
+  /** Commands queued on this device and not yet acknowledged, oldest first. */
+  commands: CommandRow[];
   corrections: HistoryCorrection[];
   administrations: HistoryAdministration[];
   inventory: HistoryInventory[];
@@ -413,6 +424,7 @@ export async function readHistory(db: SQLiteDatabase): Promise<History> {
       quantity: quantity(row.numerator, row.denominator),
       occurredAt: row.occurredAt,
     })),
+    commands: await listCommands(db, 'queued'),
     corrections: corrections.map((row) => ({
       id: row.id,
       medicationName: row.medicationName,
@@ -592,6 +604,8 @@ export type StockPackage = {
 
 export type StockRow = MedicationStock & {
   coverage: string | null;
+  /** The catalogue's usual box size, offered when stock is added; null when never set. */
+  defaultCapacity: Quantity | null;
   /** What is not inside any sealed or opened box: the total less those boxes. */
   loose: Quantity;
   packages: StockPackage[];
@@ -612,12 +626,16 @@ export async function readStockWithPackages(db: SQLiteDatabase): Promise<StockRo
     totalDenominator: number;
     packageCount: number;
     coverage: string | null;
+    defaultCapacityNumerator: number | null;
+    defaultCapacityDenominator: number | null;
   }>(
     `SELECT id, name, strength, unit,
             total_numerator AS totalNumerator,
             total_denominator AS totalDenominator,
             package_count AS packageCount,
-            coverage
+            coverage,
+            default_capacity_numerator AS defaultCapacityNumerator,
+            default_capacity_denominator AS defaultCapacityDenominator
        FROM medications
       WHERE is_archived = 0
       ORDER BY name`,
@@ -682,6 +700,10 @@ export async function readStockWithPackages(db: SQLiteDatabase): Promise<StockRo
       total,
       packageCount: medication.packageCount,
       coverage: medication.coverage,
+      defaultCapacity:
+        medication.defaultCapacityNumerator !== null && medication.defaultCapacityDenominator !== null
+          ? { numerator: medication.defaultCapacityNumerator, denominator: medication.defaultCapacityDenominator }
+          : null,
       loose: compareQuantities(loose, ZERO) < 0 ? ZERO : loose,
       packages: boxes,
     };
@@ -691,6 +713,8 @@ export async function readStockWithPackages(db: SQLiteDatabase): Promise<StockRo
 export type PlanRow = PlanShape & {
   id: string;
   versionId: string;
+  personId: string;
+  medicationId: string;
   personName: string;
   medicationName: string;
   unit: string;
@@ -704,6 +728,8 @@ export async function readPlans(db: SQLiteDatabase): Promise<PlanRow[]> {
   const rows = await db.getAllAsync<{
     id: string;
     versionId: string;
+    personId: string;
+    medicationId: string;
     personName: string | null;
     medicationName: string | null;
     unit: string | null;
@@ -724,6 +750,7 @@ export async function readPlans(db: SQLiteDatabase): Promise<PlanRow[]> {
     isPaused: number;
   }>(
     `SELECT pl.id, pl.version_id AS versionId,
+            pl.person_id AS personId, pl.medication_id AS medicationId,
             p.name AS personName, m.name AS medicationName, m.unit AS unit,
             pl.dose_numerator AS doseNumerator, pl.dose_denominator AS doseDenominator,
             pl.kind, pl.pattern,
@@ -742,6 +769,8 @@ export async function readPlans(db: SQLiteDatabase): Promise<PlanRow[]> {
   return rows.map((row) => ({
     id: row.id,
     versionId: row.versionId,
+    personId: row.personId,
+    medicationId: row.medicationId,
     personName: row.personName ?? '—',
     medicationName: row.medicationName ?? '—',
     unit: row.unit ?? '',
@@ -798,5 +827,70 @@ export async function readPackageOptions(
     remaining: { numerator: row.remainingNumerator, denominator: row.remainingDenominator },
     capacity: { numerator: row.capacityNumerator, denominator: row.capacityDenominator },
     isPinned: row.isPinned === 1,
+  }));
+}
+
+/** Reads the cached plans in the shape the reminder scheduler needs. */
+export async function readReminderPlans(db: SQLiteDatabase): Promise<ReminderPlan[]> {
+  const rows = await db.getAllAsync<{
+    planVersionId: string;
+    medicationName: string | null;
+    personName: string | null;
+    doseNumerator: number;
+    doseDenominator: number;
+    kind: 'Scheduled' | 'AsNeeded';
+    pattern: RecurrencePattern;
+    weekdayMask: number | null;
+    intervalDays: number | null;
+    dayOfMonth: number | null;
+    intervalMonths: number | null;
+    effectiveFrom: string | null;
+    effectiveTo: string | null;
+    localTime: string | null;
+    timeZoneId: string;
+    isPaused: number;
+  }>(
+    `SELECT pl.version_id AS planVersionId,
+            m.name        AS medicationName,
+            p.name        AS personName,
+            pl.dose_numerator AS doseNumerator,
+            pl.dose_denominator AS doseDenominator,
+            pl.kind, pl.pattern,
+            pl.weekday_mask AS weekdayMask,
+            pl.interval_days AS intervalDays,
+            pl.day_of_month AS dayOfMonth,
+            pl.interval_months AS intervalMonths,
+            pl.effective_from AS effectiveFrom,
+            pl.effective_to AS effectiveTo,
+            pl.local_time AS localTime,
+            pl.time_zone_id AS timeZoneId,
+            pl.is_paused AS isPaused
+       FROM plans pl
+       LEFT JOIN medications m ON m.id = pl.medication_id
+       LEFT JOIN people p      ON p.id = pl.person_id
+      -- An archived person's plans were kept out of the server's Today list in the same
+      -- slice that made archiving pause them. The phone filtered the medication but not
+      -- the person, so a household member who had been archived could still be reminded
+      -- by name from a snapshot taken before that cascade existed.
+      WHERE (m.is_archived = 0 OR m.is_archived IS NULL)
+        AND (p.is_archived = 0 OR p.is_archived IS NULL)`,
+  );
+
+  return rows.map((row) => ({
+    planVersionId: row.planVersionId,
+    medicationName: row.medicationName ?? '—',
+    personName: row.personName ?? '—',
+    doseLabel: formatQuantity({ numerator: row.doseNumerator, denominator: row.doseDenominator }),
+    kind: row.kind,
+    pattern: row.pattern,
+    weekdayMask: row.weekdayMask,
+    intervalDays: row.intervalDays,
+    dayOfMonth: row.dayOfMonth,
+    intervalMonths: row.intervalMonths,
+    effectiveFrom: row.effectiveFrom,
+    effectiveTo: row.effectiveTo,
+    localTime: row.localTime,
+    isPaused: row.isPaused === 1,
+    timeZoneId: row.timeZoneId,
   }));
 }

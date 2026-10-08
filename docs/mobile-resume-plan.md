@@ -91,9 +91,16 @@ until a release channel exists.
   reason and signed amount; recorded doses with outcome, untracked-source and lateness
   badges; stock-source corrections — plus, above them all, the doses this device recorded
   and the server has not acknowledged yet); schema v5. Still nothing seen on a device.
-- Next, each its own slice: the outbox commands the web has and the phone lacks (pause
-  and resume a plan, add stock, pin a box, mark lost or disposed); then reports, export
-  and counting.
+- PR #64: the phone's first commands besides a dose, through the outbox so they work
+  offline — pause and resume a plan, add stock, make a box the active one, mark a box
+  lost or disposed. A new `commands` queue (schema v6) sent in creation order together
+  with the doses; each command's effect is applied to the cached snapshot at once and
+  re-applied after every refresh until the server has it; a refusal is shown with its
+  reason and dismissed, never retried forever. The server's add-stock endpoint gained an
+  idempotency key (replayed through the sync receipts), and retiring a box twice is one
+  decision. Still nothing seen on a device.
+- Next, each its own slice: reports, export and counting on the phone; the server-side
+  fix for the latest-version-only gap below.
 
 ## Known gap
 

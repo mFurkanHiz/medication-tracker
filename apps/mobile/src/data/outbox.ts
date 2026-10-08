@@ -1,7 +1,19 @@
 import * as Crypto from 'expo-crypto';
 import type { SQLiteDatabase } from 'expo-sqlite';
-import { ApiError, NetworkError, api, type ApiConfig, type DoseSource, type RecordDoseRequest } from '../lib/api';
+import {
+  ApiError,
+  NetworkError,
+  api,
+  type AddStockRequest,
+  type ApiConfig,
+  type DoseSource,
+  type RecordDoseRequest,
+  type RetirePackageRequest,
+  type SetPlanPausedRequest,
+} from '../lib/api';
+import { interleave } from '../lib/commands';
 import type { Quantity } from '../lib/quantity';
+import { applyLocalEffect, queuedCommandCount, type CommandRow } from './command-queue';
 
 /**
  * The durable command queue.
@@ -125,9 +137,48 @@ export async function pendingDoses(db: SQLiteDatabase): Promise<PendingDose[]> {
   );
 }
 
+/** Everything still waiting for the server: doses and the other commands alike. */
 export async function pendingCount(db: SQLiteDatabase): Promise<number> {
   const row = await db.getFirstAsync<{ count: number }>('SELECT count(*) AS count FROM outbox');
-  return row?.count ?? 0;
+  return (row?.count ?? 0) + (await queuedCommandCount(db));
+}
+
+export type CommandInput =
+  | { kind: 'plan.pause'; targetId: string; medicationId: string | null; body: SetPlanPausedRequest }
+  | { kind: 'stock.add'; targetId: string; medicationId: string; body: Omit<AddStockRequest, 'idempotencyKey'> }
+  | { kind: 'package.pin'; targetId: string; medicationId: string; body: Record<string, never> }
+  | { kind: 'package.retire'; targetId: string; medicationId: string; body: RetirePackageRequest };
+
+/**
+ * Queues a command and applies what it will do to the cached snapshot, in one
+ * transaction. The same rule as a dose: committed before any network call, carrying
+ * the key the request will be retried with.
+ */
+export async function enqueueCommand(db: SQLiteDatabase, input: CommandInput, now: string): Promise<string> {
+  const idempotencyKey = Crypto.randomUUID();
+  // Added stock is the one command the server cannot tell apart from a second
+  // addition on its own, so the key travels in the body as well.
+  const payload = JSON.stringify(input.kind === 'stock.add' ? { ...input.body, idempotencyKey } : input.body);
+
+  await db.withTransactionAsync(async () => {
+    await db.runAsync(
+      'INSERT INTO commands (idempotency_key, kind, target_id, medication_id, payload, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+      idempotencyKey,
+      input.kind,
+      input.targetId,
+      input.medicationId,
+      payload,
+      now,
+    );
+    await applyLocalEffect(db, { kind: input.kind, targetId: input.targetId, payload });
+  });
+
+  return idempotencyKey;
+}
+
+/** Drops a refused command the user has seen. Nothing happened on the server, so nothing is kept. */
+export async function dismissCommand(db: SQLiteDatabase, idempotencyKey: string): Promise<void> {
+  await db.runAsync('DELETE FROM commands WHERE idempotency_key = ? AND rejected_at IS NOT NULL', idempotencyKey);
 }
 
 export async function openRejections(db: SQLiteDatabase): Promise<Rejection[]> {
@@ -156,14 +207,15 @@ export type DrainResult = {
 };
 
 /**
- * Sends queued commands in creation order.
+ * Sends queued doses and commands in creation order, as one queue.
  *
  * Three outcomes, deliberately distinct:
- *  - **Delivered.** The server decided. The local dose is marked acknowledged and the
- *    queue row is removed, in one transaction.
- *  - **Refused** (a 4xx the server will give again). The row leaves the queue and
- *    becomes a rejection the user is shown. Retrying it forever would be a queue that
- *    never drains and a user who is never told.
+ *  - **Delivered.** The server decided. A dose is marked acknowledged and its queue row
+ *    removed, in one transaction; a command's row is removed.
+ *  - **Refused** (a 4xx the server will give again). A dose leaves the queue and becomes
+ *    a rejection the user is shown; a command stays, marked refused, until dismissed.
+ *    Retrying either forever would be a queue that never drains and a user who is
+ *    never told.
  *  - **Undecided** (no network, or a server fault). The row stays queued and draining
  *    stops, because the queue is ordered and a later command may depend on an earlier
  *    one having been applied.
@@ -174,68 +226,161 @@ export async function drainOutbox(
   householdId: string,
   now: string,
 ): Promise<DrainResult> {
-  const queued = await db.getAllAsync<{ idempotencyKey: string; localDoseId: string; payload: string }>(
-    `SELECT idempotency_key AS idempotencyKey, local_dose_id AS localDoseId, payload
+  const doses = await db.getAllAsync<QueuedDose>(
+    `SELECT idempotency_key AS idempotencyKey, local_dose_id AS localDoseId, payload, created_at AS createdAt
        FROM outbox ORDER BY created_at`,
+  );
+  const commands = await db.getAllAsync<QueuedCommand>(
+    `SELECT idempotency_key AS idempotencyKey, kind, target_id AS targetId, payload, created_at AS createdAt
+       FROM commands WHERE rejected_at IS NULL ORDER BY created_at`,
+  );
+
+  const queue = interleave(
+    doses.map((dose) => ({ createdAt: dose.createdAt, item: dose })),
+    commands.map((command) => ({ createdAt: command.createdAt, item: command })),
   );
 
   let delivered = 0;
   let rejected = 0;
 
-  for (const row of queued) {
-    const body = JSON.parse(row.payload) as RecordDoseRequest;
+  for (const entry of queue) {
+    const outcome =
+      entry.kind === 'dose'
+        ? await sendDose(db, config, householdId, entry.item, now)
+        : await sendCommand(db, config, householdId, entry.item, now);
 
-    try {
-      const result = await api.recordDose(config, householdId, body);
-
-      await db.withTransactionAsync(async () => {
-        await db.runAsync(
-          'UPDATE local_doses SET server_administration_id = ? WHERE id = ?',
-          result.administrationEventId,
-          row.localDoseId,
-        );
-        await db.runAsync('DELETE FROM outbox WHERE idempotency_key = ?', row.idempotencyKey);
-      });
-
+    if (outcome === 'delivered') {
       delivered += 1;
-    } catch (caught) {
-      if (caught instanceof NetworkError) {
-        await noteAttempt(db, row.idempotencyKey, 'network', now);
-        return { delivered, rejected, stoppedOffline: true };
-      }
-
-      if (caught instanceof ApiError && caught.isFinal) {
-        await db.withTransactionAsync(async () => {
-          await db.runAsync(
-            `INSERT INTO rejections (idempotency_key, local_dose_id, code, status, recorded_at)
-             VALUES (?, ?, ?, ?, ?)
-             ON CONFLICT(idempotency_key) DO UPDATE SET code = excluded.code, status = excluded.status`,
-            row.idempotencyKey,
-            row.localDoseId,
-            caught.code,
-            caught.status,
-            now,
-          );
-          await db.runAsync('DELETE FROM outbox WHERE idempotency_key = ?', row.idempotencyKey);
-        });
-
-        rejected += 1;
-        continue;
-      }
-
-      // A 5xx or anything else undecided: keep the command and stop here.
-      await noteAttempt(
-        db,
-        row.idempotencyKey,
-        caught instanceof ApiError ? `${caught.status}` : 'unknown',
-        now,
-      );
-
+    } else if (outcome === 'rejected') {
+      rejected += 1;
+    } else if (outcome === 'offline') {
+      return { delivered, rejected, stoppedOffline: true };
+    } else {
       return { delivered, rejected, stoppedOffline: false };
     }
   }
 
   return { delivered, rejected, stoppedOffline: false };
+}
+
+type QueuedDose = { idempotencyKey: string; localDoseId: string; payload: string; createdAt: string };
+type QueuedCommand = Pick<CommandRow, 'idempotencyKey' | 'kind' | 'targetId' | 'payload' | 'createdAt'>;
+type SendOutcome = 'delivered' | 'rejected' | 'offline' | 'undecided';
+
+async function sendDose(
+  db: SQLiteDatabase,
+  config: ApiConfig,
+  householdId: string,
+  row: QueuedDose,
+  now: string,
+): Promise<SendOutcome> {
+  const body = JSON.parse(row.payload) as RecordDoseRequest;
+
+  try {
+    const result = await api.recordDose(config, householdId, body);
+
+    await db.withTransactionAsync(async () => {
+      await db.runAsync(
+        'UPDATE local_doses SET server_administration_id = ? WHERE id = ?',
+        result.administrationEventId,
+        row.localDoseId,
+      );
+      await db.runAsync('DELETE FROM outbox WHERE idempotency_key = ?', row.idempotencyKey);
+    });
+
+    return 'delivered';
+  } catch (caught) {
+    if (caught instanceof NetworkError) {
+      await noteAttempt(db, 'outbox', row.idempotencyKey, 'network', now);
+      return 'offline';
+    }
+
+    if (caught instanceof ApiError && caught.isFinal) {
+      await db.withTransactionAsync(async () => {
+        await db.runAsync(
+          `INSERT INTO rejections (idempotency_key, local_dose_id, code, status, recorded_at)
+           VALUES (?, ?, ?, ?, ?)
+           ON CONFLICT(idempotency_key) DO UPDATE SET code = excluded.code, status = excluded.status`,
+          row.idempotencyKey,
+          row.localDoseId,
+          caught.code,
+          caught.status,
+          now,
+        );
+        await db.runAsync('DELETE FROM outbox WHERE idempotency_key = ?', row.idempotencyKey);
+      });
+
+      return 'rejected';
+    }
+
+    // A 5xx or anything else undecided: keep the command and stop here.
+    await noteAttempt(db, 'outbox', row.idempotencyKey, caught instanceof ApiError ? `${caught.status}` : 'unknown', now);
+    return 'undecided';
+  }
+}
+
+async function sendCommand(
+  db: SQLiteDatabase,
+  config: ApiConfig,
+  householdId: string,
+  row: QueuedCommand,
+  now: string,
+): Promise<SendOutcome> {
+  const body = JSON.parse(row.payload) as Record<string, unknown>;
+
+  try {
+    switch (row.kind) {
+      case 'plan.pause':
+        await api.setPlanPaused(config, householdId, row.targetId, body as SetPlanPausedRequest);
+        break;
+      case 'stock.add':
+        await api.addStock(config, householdId, row.targetId, body as AddStockRequest);
+        break;
+      case 'package.pin':
+        await api.pinPackage(config, householdId, row.targetId);
+        break;
+      case 'package.retire':
+        await api.retirePackage(config, householdId, row.targetId, body as RetirePackageRequest);
+        break;
+      default:
+        // A kind this build does not know cannot be sent; shown rather than retried forever.
+        await markRefused(db, row.idempotencyKey, 'unknown_command', 0, now);
+        return 'rejected';
+    }
+
+    await db.runAsync('DELETE FROM commands WHERE idempotency_key = ?', row.idempotencyKey);
+    return 'delivered';
+  } catch (caught) {
+    if (caught instanceof NetworkError) {
+      await noteAttempt(db, 'commands', row.idempotencyKey, 'network', now);
+      return 'offline';
+    }
+
+    if (caught instanceof ApiError && caught.isFinal) {
+      await markRefused(db, row.idempotencyKey, caught.code, caught.status, now);
+      return 'rejected';
+    }
+
+    await noteAttempt(db, 'commands', row.idempotencyKey, caught instanceof ApiError ? `${caught.status}` : 'unknown', now);
+    return 'undecided';
+  }
+}
+
+/** The command stays, marked, so the screens can show what was refused and why. */
+async function markRefused(
+  db: SQLiteDatabase,
+  idempotencyKey: string,
+  code: string,
+  status: number,
+  now: string,
+): Promise<void> {
+  await db.runAsync(
+    'UPDATE commands SET rejected_code = ?, rejected_status = ?, rejected_at = ? WHERE idempotency_key = ?',
+    code,
+    status,
+    now,
+    idempotencyKey,
+  );
 }
 
 /**
@@ -286,12 +431,13 @@ export async function acknowledgeRejection(
 
 async function noteAttempt(
   db: SQLiteDatabase,
+  table: 'outbox' | 'commands',
   idempotencyKey: string,
   error: string,
   now: string,
 ): Promise<void> {
   await db.runAsync(
-    'UPDATE outbox SET attempts = attempts + 1, last_attempt_at = ?, last_error = ? WHERE idempotency_key = ?',
+    `UPDATE ${table} SET attempts = attempts + 1, last_attempt_at = ?, last_error = ? WHERE idempotency_key = ?`,
     now,
     error,
     idempotencyKey,

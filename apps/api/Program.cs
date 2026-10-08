@@ -10,6 +10,7 @@ using MedicationTracker.Api.Modules.Refill;
 using MedicationTracker.Api.Modules.Reports;
 using MedicationTracker.Api.Modules.Treatments;
 using MedicationTracker.Api.Modules.Workspace;
+using MedicationTracker.Api.Modules.Platform;
 using Microsoft.AspNetCore.RateLimiting;
 using System.Globalization;
 using System.Threading.RateLimiting;
@@ -126,6 +127,7 @@ app.MapRefillEndpoints();
 app.MapWorkspaceEndpoints();
 app.MapReportEndpoints();
 app.MapExportEndpoints();
+app.MapVersionEndpoints();
 
 app.Run();
 

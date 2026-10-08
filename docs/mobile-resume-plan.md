@@ -70,8 +70,11 @@ until a release channel exists.
    reminding on the phone.
 5. **Physical-device acceptance** (rows 28, 29): reboot, permission revocation, time-zone
    change, DST, Doze — on the owner's Android phone, after the install.
-6. **Version**: `mobile-v1.0.1` at parity with the server's `v1.0.1` (ADR 0017, decided),
-   then the reports, export and counting surfaces as their own slices.
+6. **Version**: the app reports `1.0.1` (its `app.json`) since the `v1.0.1` cut, meaning it
+   understands everything the `v1.0.1` server sends for the screens it has. The
+   `mobile-v1.0.1` tag is created when a build has been verified on the owner's device.
+   Then the plans, stock, people and history surfaces, and later reports, export and
+   counting, as their own slices — the owner's priority is closing the gap to the web.
 
 ## Known gap
 

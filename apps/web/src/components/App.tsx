@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ApiError, api } from '@/lib/api';
+import { versionLabel } from '@/lib/version';
 import { LOCALES, LocaleProvider, dictionaries, type MessageKey, describeError } from '@/lib/i18n';
 import { useStoredLocale } from '@/lib/locale-store';
 import type { Session, Workspace } from '@/lib/types';
@@ -198,6 +199,10 @@ export function App() {
 
         <footer className="mt-12 border-t border-line pt-6 text-sm text-ink-faint">
           <p>{t('safetyNotice')}</p>
+          {/* ADR 0017: the number the tag was cut from, baked in at build time. */}
+          <p className="mt-2">
+            {t('version')}: {versionLabel()}
+          </p>
         </footer>
       </div>
     </LocaleProvider>

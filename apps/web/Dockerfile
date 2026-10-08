@@ -11,6 +11,11 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/web/package.json apps/web/package.json
 RUN pnpm install --frozen-lockfile --filter web...
 
+# next.config.ts reads ../../VERSION at build time (ADR 0017); the commit is baked into
+# the footer the same way, and stays empty for a local build.
+COPY VERSION VERSION
+ARG GIT_SHA=
+ENV GIT_SHA=$GIT_SHA
 COPY apps/web apps/web
 RUN pnpm --filter web build
 

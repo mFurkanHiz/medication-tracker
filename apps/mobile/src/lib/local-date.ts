@@ -5,6 +5,18 @@ export function localDate(now: Date = new Date()): string {
   return `${now.getFullYear()}-${month}-${day}`;
 }
 
+/** An instant shown as the reader's local date and time. */
+export function formatMoment(value: string, locale: string): string {
+  try {
+    return new Date(value).toLocaleString(locale === 'tr' ? 'tr-TR' : 'en-GB', {
+      dateStyle: 'short',
+      timeStyle: 'short',
+    });
+  } catch {
+    return value;
+  }
+}
+
 /** A `YYYY-MM-DD` value shown in the reader's locale, without a time-zone shift. */
 export function formatLocalDate(value: string, locale: string): string {
   const [year, month, day] = value.slice(0, 10).split('-').map(Number);

@@ -1,5 +1,12 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
-import { api, type ApiConfig, type DoseConflict, type TodayResponse, type WorkspaceResponse } from '../lib/api';
+import {
+  api,
+  type ActivityResponse,
+  type ApiConfig,
+  type DoseConflict,
+  type TodayResponse,
+  type WorkspaceResponse,
+} from '../lib/api';
 import { ZERO, addQuantities, compareQuantities, subtractQuantity, type Quantity } from '../lib/quantity';
 import type { PlanShape } from '../lib/plans';
 import { META, writeMeta } from './database';
@@ -70,18 +77,22 @@ export async function refreshSnapshot(
   localDate: string,
   now: string,
 ): Promise<void> {
-  const [workspace, today] = await Promise.all([
+  const [workspace, today, activity] = await Promise.all([
     api.workspace(config, householdId),
     api.today(config, householdId, localDate),
+    api.activity(config, householdId),
   ]);
 
   await db.withTransactionAsync(async () => {
-    await db.execAsync('DELETE FROM people; DELETE FROM medications; DELETE FROM packages; DELETE FROM plans; DELETE FROM due_doses;');
+    await db.execAsync(
+      'DELETE FROM people; DELETE FROM medications; DELETE FROM packages; DELETE FROM plans; DELETE FROM due_doses; DELETE FROM activity_entries;',
+    );
 
     await writePeople(db, workspace);
     await writeMedications(db, workspace);
     await writePlans(db, workspace);
     await writeDue(db, today, localDate);
+    await writeActivity(db, activity);
   });
 
   await writeMeta(db, META.lastSyncedAt, now);
@@ -199,6 +210,238 @@ async function writeDue(db: SQLiteDatabase, today: TodayResponse, localDate: str
       JSON.stringify(dose.conflicts ?? []),
     );
   }
+}
+
+/**
+ * The server's three activity streams, one table, each row prefixed by its stream so an
+ * id can never collide across them and a correction can still find its dose.
+ */
+async function writeActivity(db: SQLiteDatabase, activity: ActivityResponse): Promise<void> {
+  const insert = `INSERT INTO activity_entries (
+     id, kind, occurred_at, recorded_at, person_id, medication_id, detail, stock_source,
+     package_label, from_package_label, to_package_label, quantity_numerator,
+     quantity_denominator, scheduled_for, lateness_minutes, reason, administration_event_id
+   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+
+  for (const entry of activity.inventory) {
+    await db.runAsync(
+      insert,
+      `inventory:${entry.id}`, 'inventory', entry.occurredAt, entry.recordedAt, null,
+      entry.medicationDefinitionId, entry.entryType, null, entry.packageLabel, null, null,
+      entry.quantity.numerator, entry.quantity.denominator, null, null, entry.reason, null,
+    );
+  }
+
+  for (const event of activity.administrations) {
+    await db.runAsync(
+      insert,
+      `administration:${event.id}`, 'administration', event.occurredAt, event.recordedAt,
+      event.personId, event.medicationDefinitionId, event.outcome, event.stockSource, null, null,
+      null, event.actualQuantity?.numerator ?? null, event.actualQuantity?.denominator ?? null,
+      event.scheduledFor, event.latenessMinutes, null, null,
+    );
+  }
+
+  for (const correction of activity.allocationCorrections) {
+    await db.runAsync(
+      insert,
+      `correction:${correction.id}`, 'correction', correction.recordedAt, correction.recordedAt,
+      null, null, null, null, null, correction.fromPackageLabel, correction.toPackageLabel,
+      correction.quantity.numerator, correction.quantity.denominator, null, null,
+      correction.reason, correction.administrationEventId,
+    );
+  }
+}
+
+export type PersonRow = {
+  id: string;
+  name: string;
+  isArchived: boolean;
+  planCount: number;
+  pausedCount: number;
+};
+
+/** Everyone the household looks after, with their plan counts, names in order. */
+export async function readPeople(db: SQLiteDatabase): Promise<PersonRow[]> {
+  const rows = await db.getAllAsync<{
+    id: string;
+    name: string;
+    isArchived: number;
+    planCount: number;
+    pausedCount: number;
+  }>(
+    `SELECT p.id, p.name, p.is_archived AS isArchived,
+            count(pl.id) AS planCount,
+            coalesce(sum(pl.is_paused), 0) AS pausedCount
+       FROM people p
+       LEFT JOIN plans pl ON pl.person_id = p.id
+      GROUP BY p.id, p.name, p.is_archived
+      ORDER BY p.is_archived, p.name`,
+  );
+
+  return rows.map((row) => ({
+    id: row.id,
+    name: row.name,
+    isArchived: row.isArchived === 1,
+    planCount: row.planCount,
+    pausedCount: row.pausedCount,
+  }));
+}
+
+export type HistoryInventory = {
+  id: string;
+  medicationName: string;
+  entryType: string;
+  packageLabel: number | null;
+  quantity: Quantity;
+  reason: string | null;
+  recordedAt: string;
+};
+
+export type HistoryAdministration = {
+  id: string;
+  personName: string;
+  medicationName: string;
+  outcome: string;
+  stockSource: string;
+  quantity: Quantity | null;
+  latenessMinutes: number | null;
+  occurredAt: string;
+};
+
+export type HistoryCorrection = {
+  id: string;
+  /** Found through the corrected dose when the server's page still holds it. */
+  medicationName: string | null;
+  fromPackageLabel: number | null;
+  toPackageLabel: number | null;
+  quantity: Quantity;
+  reason: string | null;
+  recordedAt: string;
+};
+
+/** A dose this device recorded and the server has not acknowledged yet. */
+export type HistoryPending = {
+  id: string;
+  personName: string;
+  medicationName: string;
+  outcome: string;
+  quantity: Quantity | null;
+  occurredAt: string;
+};
+
+export type History = {
+  pending: HistoryPending[];
+  corrections: HistoryCorrection[];
+  administrations: HistoryAdministration[];
+  inventory: HistoryInventory[];
+};
+
+/** The History screen: the cached server page, newest first, plus this device's queued doses. */
+export async function readHistory(db: SQLiteDatabase): Promise<History> {
+  const quantity = (numerator: number | null, denominator: number | null): Quantity | null =>
+    numerator === null || denominator === null ? null : { numerator, denominator };
+
+  const inventory = await db.getAllAsync<{
+    id: string; medicationName: string | null; entryType: string; packageLabel: number | null;
+    numerator: number; denominator: number; reason: string | null; recordedAt: string;
+  }>(
+    `SELECT a.id, m.name AS medicationName, a.detail AS entryType, a.package_label AS packageLabel,
+            a.quantity_numerator AS numerator, a.quantity_denominator AS denominator,
+            a.reason, a.recorded_at AS recordedAt
+       FROM activity_entries a
+       LEFT JOIN medications m ON m.id = a.medication_id
+      WHERE a.kind = 'inventory'
+      ORDER BY a.recorded_at DESC`,
+  );
+
+  const administrations = await db.getAllAsync<{
+    id: string; personName: string | null; medicationName: string | null; outcome: string;
+    stockSource: string | null; numerator: number | null; denominator: number | null;
+    latenessMinutes: number | null; occurredAt: string;
+  }>(
+    `SELECT a.id, p.name AS personName, m.name AS medicationName, a.detail AS outcome,
+            a.stock_source AS stockSource,
+            a.quantity_numerator AS numerator, a.quantity_denominator AS denominator,
+            a.lateness_minutes AS latenessMinutes, a.occurred_at AS occurredAt
+       FROM activity_entries a
+       LEFT JOIN people p      ON p.id = a.person_id
+       LEFT JOIN medications m ON m.id = a.medication_id
+      WHERE a.kind = 'administration'
+      ORDER BY a.recorded_at DESC`,
+  );
+
+  const corrections = await db.getAllAsync<{
+    id: string; medicationName: string | null; fromPackageLabel: number | null;
+    toPackageLabel: number | null; numerator: number; denominator: number;
+    reason: string | null; recordedAt: string;
+  }>(
+    `SELECT c.id, m.name AS medicationName,
+            c.from_package_label AS fromPackageLabel, c.to_package_label AS toPackageLabel,
+            c.quantity_numerator AS numerator, c.quantity_denominator AS denominator,
+            c.reason, c.recorded_at AS recordedAt
+       FROM activity_entries c
+       LEFT JOIN activity_entries e ON e.id = 'administration:' || c.administration_event_id
+       LEFT JOIN medications m      ON m.id = e.medication_id
+      WHERE c.kind = 'correction'
+      ORDER BY c.recorded_at DESC`,
+  );
+
+  // Queued, not yet acknowledged: the outbox still holds the command. A local dose the
+  // server refused is shown on the Today screen as a rejection, not here.
+  const pending = await db.getAllAsync<{
+    id: string; personName: string | null; medicationName: string | null; outcome: string;
+    numerator: number | null; denominator: number | null; occurredAt: string;
+  }>(
+    `SELECT l.id, p.name AS personName, m.name AS medicationName, l.outcome,
+            l.quantity_numerator AS numerator, l.quantity_denominator AS denominator,
+            l.occurred_at AS occurredAt
+       FROM local_doses l
+       JOIN outbox o ON o.local_dose_id = l.id
+       LEFT JOIN people p      ON p.id = l.person_id
+       LEFT JOIN medications m ON m.id = l.medication_id
+      WHERE l.server_administration_id IS NULL
+      ORDER BY l.occurred_at DESC`,
+  );
+
+  return {
+    pending: pending.map((row) => ({
+      id: row.id,
+      personName: row.personName ?? '—',
+      medicationName: row.medicationName ?? '—',
+      outcome: row.outcome,
+      quantity: quantity(row.numerator, row.denominator),
+      occurredAt: row.occurredAt,
+    })),
+    corrections: corrections.map((row) => ({
+      id: row.id,
+      medicationName: row.medicationName,
+      fromPackageLabel: row.fromPackageLabel,
+      toPackageLabel: row.toPackageLabel,
+      quantity: { numerator: row.numerator, denominator: row.denominator },
+      reason: row.reason,
+      recordedAt: row.recordedAt,
+    })),
+    administrations: administrations.map((row) => ({
+      id: row.id,
+      personName: row.personName ?? '—',
+      medicationName: row.medicationName ?? '—',
+      outcome: row.outcome,
+      stockSource: row.stockSource ?? '',
+      quantity: quantity(row.numerator, row.denominator),
+      latenessMinutes: row.latenessMinutes,
+      occurredAt: row.occurredAt,
+    })),
+    inventory: inventory.map((row) => ({
+      id: row.id,
+      medicationName: row.medicationName ?? '—',
+      entryType: row.entryType,
+      packageLabel: row.packageLabel,
+      quantity: { numerator: row.numerator, denominator: row.denominator },
+      reason: row.reason,
+      recordedAt: row.recordedAt,
+    })),
+  };
 }
 
 /**

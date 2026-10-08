@@ -71,26 +71,62 @@ const BASE_COLUMNS = {
   ],
 };
 
-/** What each step migration added, by the version it upgrades TO. */
+/** What each step migration added to an existing table, by the version it upgrades TO. */
 const ADDED_IN = {
   2: { plans: ['is_paused INTEGER NOT NULL DEFAULT 0'] },
   3: { plans: ['day_of_month INTEGER', 'interval_months INTEGER'], due_doses: ["conflicts TEXT NOT NULL DEFAULT '[]'"] },
   4: { medications: ['coverage TEXT'], packages: ['label TEXT', 'expires_on TEXT', 'coverage TEXT'], plans: ['meal_relation TEXT'] },
 };
 
+/** Whole tables a step migration created, by the version it upgrades TO. Frozen too. */
+const TABLES_ADDED_IN = {
+  5: {
+    activity_entries: [
+      'id TEXT PRIMARY KEY', 'kind TEXT NOT NULL', 'occurred_at TEXT NOT NULL', 'recorded_at TEXT NOT NULL',
+      'person_id TEXT', 'medication_id TEXT', 'detail TEXT', 'stock_source TEXT', 'package_label INTEGER',
+      'from_package_label INTEGER', 'to_package_label INTEGER', 'quantity_numerator INTEGER',
+      'quantity_denominator INTEGER CHECK(quantity_denominator IS NULL OR quantity_denominator > 0)',
+      'scheduled_for TEXT', 'lateness_minutes INTEGER', 'reason TEXT', 'administration_event_id TEXT',
+    ],
+  },
+};
+
+/** The version a table first exists at: 1 for the base tables. */
+function tableSince(table) {
+  if (BASE_COLUMNS[table]) return 1;
+  for (const [step, tables] of Object.entries(TABLES_ADDED_IN)) {
+    if (tables[table]) return Number(step);
+  }
+  throw new Error(`unknown table ${table}`);
+}
+
+/** Every table the schema has ever had, base first. */
+const ALL_TABLES = [
+  ...Object.keys(BASE_COLUMNS),
+  ...Object.values(TABLES_ADDED_IN).flatMap((tables) => Object.keys(tables)),
+];
+
+/** The column definitions a table was created with, at the version it first existed. */
+function createdWith(table) {
+  if (BASE_COLUMNS[table]) return BASE_COLUMNS[table];
+  return TABLES_ADDED_IN[tableSince(table)][table];
+}
+
 const columnName = (definition) => definition.split(' ')[0];
 
-/** The column names a table has at `version`. */
+/** The column names a table has at `version`; none before the table exists. */
 function columnsAt(table, version) {
-  const names = BASE_COLUMNS[table].filter((d) => !d.startsWith('PRIMARY KEY')).map(columnName);
+  if (tableSince(table) > version) return [];
+  const names = createdWith(table).filter((d) => !d.startsWith('PRIMARY KEY')).map(columnName);
   for (const [step, added] of Object.entries(ADDED_IN)) {
     if (Number(step) <= version) names.push(...(added[table] ?? []).map(columnName));
   }
   return names;
 }
 
-/** The columns added by every step after `version`. */
+/** The columns every step after `version` adds — a whole table counts as all of its columns. */
 function columnsAddedAfter(table, version) {
+  if (tableSince(table) > version) return columnsAt(table, SCHEMA_VERSION_EXPECTED);
   const names = [];
   for (const [step, added] of Object.entries(ADDED_IN)) {
     if (Number(step) > version) names.push(...(added[table] ?? []).map(columnName));
@@ -100,15 +136,18 @@ function columnsAddedAfter(table, version) {
 
 /** CREATE TABLE statements for every table as schema `version` had them. */
 function fixtureAt(version) {
-  return Object.keys(BASE_COLUMNS).map((table) => {
-    const definitions = BASE_COLUMNS[table].filter((d) => !d.startsWith('PRIMARY KEY'));
+  return ALL_TABLES.filter((table) => tableSince(table) <= version).map((table) => {
+    const definitions = createdWith(table).filter((d) => !d.startsWith('PRIMARY KEY'));
     for (const [step, added] of Object.entries(ADDED_IN)) {
       if (Number(step) <= version) definitions.push(...(added[table] ?? []));
     }
-    definitions.push(...BASE_COLUMNS[table].filter((d) => d.startsWith('PRIMARY KEY')));
+    definitions.push(...createdWith(table).filter((d) => d.startsWith('PRIMARY KEY')));
     return `CREATE TABLE ${table} (\n  ${definitions.join(',\n  ')}\n);`;
   }).join('\n');
 }
+
+/** Set once the real module is loaded, so the helpers above can name the current version. */
+let SCHEMA_VERSION_EXPECTED = 0;
 
 const failures = [];
 
@@ -161,7 +200,7 @@ const columnsOf = (db, table) =>
   db.prepare(`PRAGMA table_info(${table})`).all().map((column) => column.name);
 
 const hasEveryColumn = (db, version) =>
-  Object.keys(BASE_COLUMNS).every((table) =>
+  ALL_TABLES.filter((table) => tableSince(table) <= version).every((table) =>
     columnsAt(table, version).every((column) => columnsOf(db, table).includes(column)));
 
 const userVersionOf = (db) => db.prepare('PRAGMA user_version').get().user_version;
@@ -174,6 +213,7 @@ try {
 
   // The source of truth for what the migration must reach.
   const expected = SCHEMA_VERSION;
+  SCHEMA_VERSION_EXPECTED = expected;
   console.log(`Mobile schema version ${expected}\n`);
 
   // ------------------------------------------------------------- fresh install ----
@@ -231,7 +271,7 @@ try {
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run('package-1', 'medication-1', 1, 'Sealed', 20, 1, 20, 1);
 
-    const later = Object.keys(BASE_COLUMNS).flatMap((table) =>
+    const later = ALL_TABLES.flatMap((table) =>
       columnsAddedAfter(table, from).map((column) => [table, column]));
     check(`starts without the ${later.length} column(s) later steps add`,
       later.every(([table, column]) => !columnsOf(db, table).includes(column)));

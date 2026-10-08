@@ -151,6 +151,41 @@ export type WorkspaceResponse = {
 
 export type DoseSource = 'Automatic' | 'SpecificPackage' | 'LooseStock' | 'UntrackedExternal';
 
+/** The server's latest page of what happened: three streams, as the web shows them. */
+export type ActivityResponse = {
+  inventory: {
+    id: string;
+    medicationDefinitionId: string;
+    entryType: string;
+    packageLabel: number | null;
+    quantity: ApiQuantity;
+    occurredAt: string;
+    recordedAt: string;
+    reason: string | null;
+  }[];
+  administrations: {
+    id: string;
+    personId: string;
+    medicationDefinitionId: string;
+    outcome: string;
+    stockSource: string;
+    actualQuantity: ApiQuantity | null;
+    scheduledFor: string | null;
+    occurredAt: string;
+    recordedAt: string;
+    latenessMinutes: number | null;
+  }[];
+  allocationCorrections: {
+    id: string;
+    administrationEventId: string;
+    fromPackageLabel: number | null;
+    toPackageLabel: number | null;
+    quantity: ApiQuantity;
+    reason: string | null;
+    recordedAt: string;
+  }[];
+};
+
 export type RecordDoseRequest = {
   planVersionId?: string | null;
   personId?: string | null;
@@ -300,6 +335,9 @@ export const api = {
 
   today: (config: ApiConfig, household: string, date?: string) =>
     request<TodayResponse>(config, `/households/${household}/today${date ? `?date=${date}` : ''}`),
+
+  activity: (config: ApiConfig, household: string) =>
+    request<ActivityResponse>(config, `/households/${household}/activity`),
 
   recordDose: (config: ApiConfig, household: string, body: RecordDoseRequest) =>
     request<RecordedDoseResponse>(config, `/households/${household}/administrations`, {

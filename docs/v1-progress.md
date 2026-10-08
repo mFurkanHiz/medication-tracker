@@ -5,8 +5,9 @@ reconstructing the product history from a long conversation.
 
 ## Current state
 
-- Owner-accepted V1: **COMPLETE, released as `v1.0.1` on 2026-10-08** (tag on `214dee4`,
-  CI run `37778332190`). The table stands at 38 DONE, 0 PARTIAL, 2 DEFERRED, 0 OPEN; the
+- Owner-accepted V1: **COMPLETE, released as `v1.0.1` on 2026-10-08** (release commit
+  `214dee4`, CI run `37778332190`; the tag itself is pushed from the owner's computer,
+  because the cloud session may not push tags). The table stands at 38 DONE, 0 PARTIAL, 2 DEFERRED, 0 OPEN; the
   two DEFERRED rows are the owner's mobile decision (ADR 0015). The owner kept the retired
   `v1.0.0` tag untouched (ADR 0017). Release notes: `docs/releases/v1.0.1.md`. `docs/v1-acceptance.md` is the authority on scope; ADR 0013
   explains the rebuild, ADR 0015 the owner-approved mobile deferral.
@@ -69,9 +70,10 @@ retire and recreate it, or name the first accepted release `v1.0.1`).
    the commands the web has and the phone lacks, through the outbox so they work
    offline — pause and resume a plan, add stock, pin a box, mark a box lost or disposed;
    then reports, export and counting.
-2. **The install on the owner's computer**, when they attach the phone again: per
-   `docs/mobile-device-install.md`, then the physical-device acceptance rows (28, 29),
-   then the `mobile-v1.0.1` tag.
+2. **On the owner's computer**, when they next open a session there: push the `v1.0.1`
+   tag (one command, at the top of `docs/mobile-device-install.md`), then the install
+   per that runbook, then the physical-device acceptance rows (28, 29), then the
+   `mobile-v1.0.1` tag.
 3. **Rotation, when wanted:** re-running the *Apply least privilege* workflow (dispatch
    with the confirmation, or the request file again) gives the confined role a new
    password and restarts only the api container.
@@ -1205,9 +1207,11 @@ built from (`APP_GIT_SHA`, a build argument CI passes; null locally, never inven
 the phone's `app.json` says `1.0.1` and the header shows it. Both Dockerfiles copy
 `VERSION` into the build. `VersionEndpointTests` asserts the endpoint reports the file's
 content and needs no session; a web unit test pins the label. Release notes:
-`docs/releases/v1.0.1.md`. Merged as `214dee4`; CI run `37778332190` green; the `v1.0.1`
-tag is on that commit (2026-10-08). Row 38 closed with it and the acceptance table is
-complete.
+`docs/releases/v1.0.1.md`. Merged as `214dee4`; CI run `37778332190` green; row 38 closed
+with it and the acceptance table is complete. The annotated `v1.0.1` tag for that commit
+could not be pushed from here — the proxy refuses tag refs (`git push origin v1.0.1`
+hangs up) and the releases API answers 403 for this session type — so it is pushed from
+the owner's computer, one command, in `docs/mobile-device-install.md`'s runbook.
 
 ### Slice 4 — the phone shows stock and plans — PR #62
 
@@ -1245,7 +1249,7 @@ The acceptance table stands at **38 DONE, 0 PARTIAL, 2 DEFERRED, 0 OPEN** of 40 
 `DEFERRED` is an owner decision recorded on a date, not a criterion met: **V1 is a web
 release with mobile infrastructure in place and does not deliver the offline mobile
 client** (ADR 0015). The owner accepted rows 30, 39 and 40 on 2026-10-05; the release
-was cut as `v1.0.1` on 2026-10-08.
+was cut as `v1.0.1` on 2026-10-08, with the tag's push left to the owner's computer.
 
 **V1 is complete.** What follows is Sprint 8: the phone catching up with the web.
 

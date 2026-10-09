@@ -1,5 +1,6 @@
 using MedicationTracker.Api.Application;
 using MedicationTracker.Api.Modules.People;
+using MedicationTracker.Api.Modules.Sync;
 using MedicationTracker.Api.Modules.Treatments;
 using MedicationTracker.Api.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -53,11 +54,39 @@ public static class HouseholdEndpoints
                 return ApiResults.Invalid("name", "required");
             }
 
-            var person = new Person(Guid.CreateVersion7(), householdId, request.Name, DateTimeOffset.UtcNow);
-            db.People.Add(person);
-            await db.SaveChangesAsync(ct);
+            if (!SyncReplay.IsValidKey(request.IdempotencyKey))
+            {
+                return ApiResults.Invalid("idempotencyKey", "invalid");
+            }
 
-            return Results.Created($"/api/households/{householdId}/people/{person.Id}", new { person.Id });
+            var accountId = HouseholdAccess.RequireAccountId(context);
+            var now = DateTimeOffset.UtcNow;
+
+            // A phone creates the person offline under an id of its own and sends the
+            // command later, perhaps twice. The receipt makes the second send answer with
+            // the person already created; the lock keeps two sends apart.
+            await using var transaction = await db.Database.BeginTransactionAsync(ct);
+            await InventoryReader.LockHouseholdAsync(db, householdId, ct);
+
+            if (await SyncReplay.PriorAsync(db, householdId, request.IdempotencyKey, ct) is { } prior)
+            {
+                return Results.Ok(new { id = prior.ResultEntityId, replayed = true });
+            }
+
+            var id = SyncReplay.ClientId(request.Id) ?? Guid.CreateVersion7();
+            if (await db.People.AsNoTracking().AnyAsync(candidate => candidate.Id == id, ct))
+            {
+                return ApiResults.Conflict("id_in_use");
+            }
+
+            var person = new Person(id, householdId, request.Name, now);
+            db.People.Add(person);
+            SyncReplay.Record(db, householdId, accountId, request.IdempotencyKey, "people.create", person.Id, now);
+
+            await db.SaveChangesAsync(ct);
+            await transaction.CommitAsync(ct);
+
+            return Results.Created($"/api/households/{householdId}/people/{person.Id}", new { person.Id, replayed = false });
         });
 
         api.MapPut("/households/{householdId:guid}/people/{personId:guid}", async (
@@ -170,4 +199,5 @@ public static class HouseholdEndpoints
 
 public sealed record CreateHouseholdRequest(string Name);
 
-public sealed record CreatePersonRequest(string Name);
+/// <summary>The phone may name the id and carry a key; the web sends neither.</summary>
+public sealed record CreatePersonRequest(string Name, Guid? Id = null, string? IdempotencyKey = null);

@@ -3,6 +3,7 @@ using MedicationTracker.Api.Application;
 using MedicationTracker.Api.Domain.Quantities;
 using MedicationTracker.Api.Domain.Scheduling;
 using MedicationTracker.Api.Modules.Audit;
+using MedicationTracker.Api.Modules.Sync;
 using MedicationTracker.Api.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -52,11 +53,37 @@ public static class TreatmentEndpoints
                 return ApiResults.Invalid("medicationDefinitionId", "unknown_medication");
             }
 
+            if (!SyncReplay.IsValidKey(request.IdempotencyKey))
+            {
+                return ApiResults.Invalid("idempotencyKey", "invalid");
+            }
+
             var accountId = HouseholdAccess.RequireAccountId(context);
             var now = DateTimeOffset.UtcNow;
 
-            var plan = new TreatmentPlan(
-                Guid.CreateVersion7(), householdId, request.PersonId, request.MedicationDefinitionId, now);
+            // Created offline on a phone under its own id and sent later, perhaps twice:
+            // the receipt answers the second send with the plan already created.
+            await using var transaction = await db.Database.BeginTransactionAsync(ct);
+            await InventoryReader.LockHouseholdAsync(db, householdId, ct);
+
+            if (await SyncReplay.PriorAsync(db, householdId, request.IdempotencyKey, ct) is { } prior)
+            {
+                var priorVersion = await db.TreatmentPlanVersions.AsNoTracking()
+                    .Where(candidate => candidate.TreatmentPlanId == prior.ResultEntityId)
+                    .OrderByDescending(candidate => candidate.VersionNumber)
+                    .Select(candidate => (Guid?)candidate.Id)
+                    .FirstOrDefaultAsync(ct);
+
+                return Results.Ok(new { id = prior.ResultEntityId, versionId = priorVersion, replayed = true });
+            }
+
+            var planId = SyncReplay.ClientId(request.Id) ?? Guid.CreateVersion7();
+            if (await db.TreatmentPlans.AsNoTracking().AnyAsync(candidate => candidate.Id == planId, ct))
+            {
+                return ApiResults.Conflict("id_in_use");
+            }
+
+            var plan = new TreatmentPlan(planId, householdId, request.PersonId, request.MedicationDefinitionId, now);
 
             var version = new TreatmentPlanVersion(
                 Guid.CreateVersion7(), plan.Id, 1, parsed.Dose, parsed.Recurrence, request.LocalTime,
@@ -68,12 +95,14 @@ public static class TreatmentEndpoints
             db.TreatmentPlanChangeEvents.Add(new TreatmentPlanChangeEvent(
                 Guid.CreateVersion7(), householdId, plan.Id, accountId,
                 ChangeKind.Created, null, Snapshot(plan, version), now));
+            SyncReplay.Record(db, householdId, accountId, request.IdempotencyKey, "plans.create", plan.Id, now);
 
             await db.SaveChangesAsync(ct);
+            await transaction.CommitAsync(ct);
 
             return Results.Created(
                 $"/api/households/{householdId}/plans/{plan.Id}",
-                new { plan.Id, versionId = version.Id });
+                new { plan.Id, versionId = version.Id, replayed = false });
         });
 
         api.MapPut("/{planId:guid}", async (
@@ -624,4 +653,7 @@ public sealed record TreatmentPlanRequest(
     string? DayPeriod = null,
     string? MealRelation = null,
     int? MinimumIntervalMinutes = null,
-    string? Instructions = null);
+    string? Instructions = null,
+    /// <summary>The phone may name the id and carry a key on a create; the web sends neither.</summary>
+    Guid? Id = null,
+    string? IdempotencyKey = null);

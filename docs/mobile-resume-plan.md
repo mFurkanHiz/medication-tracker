@@ -118,15 +118,17 @@ until a release channel exists.
   again and a returned loan returned again stay refusals on the web and are read as
   "already done" by the phone. Still nothing seen on a device.
 - **Where this leaves parity.** Everything the web can *decide* about existing people,
-  medicines, boxes and plans is now on the phone, offline. What the web can do and the
-  phone still cannot: **create** a person, a medicine or a plan; **edit** a person's name,
-  a medicine's definition (strength, cautions, tags, coverage default) or a plan's dose
-  and schedule; archive and restore people and medicines; correct an accepted count
-  (revisions) and a dose's stock source (allocation corrections); delete a plan made by
-  mistake. Each is an outbox command whose create needs a server-side idempotency key it
-  does not have yet, or a form larger than a phone sheet should be.
+  medicines, boxes and plans is on the phone, offline, and so is *creating* a person, a
+  medicine or a plan (PR #67: the phone chooses the id, the three create endpoints take
+  an idempotency key, a second send answers with the first create). What the web can do
+  and the phone still cannot: **edit** a person's name, a medicine's definition
+  (strength, cautions, tags, coverage default) or a plan's dose and schedule; archive and
+  restore people and medicines; correct an accepted count (revisions) and a dose's stock
+  source (allocation corrections); delete a plan made by mistake. The medicine sheet
+  asks the everyday fields only; cautions and tags are the web's larger form, once the
+  medicine has synced.
 - Next: the server-side fix for the latest-version-only gap below; then, if wanted,
-  creation on the phone (person, medicine, plan) with idempotency keys on those endpoints.
+  editing on the phone (the same shape as ending a plan: a version appended by command).
 
 ## Known gap
 

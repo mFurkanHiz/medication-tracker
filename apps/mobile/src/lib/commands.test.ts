@@ -1,5 +1,20 @@
 import { describe, expect, it } from 'vitest';
-import { alreadyDone, buildAddStock, buildCountLines, describeCommand, describeTarget, interleave, isValidDay } from './commands';
+import {
+  alreadyDone,
+  buildAddStock,
+  buildCountLines,
+  buildMedication,
+  buildPerson,
+  buildPlan,
+  carriesKeyInBody,
+  defaultUnitFor,
+  describeCommand,
+  describeTarget,
+  interleave,
+  isValidDay,
+  isValidTime,
+  type PlanForm,
+} from './commands';
 import { dictionaries, type MessageKey } from './i18n';
 
 const t = (key: MessageKey) => dictionaries.tr[key];
@@ -199,5 +214,190 @@ describe('alreadyDone', () => {
     expect(alreadyDone('package.pin', 'package_not_available')).toBe(false);
     expect(alreadyDone('package.lend', 'already_on_loan')).toBe(false);
     expect(alreadyDone('loan.return', 'not_found')).toBe(false);
+  });
+});
+
+describe('the creates', () => {
+  it('names a queued create by what it creates, so a refused one still says who or what', () => {
+    expect(describeCommand('person.create', { id: 'p9', name: 'Zeynep' }, t)).toBe('Kişi ekle: Zeynep');
+    expect(describeCommand('medication.create', { id: 'm9', name: 'Şurup', form: 'OralLiquid' }, t)).toBe('İlaç tanımla: Şurup');
+    expect(
+      describeCommand('plan.create', { kind: 'Scheduled', pattern: 'SelectedWeekdays', weekdayMask: 5, localTime: '08:30:00' }, t),
+    ).toBe('Plan ekle · Pzt, Çar · 08:30');
+    expect(describeCommand('plan.create', { kind: 'AsNeeded', pattern: 'Daily', dayPeriod: 'Evening' }, t)).toBe(
+      'Plan ekle · Gerektiğinde · tercihen Akşam',
+    );
+  });
+
+  it('carries the key in the body only for the kinds the server cannot tell apart alone', () => {
+    for (const kind of ['stock.add', 'inventory.count', 'person.create', 'medication.create', 'plan.create']) {
+      expect(carriesKeyInBody(kind)).toBe(true);
+    }
+    for (const kind of ['plan.pause', 'plan.end', 'package.pin', 'package.update', 'loan.return']) {
+      expect(carriesKeyInBody(kind)).toBe(false);
+    }
+  });
+
+  it("derives the unit from the form by the server's rule", () => {
+    expect(defaultUnitFor('Tablet')).toBe('Tablet');
+    expect(defaultUnitFor('Capsule')).toBe('Capsule');
+    expect(defaultUnitFor('OralLiquid')).toBe('Milliliter');
+    expect(defaultUnitFor('EyeDrops')).toBe('Drop');
+    expect(defaultUnitFor('Injection')).toBe('Ampoule');
+    expect(defaultUnitFor('Gel')).toBe('Gram');
+    expect(defaultUnitFor('NasalSpray')).toBe('Puff');
+    expect(defaultUnitFor('Patch')).toBe('Patch');
+    expect(defaultUnitFor('Other')).toBe('Dose');
+    expect(defaultUnitFor('Nonsense')).toBe('Dose');
+  });
+});
+
+describe('buildPerson', () => {
+  it('trims the name and refuses a blank or over-long one', () => {
+    expect(buildPerson('  Ayşe ')).toEqual({ ok: true, body: { name: 'Ayşe' } });
+    expect(buildPerson('   ')).toEqual({ ok: false, error: 'personNameRequired' });
+    expect(buildPerson('x'.repeat(161))).toEqual({ ok: false, error: 'personNameRequired' });
+  });
+});
+
+describe('buildMedication', () => {
+  it('builds the server request with the default box size exact', () => {
+    expect(
+      buildMedication({ name: ' Parol ', form: 'Tablet', strength: ' 500 mg ', capacity: '20', coverage: 'Unspecified' }),
+    ).toEqual({
+      ok: true,
+      body: {
+        name: 'Parol',
+        form: 'Tablet',
+        strength: '500 mg',
+        defaultPackageCapacityNumerator: 20,
+        defaultPackageCapacityDenominator: 1,
+        coverage: 'Unspecified',
+      },
+    });
+    expect(
+      buildMedication({ name: 'Şurup', form: 'OralLiquid', strength: '', capacity: '2,5', coverage: 'SelfPaid' }),
+    ).toMatchObject({ ok: true, body: { strength: null, defaultPackageCapacityNumerator: 5, defaultPackageCapacityDenominator: 2 } });
+  });
+
+  it('leaves blanks out and refuses what the server would', () => {
+    expect(buildMedication({ name: 'Şurup', form: 'OralLiquid', strength: '', capacity: '', coverage: 'SelfPaid' })).toEqual({
+      ok: true,
+      body: {
+        name: 'Şurup',
+        form: 'OralLiquid',
+        strength: null,
+        defaultPackageCapacityNumerator: null,
+        defaultPackageCapacityDenominator: null,
+        coverage: 'SelfPaid',
+      },
+    });
+    const blank = { form: 'Tablet', strength: '', capacity: '', coverage: 'Unspecified' };
+    expect(buildMedication({ ...blank, name: ' ' })).toEqual({ ok: false, error: 'medicationNameRequired' });
+    expect(buildMedication({ ...blank, name: 'x'.repeat(201) })).toEqual({ ok: false, error: 'medicationNameRequired' });
+    expect(buildMedication({ ...blank, name: 'x', capacity: '0' })).toEqual({ ok: false, error: 'invalidAmount' });
+    expect(buildMedication({ ...blank, name: 'x', capacity: 'abc' })).toEqual({ ok: false, error: 'invalidAmount' });
+    expect(buildMedication({ ...blank, name: 'x', form: 'Pill' })).toEqual({ ok: false, error: 'errorGeneric' });
+    expect(buildMedication({ ...blank, name: 'x', coverage: 'Free' })).toEqual({ ok: false, error: 'errorGeneric' });
+  });
+});
+
+describe('buildPlan', () => {
+  const base: PlanForm = {
+    personId: 'p1',
+    medicationId: 'm1',
+    dose: '1/2',
+    schedule: 'Daily',
+    weekdayMask: 0,
+    intervalDays: '2',
+    dayOfMonth: '1',
+    intervalMonths: '1',
+    localTime: '08:30',
+    dayPeriod: '',
+    mealRelation: '',
+    effectiveFrom: '2026-10-09',
+    effectiveTo: '',
+  };
+
+  it('builds a daily schedule at a clock time, the fraction exact', () => {
+    expect(buildPlan(base, 'Europe/Istanbul')).toEqual({
+      ok: true,
+      body: {
+        personId: 'p1',
+        medicationDefinitionId: 'm1',
+        doseNumerator: 1,
+        doseDenominator: 2,
+        timeZoneId: 'Europe/Istanbul',
+        kind: 'Scheduled',
+        pattern: 'Daily',
+        weekdayMask: null,
+        intervalDays: null,
+        dayOfMonth: null,
+        intervalMonths: null,
+        effectiveFrom: '2026-10-09',
+        effectiveTo: null,
+        localTime: '08:30:00',
+        dayPeriod: null,
+        mealRelation: null,
+      },
+    });
+  });
+
+  it('gives each pattern exactly its own fields, and a day period instead of a clock', () => {
+    expect(
+      buildPlan({ ...base, schedule: 'SelectedWeekdays', weekdayMask: 5, dayPeriod: 'Morning', mealRelation: 'AfterFood' }, 'UTC'),
+    ).toMatchObject({
+      ok: true,
+      body: { pattern: 'SelectedWeekdays', weekdayMask: 5, intervalDays: null, localTime: null, dayPeriod: 'Morning', mealRelation: 'AfterFood' },
+    });
+    expect(buildPlan({ ...base, schedule: 'EveryNDays', intervalDays: '3' }, 'UTC')).toMatchObject({
+      ok: true,
+      body: { pattern: 'EveryNDays', intervalDays: 3, weekdayMask: null, localTime: '08:30:00' },
+    });
+    expect(buildPlan({ ...base, schedule: 'DayOfMonth', dayOfMonth: '31' }, 'UTC')).toMatchObject({
+      ok: true,
+      body: { pattern: 'DayOfMonth', dayOfMonth: 31, intervalMonths: null },
+    });
+    expect(buildPlan({ ...base, schedule: 'EveryNMonths', intervalMonths: '2', effectiveTo: '2027-10-09' }, 'UTC')).toMatchObject({
+      ok: true,
+      body: { pattern: 'EveryNMonths', intervalMonths: 2, dayOfMonth: null, effectiveTo: '2027-10-09' },
+    });
+  });
+
+  it('sends an as-needed plan as daily with no clock, keeping the preference', () => {
+    expect(buildPlan({ ...base, schedule: 'AsNeeded', weekdayMask: 5, dayPeriod: 'Evening' }, 'UTC')).toMatchObject({
+      ok: true,
+      body: { kind: 'AsNeeded', pattern: 'Daily', weekdayMask: null, intervalDays: null, localTime: null, dayPeriod: 'Evening' },
+    });
+  });
+
+  it('refuses what the server would, naming the field', () => {
+    expect(buildPlan({ ...base, personId: '' }, 'UTC')).toEqual({ ok: false, error: 'planNeedsPersonAndMedication' });
+    expect(buildPlan({ ...base, dose: '0' }, 'UTC')).toEqual({ ok: false, error: 'invalidAmount' });
+    expect(buildPlan({ ...base, dose: 'bir' }, 'UTC')).toEqual({ ok: false, error: 'invalidAmount' });
+    expect(buildPlan({ ...base, schedule: 'SelectedWeekdays', weekdayMask: 0 }, 'UTC')).toEqual({ ok: false, error: 'weekdaysRequired' });
+    expect(buildPlan({ ...base, schedule: 'EveryNDays', intervalDays: '0' }, 'UTC')).toEqual({ ok: false, error: 'intervalDaysInvalid' });
+    expect(buildPlan({ ...base, schedule: 'EveryNDays', intervalDays: '3651' }, 'UTC')).toEqual({ ok: false, error: 'intervalDaysInvalid' });
+    expect(buildPlan({ ...base, schedule: 'EveryNDays', effectiveFrom: '' }, 'UTC')).toEqual({ ok: false, error: 'startRequired' });
+    expect(buildPlan({ ...base, schedule: 'DayOfMonth', dayOfMonth: '32' }, 'UTC')).toEqual({ ok: false, error: 'dayOfMonthInvalid' });
+    expect(buildPlan({ ...base, schedule: 'EveryNMonths', intervalMonths: '121' }, 'UTC')).toEqual({ ok: false, error: 'intervalMonthsInvalid' });
+    expect(buildPlan({ ...base, schedule: 'EveryNMonths', effectiveFrom: ' ' }, 'UTC')).toEqual({ ok: false, error: 'startRequired' });
+    expect(buildPlan({ ...base, localTime: '8:30' }, 'UTC')).toEqual({ ok: false, error: 'timeInvalid' });
+    expect(buildPlan({ ...base, localTime: '24:00' }, 'UTC')).toEqual({ ok: false, error: 'timeInvalid' });
+    expect(buildPlan({ ...base, effectiveTo: '2026-02-30' }, 'UTC')).toEqual({ ok: false, error: 'invalidDate' });
+    expect(buildPlan({ ...base, effectiveTo: '2026-10-01' }, 'UTC')).toEqual({ ok: false, error: 'endBeforeStart' });
+    expect(buildPlan({ ...base, dayPeriod: 'Dawn' }, 'UTC')).toEqual({ ok: false, error: 'errorGeneric' });
+  });
+});
+
+describe('isValidTime', () => {
+  it('accepts a 24-hour HH:MM and nothing else', () => {
+    expect(isValidTime('08:30')).toBe(true);
+    expect(isValidTime('23:59')).toBe(true);
+    expect(isValidTime(' 00:00 ')).toBe(true);
+    expect(isValidTime('8:30')).toBe(false);
+    expect(isValidTime('24:00')).toBe(false);
+    expect(isValidTime('08:60')).toBe(false);
+    expect(isValidTime('08:30:00')).toBe(false);
   });
 });

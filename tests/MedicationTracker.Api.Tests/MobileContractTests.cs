@@ -504,6 +504,186 @@ public sealed class MobileContractTests
         Assert.Equal("already_on_loan", await refused.RefusalCode());
     }
 
+    /// <summary>
+    /// The creates the phone queues: a person, a medicine and a plan sent under the phone's
+    /// own id and key answer a second send with the first create (the same id,
+    /// <c>replayed</c>), a different key on an id already taken is refused rather than
+    /// overwritten, and the web, sending neither, is unchanged.
+    /// </summary>
+    [PostgreSqlFact]
+    public async Task The_creates_the_phone_queues_can_be_replayed()
+    {
+        await using var harness = new ApiTestHarness();
+        var (client, household) = await harness.NewHouseholdAsync();
+        var people = $"/api/households/{household}/people";
+        var definitions = $"/api/households/{household}/medication-definitions";
+        var plans = $"/api/households/{household}/plans";
+
+        // A person, twice under the same key: one person, the phone's id, the second
+        // answer marked as the replay it is.
+        var personId = Guid.CreateVersion7();
+        var person = new { id = personId, name = "Synthetic phone person", idempotencyKey = Guid.NewGuid().ToString() };
+        var created = await client.PostAsJsonAsync(people, person);
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+        var createdBody = await created.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(personId, createdBody.GetProperty("id").GetGuid());
+        Assert.False(createdBody.GetProperty("replayed").GetBoolean());
+
+        var replayed = await client.PostAsJsonAsync(people, person);
+        Assert.Equal(HttpStatusCode.OK, replayed.StatusCode);
+        var replayedBody = await replayed.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(personId, replayedBody.GetProperty("id").GetGuid());
+        Assert.True(replayedBody.GetProperty("replayed").GetBoolean());
+
+        // The same id under another key is somebody else's create: refused, never overwritten.
+        var clash = await client.PostAsJsonAsync(people, new { id = personId, name = "Synthetic other", idempotencyKey = Guid.NewGuid().ToString() });
+        Assert.Equal(HttpStatusCode.Conflict, clash.StatusCode);
+        Assert.Equal("id_in_use", await clash.RefusalCode());
+
+        // A medicine: the same rule, and the unit follows the form as the phone expects.
+        var medicationId = Guid.CreateVersion7();
+        var medication = new
+        {
+            id = medicationId,
+            name = "Synthetic phone syrup",
+            form = "OralLiquid",
+            strength = "100 mg/5 ml",
+            defaultPackageCapacityNumerator = 150,
+            defaultPackageCapacityDenominator = 1,
+            coverage = "SelfPaid",
+            idempotencyKey = Guid.NewGuid().ToString(),
+        };
+        var medicationCreated = await client.PostAsJsonAsync(definitions, medication);
+        Assert.Equal(HttpStatusCode.Created, medicationCreated.StatusCode);
+        Assert.Equal(medicationId, (await medicationCreated.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid());
+
+        var medicationReplayed = await client.PostAsJsonAsync(definitions, medication);
+        Assert.Equal(HttpStatusCode.OK, medicationReplayed.StatusCode);
+        var medicationReplayedBody = await medicationReplayed.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(medicationId, medicationReplayedBody.GetProperty("id").GetGuid());
+        Assert.True(medicationReplayedBody.GetProperty("replayed").GetBoolean());
+
+        var medicationClash = await client.PostAsJsonAsync(definitions, new { id = medicationId, name = "Synthetic other", form = "Tablet", idempotencyKey = Guid.NewGuid().ToString() });
+        Assert.Equal(HttpStatusCode.Conflict, medicationClash.StatusCode);
+        Assert.Equal("id_in_use", await medicationClash.RefusalCode());
+
+        // A plan, as the phone's sheet sends it: the replay names the version too.
+        var planId = Guid.CreateVersion7();
+        var plan = new
+        {
+            id = planId,
+            personId,
+            medicationDefinitionId = medicationId,
+            doseNumerator = 1,
+            doseDenominator = 2,
+            timeZoneId = "Europe/Istanbul",
+            kind = "Scheduled",
+            pattern = "SelectedWeekdays",
+            weekdayMask = 5,
+            intervalDays = (int?)null,
+            dayOfMonth = (int?)null,
+            intervalMonths = (int?)null,
+            effectiveFrom = "2026-10-09",
+            effectiveTo = (string?)null,
+            localTime = "08:30:00",
+            dayPeriod = (string?)null,
+            mealRelation = "AfterFood",
+            idempotencyKey = Guid.NewGuid().ToString(),
+        };
+        var planCreated = await client.PostAsJsonAsync(plans, plan);
+        Assert.Equal(HttpStatusCode.Created, planCreated.StatusCode);
+        var planCreatedBody = await planCreated.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(planId, planCreatedBody.GetProperty("id").GetGuid());
+        var versionId = planCreatedBody.GetProperty("versionId").GetGuid();
+        Assert.False(planCreatedBody.GetProperty("replayed").GetBoolean());
+
+        var planReplayed = await client.PostAsJsonAsync(plans, plan);
+        Assert.Equal(HttpStatusCode.OK, planReplayed.StatusCode);
+        var planReplayedBody = await planReplayed.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(planId, planReplayedBody.GetProperty("id").GetGuid());
+        Assert.Equal(versionId, planReplayedBody.GetProperty("versionId").GetGuid());
+        Assert.True(planReplayedBody.GetProperty("replayed").GetBoolean());
+
+        var planClash = await client.PostAsJsonAsync(plans, plan with { idempotencyKey = Guid.NewGuid().ToString() });
+        Assert.Equal(HttpStatusCode.Conflict, planClash.StatusCode);
+        Assert.Equal("id_in_use", await planClash.RefusalCode());
+
+        // One of each exists, under the phone's ids, as the phone will read them back.
+        var workspace = await client.GetOk($"/api/households/{household}/workspace");
+        var listedPerson = Assert.Single(workspace.GetProperty("people").EnumerateArray());
+        Assert.Equal(personId, listedPerson.GetProperty("id").GetGuid());
+        var listedMedication = Assert.Single(workspace.GetProperty("medications").EnumerateArray());
+        Assert.Equal(medicationId, listedMedication.GetProperty("id").GetGuid());
+        Assert.Equal("Milliliter", listedMedication.GetProperty("unit").GetString());
+        Assert.Equal("SelfPaid", listedMedication.GetProperty("coverage").GetString());
+        Assert.Equal("150", listedMedication.GetProperty("defaultPackageCapacity").Quantity());
+        var listedPlan = Assert.Single(workspace.GetProperty("plans").EnumerateArray());
+        Assert.Equal(planId, listedPlan.GetProperty("id").GetGuid());
+        Assert.Equal(versionId, listedPlan.GetProperty("versionId").GetGuid());
+        Assert.Equal(5, listedPlan.GetProperty("weekdayMask").GetInt32());
+
+        // The web sends neither id nor key, and is answered as before.
+        var web = await client.PostAsJsonAsync(people, new { name = "Synthetic web person" });
+        Assert.Equal(HttpStatusCode.Created, web.StatusCode);
+        Assert.False((await web.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("replayed").GetBoolean());
+
+        // A blank key is a client bug, and named as one rather than treated as "no key".
+        var blankKey = await client.PostAsJsonAsync(people, new { name = "Synthetic blank", idempotencyKey = " " });
+        Assert.Equal(HttpStatusCode.BadRequest, blankKey.StatusCode);
+    }
+
+    /// <summary>
+    /// The unit the phone shows on a medicine created offline is the unit the server gives
+    /// that form when none is named: one table on each side (<c>defaultUnitFor</c> in the
+    /// phone's <c>lib/commands.ts</c>, <c>FormDefaults.DefaultUnitFor</c> here), pinned so
+    /// they cannot drift apart unnoticed.
+    /// </summary>
+    [PostgreSqlFact]
+    public async Task The_unit_the_phone_derives_from_a_form_is_the_servers()
+    {
+        var expected = new Dictionary<string, string>
+        {
+            ["Tablet"] = "Tablet",
+            ["Capsule"] = "Capsule",
+            ["OralLiquid"] = "Milliliter",
+            ["Drops"] = "Drop",
+            ["Sachet"] = "Sachet",
+            ["Suppository"] = "Suppository",
+            ["Injection"] = "Ampoule",
+            ["Cream"] = "Gram",
+            ["Ointment"] = "Gram",
+            ["Gel"] = "Gram",
+            ["Patch"] = "Patch",
+            ["InhalerSpray"] = "Puff",
+            ["NasalSpray"] = "Puff",
+            ["EyeDrops"] = "Drop",
+            ["EarDrops"] = "Drop",
+            ["Other"] = "Dose",
+        };
+
+        await using var harness = new ApiTestHarness();
+        var (client, household) = await harness.NewHouseholdAsync();
+        var ids = new Dictionary<Guid, string>();
+
+        foreach (var form in expected.Keys)
+        {
+            var id = await client.PostId(
+                $"/api/households/{household}/medication-definitions",
+                new { name = $"Synthetic {form}", form, idempotencyKey = Guid.NewGuid().ToString() });
+            ids[id] = form;
+        }
+
+        var workspace = await client.GetOk($"/api/households/{household}/workspace");
+        var units = workspace.GetProperty("medications").EnumerateArray()
+            .ToDictionary(row => ids[row.GetProperty("id").GetGuid()], row => row.GetProperty("unit").GetString());
+
+        Assert.Equal(expected.Count, units.Count);
+        foreach (var (form, unit) in expected)
+        {
+            Assert.Equal(unit, units[form]);
+        }
+    }
+
     private static void AssertEveryFieldPresent(JsonElement row, string[] fields)
     {
         var missing = fields.Where(field => !row.TryGetProperty(field, out _)).ToArray();

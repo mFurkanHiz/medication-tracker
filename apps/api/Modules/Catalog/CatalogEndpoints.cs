@@ -4,6 +4,7 @@ using MedicationTracker.Api.Domain.Catalog;
 using MedicationTracker.Api.Domain.Quantities;
 using MedicationTracker.Api.Modules.Audit;
 using MedicationTracker.Api.Modules.Inventory;
+using MedicationTracker.Api.Modules.Sync;
 using MedicationTracker.Api.Modules.Treatments;
 using MedicationTracker.Api.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -42,11 +43,32 @@ public static class CatalogEndpoints
                 return ApiResults.Invalid(field, "invalid");
             }
 
+            if (!SyncReplay.IsValidKey(request.IdempotencyKey))
+            {
+                return ApiResults.Invalid("idempotencyKey", "invalid");
+            }
+
             var accountId = HouseholdAccess.RequireAccountId(context);
             var now = DateTimeOffset.UtcNow;
 
+            // Created offline on a phone under its own id and sent later, perhaps twice:
+            // the receipt answers the second send with the medicine already created.
+            await using var transaction = await db.Database.BeginTransactionAsync(ct);
+            await InventoryReader.LockHouseholdAsync(db, householdId, ct);
+
+            if (await SyncReplay.PriorAsync(db, householdId, request.IdempotencyKey, ct) is { } prior)
+            {
+                return Results.Ok(new { id = prior.ResultEntityId, replayed = true });
+            }
+
+            var id = SyncReplay.ClientId(request.Id) ?? Guid.CreateVersion7();
+            if (await db.MedicationDefinitions.AsNoTracking().AnyAsync(candidate => candidate.Id == id, ct))
+            {
+                return ApiResults.Conflict("id_in_use");
+            }
+
             var definition = new MedicationDefinition(
-                Guid.CreateVersion7(),
+                id,
                 householdId,
                 request.Name,
                 parsed.Form,
@@ -74,12 +96,14 @@ public static class CatalogEndpoints
             db.MedicationDefinitionChangeEvents.Add(new MedicationDefinitionChangeEvent(
                 Guid.CreateVersion7(), householdId, definition.Id, accountId,
                 ChangeKind.Created, null, Snapshot(definition), now));
+            SyncReplay.Record(db, householdId, accountId, request.IdempotencyKey, "catalog.create", definition.Id, now);
 
             await db.SaveChangesAsync(ct);
+            await transaction.CommitAsync(ct);
 
             return Results.Created(
                 $"/api/households/{householdId}/medication-definitions/{definition.Id}",
-                new { definition.Id });
+                new { definition.Id, replayed = false });
         });
 
         api.MapPut("/{definitionId:guid}", async (
@@ -392,4 +416,7 @@ public sealed record MedicationDefinitionRequest(
     string? CautionThingsToAvoid = null,
     string? CautionWarning = null,
     string? Coverage = null,
-    string[]? DoNotTakeWithTags = null);
+    string[]? DoNotTakeWithTags = null,
+    /// <summary>The phone may name the id and carry a key on a create; the web sends neither.</summary>
+    Guid? Id = null,
+    string? IdempotencyKey = null);

@@ -12,12 +12,12 @@ reconstructing the product history from a long conversation.
   `v1.0.0` tag untouched (ADR 0017). Release notes: `docs/releases/v1.0.1.md`. `docs/v1-acceptance.md` is the authority on scope; ADR 0013
   explains the rebuild, ADR 0015 the owner-approved mobile deferral.
 - Production tracks `main`: every merge deploys by itself, so the live revision is
-  whatever `main` last squashed to — `5b6d4f3` (PR #64, CI run `37847789550`) as of
-  2026-10-08, with migrations 1–18 applied, the API on the confined database role, and
+  whatever `main` last squashed to — `614bd81` (PR #65, CI run `37952476650`) as of
+  2026-10-09, with migrations 1–18 applied, the API on the confined database role, and
   `GET /api/version` answering `1.0.1` (the server's behaviour has not changed since the
-  `v1.0.1` cut at `214dee4` except for PR #64's idempotency key on the add-stock
-  endpoint and its retire no-op, both for the phone; the other merges since are mobile
-  code, tests and documentation).
+  `v1.0.1` cut at `214dee4` except for the replay guards the phone needs: PR #64's
+  add-stock key and retire no-op, PR #66's restart, assign and lend replays; the other
+  merges since are mobile code, tests and documentation).
   Documentation-only merges do not redeploy (`paths-ignore` on push).
 - **The owner's live-test round of 2026-10-05 is closed.** Sprint 7 shipped every note
   and decision (D1–D6) in seven slices (PR #50–#55, migrations 15–18), then the general
@@ -29,10 +29,12 @@ reconstructing the product history from a long conversation.
   owner chose USB from their own computer over EAS Build; schema v3 and the server's
   due-day rule (PR #58), every read-only screen the web has — Stock, Plans (PR #62),
   People, History (PR #63) — the first commands through the outbox (pause and resume a
-  plan, add stock, make a box active, mark a box lost or disposed; PR #64) and reports,
-  export and counting (PR #65) are in, none yet seen on a device; the install itself
-  runs from a session on the owner's computer (`docs/mobile-device-install.md`), which a
-  cloud session cannot do. Plan and progress: `docs/mobile-resume-plan.md`.
+  plan, add stock, make a box active, mark a box lost or disposed; PR #64), reports,
+  export and counting (PR #65) and the remaining box and plan decisions (end and restart
+  a plan, clear the active box, bring a box back, edit a box, assign, lend and return;
+  PR #66) are in, none yet seen on a device; the install itself runs from a session on
+  the owner's computer (`docs/mobile-device-install.md`), which a cloud session cannot
+  do. Plan and progress: `docs/mobile-resume-plan.md`.
 
 ## What the rebuild has delivered
 
@@ -72,11 +74,14 @@ retire and recreate it, or name the first accepted release `v1.0.1`).
 1. **Mobile catch-up continues** — the owner's priority (2026-10-08: "mobil gerideyse
    öncelik mobil versiyonu web'e eşitlemek"), code only until a device is attached. Every
    read-only screen the web has is on the phone (PR #62, #63), the everyday commands go
-   through the outbox (PR #64), and reports, export and counting are in (PR #65). Next,
-   each as its own slice with typecheck and unit tests: the server-side fix for the
-   latest-version-only gap (`docs/mobile-resume-plan.md`, "Known gap"); then, if the
-   owner wants them on the phone, the commands still on the web — edit, end and restart
-   a plan, edit a box, lend and return, reinstate a lost box, correct a count.
+   through the outbox (PR #64), reports, export and counting are in (PR #65), and so are
+   the remaining box and plan decisions (PR #66). What the phone still cannot do, and the
+   web can: create a person, a medicine or a plan; edit a person, a medicine's definition
+   or a plan's dose and schedule; archive and restore; correct a count or a dose's stock
+   source; delete a plan (`docs/mobile-resume-plan.md`, "Where this leaves parity").
+   Next, each as its own slice with typecheck and unit tests: the server-side fix for the
+   latest-version-only gap (same file, "Known gap"); then, if the owner wants it,
+   creation on the phone with idempotency keys on the create endpoints.
 2. **On the owner's computer**, when they next open a session there: push the `v1.0.1`
    tag (one command, at the top of `docs/mobile-device-install.md`), then the install
    per that runbook, then the physical-device acceptance rows (28, 29), then the
@@ -1304,6 +1309,31 @@ lines and the command's wording (60 mobile tests in all); `MobileContractTests` 
 two reports' fields, the count replay and the export file. The count ran end to end
 against node's SQLite with a fake server (8 checks). Still nothing seen on a device.
 
+### Slice 8 — the remaining box and plan decisions — PR #66
+
+Everything the web can decide about an existing box or plan, through the outbox: end a
+plan on a day and restart it on a day (a date sheet, today offered, a wrong day refused
+before it is queued), clear the active box, bring a lost or disposed box back, edit a
+box's name, expiry, coverage, lot number, storage place and note (the server replaces
+every detail at once, so the sheet sends the ones it does not show back exactly as
+cached), assign a box to a person or to nobody, lend it to another person and mark it
+returned. Schema v7 caches the owner, the loan id and the details. Each command's local
+effect mirrors the server: the ended plan keeps its last day, the restarted one its first;
+a box brought back takes its amount from the cached ledger's latest loss or disposal; a
+loan queued on the phone shows as on loan but cannot be returned from the phone until
+the server has given it an id. On the server, a replayed restart answers with the
+restarted version, the same owner twice writes no second assignment event, and a loan
+replayed to the borrower who already holds it answers with that loan; reinstating a box
+already back and returning a loan already returned stay refusals on the web (an existing
+test pins the first) and the phone reads those two codes as "already done" rather than as
+failures to show. `commands.test.ts` pins the wording of the eight commands, the day
+check and the two codes (62 mobile tests in all); `MobileContractTests` pins the cached
+box fields, the loan id beside the view and the replay behaviour of every decision. Still
+nothing seen on a device. **Parity**, stated plainly: deciding is now at parity; creating
+and editing people, medicines and plans, archive and restore, count revisions, allocation
+corrections and plan deletion remain web-only (`docs/mobile-resume-plan.md`, "Where this
+leaves parity").
+
 ### What the cloud session could not do
 
 Install on the phone. The owner asked "yapamaz mısın oradan?" — no: this session runs in
@@ -1326,9 +1356,10 @@ was cut as `v1.0.1` on 2026-10-08, with the tag's push left to the owner's compu
 **V1 is complete.** What follows is Sprint 8: the phone catching up with the web.
 
 **Exact next action.** The mobile catch-up, as the *Next exact action* section at the
-top describes: the read-only screens (PR #62, #63), the everyday commands (PR #64) and
-reports, export and counting (PR #65) are in; next the server-side fix for the
-latest-version-only gap, then the commands still on the web if the owner wants them.
+top describes: the read-only screens (PR #62, #63), the everyday commands (PR #64),
+reports, export and counting (PR #65) and the remaining decisions (PR #66) are in; next
+the server-side fix for the latest-version-only gap, then creation on the phone if the
+owner wants it.
 
 Still open for the owner, unchanged: which production household is theirs, so the
 synthetic ones left by smoke tests can be cleaned; and the `VPS_SSH_KEY` rotation.

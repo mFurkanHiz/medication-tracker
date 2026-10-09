@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildAddStock, buildCountLines, describeCommand, describeTarget, interleave } from './commands';
+import { alreadyDone, buildAddStock, buildCountLines, describeCommand, describeTarget, interleave, isValidDay } from './commands';
 import { dictionaries, type MessageKey } from './i18n';
 
 const t = (key: MessageKey) => dictionaries.tr[key];
@@ -22,6 +22,18 @@ describe('describeCommand', () => {
       ),
     ).toBe('Stok ekle: 2 kapalı kutu + açık kutu (8) + ½ kutusuz miktar');
     expect(describeCommand('stock.add', { fullPackages: 1, openedPackages: [] }, t)).toBe('Stok ekle: 1 kapalı kutu');
+  });
+
+  it('names the box and plan decisions that came later', () => {
+    expect(describeCommand('plan.end', { endsOn: '2026-10-12' }, t)).toBe('Planı sonlandır · 2026-10-12');
+    expect(describeCommand('plan.restart', { startsOn: '2026-11-01' }, t)).toBe('Yeniden başlat · 2026-11-01');
+    expect(describeCommand('package.unpin', {}, t)).toBe('Etkin kutudan çıkar');
+    expect(describeCommand('package.reinstate', {}, t)).toBe('Kutuyu geri getir');
+    expect(describeCommand('package.update', { label: 'x' }, t)).toBe('Kutuyu düzenle');
+    expect(describeCommand('package.assign', { personId: 'p1' }, t)).toBe('Kişiye ata');
+    expect(describeCommand('package.assign', { personId: null }, t)).toBe('Kimseye ait değil');
+    expect(describeCommand('package.lend', { borrowerPersonId: 'p2' }, t)).toBe('Ödünç ver');
+    expect(describeCommand('loan.return', { packageId: 'b1' }, t)).toBe('Geri alındı');
   });
 
   it('says how many rows a count carries', () => {
@@ -164,5 +176,28 @@ describe('buildCountLines', () => {
     expect(buildCountLines({ m1: '12', m2: 'on iki' })).toEqual({ ok: false, error: 'countingInvalidAmount' });
     expect(buildCountLines({ m1: '', m2: '  ' })).toEqual({ ok: false, error: 'countingNothingEntered' });
     expect(buildCountLines({})).toEqual({ ok: false, error: 'countingNothingEntered' });
+  });
+});
+
+describe('isValidDay', () => {
+  it('accepts a real calendar day and nothing else', () => {
+    expect(isValidDay('2026-10-09')).toBe(true);
+    expect(isValidDay(' 2026-02-28 ')).toBe(true);
+    expect(isValidDay('2028-02-29')).toBe(true);
+    expect(isValidDay('2026-02-29')).toBe(false);
+    expect(isValidDay('2026-13-01')).toBe(false);
+    expect(isValidDay('2026-10-9')).toBe(false);
+    expect(isValidDay('09.10.2026')).toBe(false);
+    expect(isValidDay('')).toBe(false);
+  });
+});
+
+describe('alreadyDone', () => {
+  it('reads the two refusals that mean the goal is already reached, and nothing else', () => {
+    expect(alreadyDone('package.reinstate', 'package_not_retired')).toBe(true);
+    expect(alreadyDone('loan.return', 'already_returned')).toBe(true);
+    expect(alreadyDone('package.pin', 'package_not_available')).toBe(false);
+    expect(alreadyDone('package.lend', 'already_on_loan')).toBe(false);
+    expect(alreadyDone('loan.return', 'not_found')).toBe(false);
   });
 });

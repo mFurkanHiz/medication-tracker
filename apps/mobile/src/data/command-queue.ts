@@ -45,9 +45,10 @@ export async function listCommands(db: SQLiteDatabase, which: 'queued' | 'reject
             pk.label AS packageLabel, pk.ordinal AS packageOrdinal
        FROM commands c
        LEFT JOIN medications m ON m.id = c.medication_id
-       LEFT JOIN plans pl      ON pl.id = c.target_id AND c.kind = 'plan.pause'
+       LEFT JOIN plans pl      ON pl.id = c.target_id AND c.kind LIKE 'plan.%'
        LEFT JOIN people pp     ON pp.id = pl.person_id
-       LEFT JOIN packages pk   ON pk.id = c.target_id AND c.kind IN ('package.pin', 'package.retire')
+       LEFT JOIN packages pk   ON (pk.id = c.target_id AND c.kind LIKE 'package.%')
+                               OR (pk.active_loan_id = c.target_id AND c.kind = 'loan.return')
       WHERE c.rejected_at IS ${which === 'queued' ? '' : 'NOT '}NULL
       ORDER BY c.created_at`,
   );
@@ -141,6 +142,138 @@ export async function applyLocalEffect(db: SQLiteDatabase, command: Pick<Command
           WHERE id = ?`,
         String(body.state ?? 'Lost'),
         command.targetId,
+      );
+      return;
+    }
+
+    case 'plan.end': {
+      const endsOn = String(body.endsOn ?? '');
+      await db.runAsync('UPDATE plans SET effective_to = ? WHERE id = ?', endsOn, command.targetId);
+      // Days after the last day are no longer owed; the last day itself still is.
+      await db.runAsync('DELETE FROM due_doses WHERE plan_id = ? AND local_date > ?', command.targetId, endsOn);
+      return;
+    }
+
+    case 'plan.restart': {
+      await db.runAsync(
+        'UPDATE plans SET effective_from = ?, effective_to = NULL, is_paused = 0 WHERE id = ?',
+        String(body.startsOn ?? ''),
+        command.targetId,
+      );
+      return;
+    }
+
+    case 'package.unpin': {
+      await db.runAsync('UPDATE packages SET is_pinned = 0 WHERE id = ?', command.targetId);
+      return;
+    }
+
+    case 'package.reinstate': {
+      const box = await db.getFirstAsync<{
+        medicationId: string;
+        ordinal: number;
+        state: string;
+        capacityNumerator: number;
+        capacityDenominator: number;
+      }>(
+        `SELECT medication_id AS medicationId, ordinal, state,
+                capacity_numerator AS capacityNumerator, capacity_denominator AS capacityDenominator
+           FROM packages WHERE id = ?`,
+        command.targetId,
+      );
+
+      if (!box || box.state === 'Sealed' || box.state === 'Opened') {
+        return;
+      }
+
+      // What the retirement took out, from the cached ledger: the latest loss or disposal
+      // of this box. The server puts exactly that back; so does the phone, when it knows it.
+      const taken = await db.getFirstAsync<{ numerator: number; denominator: number }>(
+        `SELECT quantity_numerator AS numerator, quantity_denominator AS denominator
+           FROM activity_entries
+          WHERE kind = 'inventory' AND medication_id = ? AND package_label = ? AND detail IN ('Loss', 'Dispose')
+          ORDER BY recorded_at DESC LIMIT 1`,
+        box.medicationId,
+        box.ordinal,
+      );
+      const restored: Quantity =
+        taken && taken.numerator < 0 ? { numerator: -taken.numerator, denominator: taken.denominator } : ZERO;
+      const capacity: Quantity = { numerator: box.capacityNumerator, denominator: box.capacityDenominator };
+
+      await db.runAsync(
+        'UPDATE packages SET state = ?, remaining_numerator = ?, remaining_denominator = ? WHERE id = ?',
+        compareQuantities(restored, capacity) < 0 ? 'Opened' : 'Sealed',
+        restored.numerator,
+        restored.denominator,
+        command.targetId,
+      );
+
+      const medication = await db.getFirstAsync<{ totalNumerator: number; totalDenominator: number }>(
+        'SELECT total_numerator AS totalNumerator, total_denominator AS totalDenominator FROM medications WHERE id = ?',
+        box.medicationId,
+      );
+
+      if (medication) {
+        const total = addQuantities([
+          { numerator: medication.totalNumerator, denominator: medication.totalDenominator },
+          restored,
+        ]);
+        await db.runAsync(
+          'UPDATE medications SET total_numerator = ?, total_denominator = ?, package_count = package_count + 1 WHERE id = ?',
+          total.numerator,
+          total.denominator,
+          box.medicationId,
+        );
+      }
+      return;
+    }
+
+    case 'package.update': {
+      const text = (value: unknown) => (typeof value === 'string' && value.trim() !== '' ? value : null);
+      await db.runAsync(
+        `UPDATE packages SET label = ?, coverage = ?, expires_on = ?, acquired_on = ?, lot_number = ?,
+                             barcode = ?, source = ?, storage_location = ?, note = ?
+          WHERE id = ?`,
+        text(body.label),
+        text(body.coverage),
+        text(body.expiresOn),
+        text(body.acquiredOn),
+        text(body.lotNumber),
+        text(body.barcode),
+        text(body.source),
+        text(body.storageLocation),
+        text(body.note),
+        command.targetId,
+      );
+      return;
+    }
+
+    case 'package.assign': {
+      const personId = typeof body.personId === 'string' ? body.personId : null;
+      await db.runAsync(
+        'UPDATE packages SET owner_person_id = ?, holder_person_id = ? WHERE id = ?',
+        personId,
+        personId,
+        command.targetId,
+      );
+      return;
+    }
+
+    case 'package.lend': {
+      // The loan's id is the server's to give; until it has, the box shows as on loan
+      // and cannot be returned from the phone.
+      await db.runAsync(
+        "UPDATE packages SET holder_person_id = ?, active_loan_id = 'pending' WHERE id = ?",
+        String(body.borrowerPersonId ?? ''),
+        command.targetId,
+      );
+      return;
+    }
+
+    case 'loan.return': {
+      await db.runAsync(
+        'UPDATE packages SET holder_person_id = owner_person_id, active_loan_id = NULL WHERE id = ?',
+        String(body.packageId ?? ''),
       );
       return;
     }

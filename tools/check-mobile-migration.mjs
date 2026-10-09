@@ -77,6 +77,7 @@ const ADDED_IN = {
   3: { plans: ['day_of_month INTEGER', 'interval_months INTEGER'], due_doses: ["conflicts TEXT NOT NULL DEFAULT '[]'"] },
   4: { medications: ['coverage TEXT'], packages: ['label TEXT', 'expires_on TEXT', 'coverage TEXT'], plans: ['meal_relation TEXT'] },
   6: { medications: ['default_capacity_numerator INTEGER', 'default_capacity_denominator INTEGER CHECK(default_capacity_denominator IS NULL OR default_capacity_denominator > 0)'] },
+  7: { packages: ['owner_person_id TEXT', 'active_loan_id TEXT', 'acquired_on TEXT', 'lot_number TEXT', 'barcode TEXT', 'source TEXT', 'storage_location TEXT', 'note TEXT'] },
 };
 
 /** Whole tables a step migration created, by the version it upgrades TO. Frozen too. */

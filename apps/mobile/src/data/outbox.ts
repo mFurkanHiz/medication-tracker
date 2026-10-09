@@ -11,8 +11,9 @@ import {
   type RecordDoseRequest,
   type RetirePackageRequest,
   type SetPlanPausedRequest,
+  type UpdatePackageRequest,
 } from '../lib/api';
-import { interleave } from '../lib/commands';
+import { alreadyDone, interleave } from '../lib/commands';
 import type { Quantity } from '../lib/quantity';
 import { applyLocalEffect, queuedCommandCount, type CommandRow } from './command-queue';
 
@@ -149,6 +150,14 @@ export type CommandInput =
   | { kind: 'stock.add'; targetId: string; medicationId: string; body: Omit<AddStockRequest, 'idempotencyKey'> }
   | { kind: 'package.pin'; targetId: string; medicationId: string; body: Record<string, never> }
   | { kind: 'package.retire'; targetId: string; medicationId: string; body: RetirePackageRequest }
+  | { kind: 'plan.end'; targetId: string; medicationId: string | null; body: { endsOn: string } }
+  | { kind: 'plan.restart'; targetId: string; medicationId: string | null; body: { startsOn: string } }
+  | { kind: 'package.unpin'; targetId: string; medicationId: string; body: Record<string, never> }
+  | { kind: 'package.reinstate'; targetId: string; medicationId: string; body: Record<string, never> }
+  | { kind: 'package.update'; targetId: string; medicationId: string; body: UpdatePackageRequest }
+  | { kind: 'package.assign'; targetId: string; medicationId: string; body: { personId: string | null } }
+  | { kind: 'package.lend'; targetId: string; medicationId: string; body: { borrowerPersonId: string } }
+  | { kind: 'loan.return'; targetId: string; medicationId: string; body: { packageId: string } }
   | { kind: 'inventory.count'; targetId: string; medicationId: null; body: Omit<CountRequest, 'idempotencyKey'> };
 
 /**
@@ -349,6 +358,30 @@ async function sendCommand(
       case 'inventory.count':
         await api.countStock(config, householdId, body as CountRequest);
         break;
+      case 'plan.end':
+        await api.endPlan(config, householdId, row.targetId, body as { endsOn: string });
+        break;
+      case 'plan.restart':
+        await api.restartPlan(config, householdId, row.targetId, body as { startsOn: string });
+        break;
+      case 'package.unpin':
+        await api.unpinPackage(config, householdId, row.targetId);
+        break;
+      case 'package.reinstate':
+        await api.reinstatePackage(config, householdId, row.targetId);
+        break;
+      case 'package.update':
+        await api.updatePackage(config, householdId, row.targetId, body as UpdatePackageRequest);
+        break;
+      case 'package.assign':
+        await api.assignPackage(config, householdId, row.targetId, body as { personId: string | null });
+        break;
+      case 'package.lend':
+        await api.lendPackage(config, householdId, row.targetId, body as { borrowerPersonId: string });
+        break;
+      case 'loan.return':
+        await api.returnLoan(config, householdId, row.targetId);
+        break;
       default:
         // A kind this build does not know cannot be sent; shown rather than retried forever.
         await markRefused(db, row.idempotencyKey, 'unknown_command', 0, now);
@@ -361,6 +394,12 @@ async function sendCommand(
     if (caught instanceof NetworkError) {
       await noteAttempt(db, 'commands', row.idempotencyKey, 'network', now);
       return 'offline';
+    }
+
+    // A refusal that means the goal is already reached — a replay after a lost answer.
+    if (caught instanceof ApiError && alreadyDone(row.kind, caught.code)) {
+      await db.runAsync('DELETE FROM commands WHERE idempotency_key = ?', row.idempotencyKey);
+      return 'delivered';
     }
 
     if (caught instanceof ApiError && caught.isFinal) {

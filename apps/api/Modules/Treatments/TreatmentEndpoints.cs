@@ -349,13 +349,25 @@ public static class TreatmentEndpoints
                 .OrderByDescending(version => version.VersionNumber)
                 .FirstAsync(ct);
 
+            var now = DateTimeOffset.UtcNow;
+            var startsOn = request?.StartsOn ?? TodayIn(latest.TimeZoneId, now);
+
+            // A phone replaying a restart whose answer never arrived finds the plan already
+            // restarted on that day: one decision, not two, and not a refusal.
+            if (latest.EffectiveTo is null && latest.EffectiveFrom == startsOn && !latest.IsPaused)
+            {
+                return Results.Ok(new
+                {
+                    versionId = latest.Id,
+                    versionNumber = latest.VersionNumber,
+                    effectiveFrom = latest.EffectiveFrom,
+                });
+            }
+
             if (latest.EffectiveTo is not { } endedOn)
             {
                 return ApiResults.Conflict("plan_not_ended");
             }
-
-            var now = DateTimeOffset.UtcNow;
-            var startsOn = request?.StartsOn ?? TodayIn(latest.TimeZoneId, now);
 
             if (startsOn <= endedOn)
             {

@@ -14,7 +14,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
  */
 
 /** Bumped only for a change that needs a migration; see {@link migrateDatabase}. */
-export const SCHEMA_VERSION = 6;
+export const SCHEMA_VERSION = 7;
 
 /**
  * The database file name.
@@ -64,6 +64,9 @@ export async function migrateDatabase(db: SQLiteDatabase): Promise<void> {
     }
     if (version < 6) {
       await db.execAsync(MIGRATE_5_TO_6);
+    }
+    if (version < 7) {
+      await db.execAsync(MIGRATE_6_TO_7);
     }
   }
 
@@ -116,7 +119,17 @@ CREATE TABLE packages (
   -- box, when it expires, and a coverage that overrides the medicine's.
   label TEXT,
   expires_on TEXT,
-  coverage TEXT
+  coverage TEXT,
+  -- Who owns the box and who holds it on loan, and the details the edit sheet must send
+  -- back whole, because the server replaces them all at once.
+  owner_person_id TEXT,
+  active_loan_id TEXT,
+  acquired_on TEXT,
+  lot_number TEXT,
+  barcode TEXT,
+  source TEXT,
+  storage_location TEXT,
+  note TEXT
 );
 
 CREATE INDEX ix_packages_medication ON packages (medication_id, ordinal);
@@ -375,6 +388,22 @@ CREATE TABLE commands (
 );
 
 CREATE INDEX ix_commands_order ON commands (created_at);
+`;
+
+/**
+ * v6 → v7: the box's owner, its loan, and the details the edit sheet sends back whole.
+ *
+ * Nullable columns the next sync fills; nothing a phone already holds is touched.
+ */
+const MIGRATE_6_TO_7 = `
+ALTER TABLE packages ADD COLUMN owner_person_id TEXT;
+ALTER TABLE packages ADD COLUMN active_loan_id TEXT;
+ALTER TABLE packages ADD COLUMN acquired_on TEXT;
+ALTER TABLE packages ADD COLUMN lot_number TEXT;
+ALTER TABLE packages ADD COLUMN barcode TEXT;
+ALTER TABLE packages ADD COLUMN source TEXT;
+ALTER TABLE packages ADD COLUMN storage_location TEXT;
+ALTER TABLE packages ADD COLUMN note TEXT;
 `;
 
 /** Keys used in {@link snapshot_meta}. */

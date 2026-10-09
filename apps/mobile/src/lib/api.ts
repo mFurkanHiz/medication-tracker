@@ -109,6 +109,25 @@ export type WorkspacePackage = {
   isPinned: boolean;
   /** Overrides the medicine's coverage for this box; null inherits it. */
   coverage?: string | null;
+  acquiredOn?: string | null;
+  lotNumber?: string | null;
+  barcode?: string | null;
+  source?: string | null;
+  storageLocation?: string | null;
+  note?: string | null;
+};
+
+/** The edit sheet's request: the server replaces every detail, so all of them travel. */
+export type UpdatePackageRequest = {
+  label: string | null;
+  coverage: string | null;
+  expiresOn: string | null;
+  acquiredOn: string | null;
+  lotNumber: string | null;
+  barcode: string | null;
+  source: string | null;
+  storageLocation: string | null;
+  note: string | null;
 };
 
 export type WorkspaceResponse = {
@@ -460,6 +479,47 @@ export const api = {
       method: 'POST',
       body,
     }),
+
+  endPlan: (config: ApiConfig, household: string, planId: string, body: { endsOn: string }) =>
+    request<{ versionId: string; versionNumber: number; effectiveTo: string }>(
+      config,
+      `/households/${household}/plans/${planId}/end`,
+      { method: 'POST', body },
+    ),
+
+  restartPlan: (config: ApiConfig, household: string, planId: string, body: { startsOn: string }) =>
+    request<{ versionId: string; versionNumber: number; effectiveFrom: string }>(
+      config,
+      `/households/${household}/plans/${planId}/restart`,
+      { method: 'POST', body },
+    ),
+
+  unpinPackage: (config: ApiConfig, household: string, packageId: string) =>
+    request<void>(config, `/households/${household}/inventory/packages/${packageId}/pin`, { method: 'DELETE' }),
+
+  reinstatePackage: (config: ApiConfig, household: string, packageId: string) =>
+    request<void>(config, `/households/${household}/inventory/packages/${packageId}/reinstate`, {
+      method: 'POST',
+      body: {},
+    }),
+
+  updatePackage: (config: ApiConfig, household: string, packageId: string, body: UpdatePackageRequest) =>
+    request<void>(config, `/households/${household}/inventory/packages/${packageId}`, { method: 'PUT', body }),
+
+  assignPackage: (config: ApiConfig, household: string, packageId: string, body: { personId: string | null }) =>
+    request<void>(config, `/households/${household}/inventory/packages/${packageId}/owner`, {
+      method: 'POST',
+      body,
+    }),
+
+  lendPackage: (config: ApiConfig, household: string, packageId: string, body: { borrowerPersonId: string }) =>
+    request<{ id: string; replayed?: boolean }>(config, `/households/${household}/inventory/packages/${packageId}/loans`, {
+      method: 'POST',
+      body,
+    }),
+
+  returnLoan: (config: ApiConfig, household: string, loanId: string) =>
+    request<void>(config, `/households/${household}/inventory/loans/${loanId}/return`, { method: 'POST', body: {} }),
 
   countStock: (config: ApiConfig, household: string, body: CountRequest) =>
     request<{ batchId: string; replayed: boolean }>(config, `/households/${household}/inventory/count-sessions`, {

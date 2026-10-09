@@ -7,13 +7,16 @@ import {
   type AddStockRequest,
   type ApiConfig,
   type CountRequest,
+  type CreateMedicationRequest,
+  type CreatePersonRequest,
+  type CreatePlanRequest,
   type DoseSource,
   type RecordDoseRequest,
   type RetirePackageRequest,
   type SetPlanPausedRequest,
   type UpdatePackageRequest,
 } from '../lib/api';
-import { alreadyDone, interleave } from '../lib/commands';
+import { alreadyDone, carriesKeyInBody, interleave } from '../lib/commands';
 import type { Quantity } from '../lib/quantity';
 import { applyLocalEffect, queuedCommandCount, type CommandRow } from './command-queue';
 
@@ -158,7 +161,11 @@ export type CommandInput =
   | { kind: 'package.assign'; targetId: string; medicationId: string; body: { personId: string | null } }
   | { kind: 'package.lend'; targetId: string; medicationId: string; body: { borrowerPersonId: string } }
   | { kind: 'loan.return'; targetId: string; medicationId: string; body: { packageId: string } }
-  | { kind: 'inventory.count'; targetId: string; medicationId: null; body: Omit<CountRequest, 'idempotencyKey'> };
+  | { kind: 'inventory.count'; targetId: string; medicationId: null; body: Omit<CountRequest, 'idempotencyKey'> }
+  /** The creates: `targetId` is the new row's id, the phone's own, and travels in the body too. */
+  | { kind: 'person.create'; targetId: string; medicationId: null; body: Omit<CreatePersonRequest, 'idempotencyKey'> }
+  | { kind: 'medication.create'; targetId: string; medicationId: string; body: Omit<CreateMedicationRequest, 'idempotencyKey'> }
+  | { kind: 'plan.create'; targetId: string; medicationId: string; body: Omit<CreatePlanRequest, 'idempotencyKey'> };
 
 /**
  * Queues a command and applies what it will do to the cached snapshot, in one
@@ -167,11 +174,9 @@ export type CommandInput =
  */
 export async function enqueueCommand(db: SQLiteDatabase, input: CommandInput, now: string): Promise<string> {
   const idempotencyKey = Crypto.randomUUID();
-  // Added stock and a count are the commands the server cannot tell apart from a second
-  // one on its own, so for them the key travels in the body as well.
-  const payload = JSON.stringify(
-    input.kind === 'stock.add' || input.kind === 'inventory.count' ? { ...input.body, idempotencyKey } : input.body,
-  );
+  // Added stock, a count and the creates are the commands the server cannot tell apart
+  // from a second one on its own, so for them the key travels in the body as well.
+  const payload = JSON.stringify(carriesKeyInBody(input.kind) ? { ...input.body, idempotencyKey } : input.body);
 
   await db.withTransactionAsync(async () => {
     await db.runAsync(
@@ -381,6 +386,15 @@ async function sendCommand(
         break;
       case 'loan.return':
         await api.returnLoan(config, householdId, row.targetId);
+        break;
+      case 'person.create':
+        await api.createPerson(config, householdId, body as CreatePersonRequest);
+        break;
+      case 'medication.create':
+        await api.createMedication(config, householdId, body as CreateMedicationRequest);
+        break;
+      case 'plan.create':
+        await api.createPlan(config, householdId, body as CreatePlanRequest);
         break;
       default:
         // A kind this build does not know cannot be sent; shown rather than retried forever.

@@ -130,6 +130,51 @@ export type UpdatePackageRequest = {
   note: string | null;
 };
 
+/**
+ * The three creates a phone may send twice. The id is the phone's own, so the provisional
+ * row it shows offline is the row the server will keep; the key makes the second send
+ * answer with the first create instead of a second person, medicine or plan.
+ */
+export type CreatePersonRequest = { id: string; name: string; idempotencyKey: string };
+
+export type CreateMedicationRequest = {
+  id: string;
+  name: string;
+  /** A `PharmaceuticalForm` name; the server derives the unit from it when none is sent. */
+  form: string;
+  unit?: string | null;
+  strength?: string | null;
+  defaultPackageCapacityNumerator?: number | null;
+  defaultPackageCapacityDenominator?: number | null;
+  coverage?: string | null;
+  idempotencyKey: string;
+};
+
+export type CreatePlanRequest = {
+  id: string;
+  personId: string;
+  medicationDefinitionId: string;
+  doseNumerator: number;
+  doseDenominator: number;
+  timeZoneId: string;
+  kind: 'Scheduled' | 'AsNeeded';
+  pattern: RecurrencePattern;
+  weekdayMask: number | null;
+  intervalDays: number | null;
+  dayOfMonth: number | null;
+  intervalMonths: number | null;
+  effectiveFrom: string | null;
+  effectiveTo: string | null;
+  /** `HH:mm:ss`, only for a schedule with no day period. */
+  localTime: string | null;
+  dayPeriod: string | null;
+  mealRelation: string | null;
+  idempotencyKey: string;
+};
+
+/** What a create answers: the id (the phone's own) and whether this was the second send. */
+export type CreatedResponse = { id: string; replayed: boolean };
+
 export type WorkspaceResponse = {
   householdId: string;
   people: { id: string; name: string; isArchived: boolean }[];
@@ -520,6 +565,18 @@ export const api = {
 
   returnLoan: (config: ApiConfig, household: string, loanId: string) =>
     request<void>(config, `/households/${household}/inventory/loans/${loanId}/return`, { method: 'POST', body: {} }),
+
+  createPerson: (config: ApiConfig, household: string, body: CreatePersonRequest) =>
+    request<CreatedResponse>(config, `/households/${household}/people`, { method: 'POST', body }),
+
+  createMedication: (config: ApiConfig, household: string, body: CreateMedicationRequest) =>
+    request<CreatedResponse>(config, `/households/${household}/medication-definitions`, { method: 'POST', body }),
+
+  createPlan: (config: ApiConfig, household: string, body: CreatePlanRequest) =>
+    request<CreatedResponse & { versionId: string | null }>(config, `/households/${household}/plans`, {
+      method: 'POST',
+      body,
+    }),
 
   countStock: (config: ApiConfig, household: string, body: CountRequest) =>
     request<{ batchId: string; replayed: boolean }>(config, `/households/${household}/inventory/count-sessions`, {

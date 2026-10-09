@@ -1,5 +1,6 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 import type { CountLineInput } from '../lib/api';
+import { defaultUnitFor } from '../lib/commands';
 import { ZERO, addQuantities, compareQuantities, subtractQuantity, type Quantity } from '../lib/quantity';
 
 /**
@@ -11,6 +12,10 @@ import { ZERO, addQuantities, compareQuantities, subtractQuantity, type Quantity
  * snapshot is replaced wholesale on every refresh, so the effects of everything still
  * queued are applied again after each one; a refused command is left out, which is how
  * its effect is undone.
+ *
+ * A create is the same rule the other way round: the person, medicine or plan is a
+ * provisional row under the phone's own id until the server lists it, and a refused
+ * create disappears with the next refresh.
  *
  * No expo-crypto here, so the module runs under node for the migration and query checks.
  */
@@ -41,12 +46,13 @@ export async function listCommands(db: SQLiteDatabase, which: 'queued' | 'reject
             c.medication_id AS medicationId, c.payload, c.created_at AS createdAt,
             c.attempts, c.last_error AS lastError,
             c.rejected_code AS rejectedCode, c.rejected_status AS rejectedStatus, c.rejected_at AS rejectedAt,
-            m.name AS medicationName, pp.name AS personName,
+            m.name AS medicationName, coalesce(pp.name, pc.name) AS personName,
             pk.label AS packageLabel, pk.ordinal AS packageOrdinal
        FROM commands c
        LEFT JOIN medications m ON m.id = c.medication_id
        LEFT JOIN plans pl      ON pl.id = c.target_id AND c.kind LIKE 'plan.%'
        LEFT JOIN people pp     ON pp.id = pl.person_id
+       LEFT JOIN people pc     ON pc.id = c.target_id AND c.kind = 'person.create'
        LEFT JOIN packages pk   ON (pk.id = c.target_id AND c.kind LIKE 'package.%')
                                OR (pk.active_loan_id = c.target_id AND c.kind = 'loan.return')
       WHERE c.rejected_at IS ${which === 'queued' ? '' : 'NOT '}NULL
@@ -338,6 +344,69 @@ export async function applyLocalEffect(db: SQLiteDatabase, command: Pick<Command
           );
         }
       }
+      return;
+    }
+
+    // The creates: a provisional row under the phone's own id. OR IGNORE, because a
+    // refresh after a send whose answer was lost already lists the row under that id.
+    case 'person.create': {
+      await db.runAsync(
+        'INSERT OR IGNORE INTO people (id, name, is_archived) VALUES (?, ?, 0)',
+        command.targetId,
+        String(body.name ?? ''),
+      );
+      return;
+    }
+
+    case 'medication.create': {
+      const text = (value: unknown) => (typeof value === 'string' && value !== '' ? value : null);
+      const count = (value: unknown) => (typeof value === 'number' ? value : null);
+      await db.runAsync(
+        `INSERT OR IGNORE INTO medications (
+           id, name, strength, unit, is_archived, total_numerator, total_denominator, package_count, coverage,
+           default_capacity_numerator, default_capacity_denominator
+         ) VALUES (?, ?, ?, ?, 0, 0, 1, 0, ?, ?, ?)`,
+        command.targetId,
+        String(body.name ?? ''),
+        text(body.strength),
+        text(body.unit) ?? defaultUnitFor(String(body.form ?? '')),
+        text(body.coverage),
+        count(body.defaultPackageCapacityNumerator),
+        count(body.defaultPackageCapacityDenominator),
+      );
+      return;
+    }
+
+    case 'plan.create': {
+      const text = (value: unknown) => (typeof value === 'string' && value !== '' ? value : null);
+      const count = (value: unknown) => (typeof value === 'number' ? value : null);
+      // The version id is the server's to give; marked until it has, so nothing reads
+      // the provisional plan as a version a dose could be recorded against.
+      await db.runAsync(
+        `INSERT OR IGNORE INTO plans (
+           id, version_id, person_id, medication_id, dose_numerator, dose_denominator,
+           kind, pattern, weekday_mask, interval_days, day_of_month, interval_months,
+           effective_from, effective_to, local_time, time_zone_id, day_period, meal_relation, is_paused
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`,
+        command.targetId,
+        `pending:${command.targetId}`,
+        String(body.personId ?? ''),
+        String(body.medicationDefinitionId ?? ''),
+        count(body.doseNumerator) ?? 1,
+        count(body.doseDenominator) ?? 1,
+        body.kind === 'AsNeeded' ? 'AsNeeded' : 'Scheduled',
+        text(body.pattern) ?? 'Daily',
+        count(body.weekdayMask),
+        count(body.intervalDays),
+        count(body.dayOfMonth),
+        count(body.intervalMonths),
+        text(body.effectiveFrom),
+        text(body.effectiveTo),
+        text(body.localTime),
+        text(body.timeZoneId) ?? 'UTC',
+        text(body.dayPeriod),
+        text(body.mealRelation),
+      );
       return;
     }
 

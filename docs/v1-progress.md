@@ -12,12 +12,13 @@ reconstructing the product history from a long conversation.
   `v1.0.0` tag untouched (ADR 0017). Release notes: `docs/releases/v1.0.1.md`. `docs/v1-acceptance.md` is the authority on scope; ADR 0013
   explains the rebuild, ADR 0015 the owner-approved mobile deferral.
 - Production tracks `main`: every merge deploys by itself, so the live revision is
-  whatever `main` last squashed to — `614bd81` (PR #65, CI run `37952476650`) as of
+  whatever `main` last squashed to — `5c36c17` (PR #66, CI run `37957991072`) as of
   2026-10-09, with migrations 1–18 applied, the API on the confined database role, and
   `GET /api/version` answering `1.0.1` (the server's behaviour has not changed since the
   `v1.0.1` cut at `214dee4` except for the replay guards the phone needs: PR #64's
-  add-stock key and retire no-op, PR #66's restart, assign and lend replays; the other
-  merges since are mobile code, tests and documentation).
+  add-stock key and retire no-op, PR #66's restart, assign and lend replays, PR #67's
+  optional client id and key on the three creates; the other merges since are mobile
+  code, tests and documentation).
   Documentation-only merges do not redeploy (`paths-ignore` on push).
 - **The owner's live-test round of 2026-10-05 is closed.** Sprint 7 shipped every note
   and decision (D1–D6) in seven slices (PR #50–#55, migrations 15–18), then the general
@@ -30,9 +31,10 @@ reconstructing the product history from a long conversation.
   due-day rule (PR #58), every read-only screen the web has — Stock, Plans (PR #62),
   People, History (PR #63) — the first commands through the outbox (pause and resume a
   plan, add stock, make a box active, mark a box lost or disposed; PR #64), reports,
-  export and counting (PR #65) and the remaining box and plan decisions (end and restart
+  export and counting (PR #65), the remaining box and plan decisions (end and restart
   a plan, clear the active box, bring a box back, edit a box, assign, lend and return;
-  PR #66) are in, none yet seen on a device; the install itself runs from a session on
+  PR #66) and creation of a person, a medicine and a plan (PR #67) are in, none yet seen
+  on a device; the install itself runs from a session on
   the owner's computer (`docs/mobile-device-install.md`), which a cloud session cannot
   do. Plan and progress: `docs/mobile-resume-plan.md`.
 
@@ -74,14 +76,14 @@ retire and recreate it, or name the first accepted release `v1.0.1`).
 1. **Mobile catch-up continues** — the owner's priority (2026-10-08: "mobil gerideyse
    öncelik mobil versiyonu web'e eşitlemek"), code only until a device is attached. Every
    read-only screen the web has is on the phone (PR #62, #63), the everyday commands go
-   through the outbox (PR #64), reports, export and counting are in (PR #65), and so are
-   the remaining box and plan decisions (PR #66). What the phone still cannot do, and the
-   web can: create a person, a medicine or a plan; edit a person, a medicine's definition
-   or a plan's dose and schedule; archive and restore; correct a count or a dose's stock
-   source; delete a plan (`docs/mobile-resume-plan.md`, "Where this leaves parity").
-   Next, each as its own slice with typecheck and unit tests: the server-side fix for the
-   latest-version-only gap (same file, "Known gap"); then, if the owner wants it,
-   creation on the phone with idempotency keys on the create endpoints.
+   through the outbox (PR #64), reports, export and counting are in (PR #65), so are the
+   remaining box and plan decisions (PR #66), and a person, a medicine and a plan can be
+   created on the phone (PR #67). What the phone still cannot do, and the web can: edit
+   a person's name, a medicine's definition or a plan's dose and schedule; archive and
+   restore; correct a count or a dose's stock source; delete a plan
+   (`docs/mobile-resume-plan.md`, "Where this leaves parity"). Next, each as its own
+   slice with typecheck and unit tests: the server-side fix for the latest-version-only
+   gap (same file, "Known gap"); then, if the owner wants it, editing on the phone.
 2. **On the owner's computer**, when they next open a session there: push the `v1.0.1`
    tag (one command, at the top of `docs/mobile-device-install.md`), then the install
    per that runbook, then the physical-device acceptance rows (28, 29), then the
@@ -1334,6 +1336,30 @@ and editing people, medicines and plans, archive and restore, count revisions, a
 corrections and plan deletion remain web-only (`docs/mobile-resume-plan.md`, "Where this
 leaves parity").
 
+### Slice 9 — creation on the phone — PR #67
+
+A person, a medicine and a plan can now be created on the phone, offline, through the
+outbox. Each is a command whose target is an id the phone chose: the row exists on the
+phone the moment the sheet closes — a person with no plans; a medicine with no stock,
+its unit following its form by the server's own rule, which a contract test pins; a plan
+whose reminders are set at once and whose version is marked pending until the server
+names it — the server hears on the next sync, and a plan or a box may already point at
+the new person or medicine before it has. The three sheets are the web's forms as far as
+a phone sheet goes: a name; name, form, strength, usual box size and who pays; person,
+medicine, dose, the six schedule choices with exactly their own fields, a clock time or a
+part of the day, food timing, start and end. What is typed is checked with the server's
+rules before anything is queued (`buildPerson`, `buildMedication`, `buildPlan`; 74 mobile
+tests in all). On the server the three create endpoints take an optional client id and
+idempotency key (`SyncReplay`, over the receipts table the doses already use): a second
+send answers with the first create and `replayed: true`, the same id under another key
+is refused as `id_in_use`, and the web, sending neither, is unchanged
+(`MobileContractTests`; 263 API tests). The Today list stays the server's, so a plan made
+on the phone appears there after the sync, and its card says so. No schema change. Still
+nothing seen on a device. **Parity**: deciding and creating are now at parity; editing
+people, medicines and plans, archive and restore, count revisions, allocation corrections
+and plan deletion remain web-only (`docs/mobile-resume-plan.md`, "Where this leaves
+parity").
+
 ### What the cloud session could not do
 
 Install on the phone. The owner asked "yapamaz mısın oradan?" — no: this session runs in
@@ -1357,9 +1383,9 @@ was cut as `v1.0.1` on 2026-10-08, with the tag's push left to the owner's compu
 
 **Exact next action.** The mobile catch-up, as the *Next exact action* section at the
 top describes: the read-only screens (PR #62, #63), the everyday commands (PR #64),
-reports, export and counting (PR #65) and the remaining decisions (PR #66) are in; next
-the server-side fix for the latest-version-only gap, then creation on the phone if the
-owner wants it.
+reports, export and counting (PR #65), the remaining decisions (PR #66) and creation
+(PR #67) are in; next the server-side fix for the latest-version-only gap, then editing
+on the phone if the owner wants it.
 
 Still open for the owner, unchanged: which production household is theirs, so the
 synthetic ones left by smoke tests can be cleaned; and the `VPS_SSH_KEY` rotation.

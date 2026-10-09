@@ -12,6 +12,7 @@ import type { MessageKey } from '../lib/i18n';
 import { formatQuantity, isPositive } from '../lib/quantity';
 import { RefusedCommands } from '../ui/RefusedCommands';
 import { Badge, Button, Card, Notice, SectionTitle, palette, useTranslate } from '../ui/theme';
+import { AddMedicationSheet } from './AddMedicationSheet';
 import { AddStockSheet } from './AddStockSheet';
 import { CountingSheet } from './CountingSheet';
 import { EditPackageSheet } from './EditPackageSheet';
@@ -24,7 +25,8 @@ import { EditPackageSheet } from './EditPackageSheet';
  * decision at once and the server hears on the next sync. Added stock has no box until
  * the server names it, so it waits as a pending line under the medicine; a loan has no id
  * until the server gives one, so a box lent from the phone cannot be returned from the
- * phone until that sync. Counting opens its own sheet.
+ * phone until that sync. Counting opens its own sheet, and so does defining a new
+ * medicine: it is on the phone at once, with no stock, under an id the phone chose.
  */
 export function StockScreen({ session }: { session: Session }) {
   const { t, locale } = useTranslate();
@@ -35,6 +37,7 @@ export function StockScreen({ session }: { session: Session }) {
   const [queued, setQueued] = useState<CommandRow[]>([]);
   const [refused, setRefused] = useState<CommandRow[]>([]);
   const [adding, setAdding] = useState<StockRow | null>(null);
+  const [defining, setDefining] = useState(false);
   const [editing, setEditing] = useState<{ row: StockRow; box: StockPackage } | null>(null);
   const [counting, setCounting] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -160,7 +163,10 @@ export function StockScreen({ session }: { session: Session }) {
 
         <RefusedCommands rows={refused} onDismiss={(key) => void dismiss(key)} />
 
-        {rows.length > 0 ? <Button tone="secondary" label={t('countNow')} onPress={() => setCounting(true)} /> : null}
+        <View style={styles.toolbar}>
+          <Button label={t('addMedication')} onPress={() => setDefining(true)} />
+          {rows.length > 0 ? <Button tone="secondary" label={t('countNow')} onPress={() => setCounting(true)} /> : null}
+        </View>
 
         {queued
           .filter((command) => command.kind === 'inventory.count')
@@ -208,6 +214,16 @@ export function StockScreen({ session }: { session: Session }) {
           onClose={() => setCounting(false)}
           onQueued={() => {
             setCounting(false);
+            void afterQueued();
+          }}
+        />
+      ) : null}
+
+      {defining ? (
+        <AddMedicationSheet
+          onClose={() => setDefining(false)}
+          onQueued={() => {
+            setDefining(false);
             void afterQueued();
           }}
         />
@@ -269,6 +285,7 @@ function MedicationCard({
   const { t } = useTranslate();
   const unit = row.unit.toLowerCase();
   const pendingStock = queued.filter((command) => command.kind === 'stock.add');
+  const pendingCreate = queued.some((command) => command.kind === 'medication.create' && command.targetId === row.id);
 
   return (
     <Card>
@@ -286,6 +303,7 @@ function MedicationCard({
         <Badge label={`${row.packageCount} ${t('packagesLabel')}`} />
         {row.coverage === 'SelfPaid' ? <Badge tone="accent" label={t('coverageSelfPaid')} /> : null}
         {!isPositive(row.total) ? <Badge tone="danger" label={t('outOfStock')} /> : null}
+        {pendingCreate ? <Badge tone="warning" label={t('createdOffline')} /> : null}
       </View>
 
       {row.packages.map((box) => (
@@ -495,6 +513,7 @@ const styles = StyleSheet.create({
   medication: { fontSize: 18, fontWeight: '800', color: palette.ink },
   total: { fontSize: 16, fontWeight: '800', color: palette.accentInk },
   badges: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  toolbar: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   box: { borderTopWidth: 1, borderTopColor: palette.line, paddingTop: 10, gap: 6 },
   retired: { opacity: 0.6 },
   boxHeader: { flexDirection: 'row', justifyContent: 'space-between', gap: 12 },

@@ -4,7 +4,15 @@ import { useSQLiteContext } from 'expo-sqlite';
 import { listCommands, type CommandRow } from '../data/command-queue';
 import { dismissCommand, enqueueCommand } from '../data/outbox';
 import type { Session } from '../data/session';
-import { readPlans, readReminderPlans, type PlanRow } from '../data/snapshot';
+import {
+  readPeople,
+  readPlans,
+  readReminderPlans,
+  readStock,
+  type MedicationStock,
+  type PersonRow,
+  type PlanRow,
+} from '../data/snapshot';
 import { syncNow } from '../data/sync';
 import { describeCommand } from '../lib/commands';
 import { enumKey } from '../lib/i18n';
@@ -16,20 +24,25 @@ import { startOfDayParts } from '../notifications/schedule';
 import { DateSheet } from '../ui/DateSheet';
 import { RefusedCommands } from '../ui/RefusedCommands';
 import { Badge, Button, Card, Notice, SectionTitle, palette, useTranslate } from '../ui/theme';
+import { AddPlanSheet } from './AddPlanSheet';
 
 /**
  * Every plan the household has, grouped by person, with the schedule in words and
  * where it stands today — the web's plans screen, read from the cached snapshot.
  *
- * Pausing, resuming, ending and restarting queue a command: the plan changes on the phone
- * at once, its reminders follow, and the server hears on the next sync. Editing a plan's
- * dose or schedule still goes through the web, and the screen says so.
+ * Adding, pausing, resuming, ending and restarting queue a command: the plan changes on
+ * the phone at once, its reminders follow, and the server hears on the next sync. A plan
+ * added here is provisional until then, and its card says so. Editing a plan's dose or
+ * schedule still goes through the web, and the screen says so.
  */
 export function PlansScreen({ session }: { session: Session }) {
   const { t, locale } = useTranslate();
   const db = useSQLiteContext();
 
   const [rows, setRows] = useState<PlanRow[]>([]);
+  const [activePeople, setActivePeople] = useState<PersonRow[]>([]);
+  const [medications, setMedications] = useState<MedicationStock[]>([]);
+  const [adding, setAdding] = useState(false);
   const [queued, setQueued] = useState<CommandRow[]>([]);
   const [refused, setRefused] = useState<CommandRow[]>([]);
   const [decision, setDecision] = useState<{ kind: 'end' | 'restart'; row: PlanRow } | null>(null);
@@ -44,6 +57,8 @@ export function PlansScreen({ session }: { session: Session }) {
 
   const reload = useCallback(async () => {
     setRows(await readPlans(db));
+    setActivePeople((await readPeople(db)).filter((person) => !person.isArchived));
+    setMedications(await readStock(db));
     setQueued((await listCommands(db, 'queued')).filter((row) => row.kind.startsWith('plan.')));
     setRefused((await listCommands(db, 'rejected')).filter((row) => row.kind.startsWith('plan.')));
     setLoading(false);
@@ -94,6 +109,14 @@ export function PlansScreen({ session }: { session: Session }) {
     void refresh();
   }
 
+  /** A plan added on the phone: its reminders are set now, like any other plan's. */
+  async function afterAdded() {
+    setAdding(false);
+    await reconcileReminders(db, await readReminderPlans(db), t, new Date());
+    await reload();
+    void refresh();
+  }
+
   async function dismiss(idempotencyKey: string) {
     await dismissCommand(db, idempotencyKey);
     await reload();
@@ -136,6 +159,8 @@ export function PlansScreen({ session }: { session: Session }) {
       {offline ? <Notice tone="warning" message={t('offline')} /> : null}
 
       <RefusedCommands rows={refused} onDismiss={(key) => void dismiss(key)} />
+
+      <Button label={t('addPlan')} onPress={() => setAdding(true)} />
 
       {rows.length === 0 ? (
         <Card>
@@ -185,6 +210,15 @@ export function PlansScreen({ session }: { session: Session }) {
         confirmLabel={t(decision.kind === 'end' ? 'endPlan' : 'restartPlan')}
         onClose={() => setDecision(null)}
         onConfirm={(day) => decide(decision.row, decision.kind, day)}
+      />
+    ) : null}
+
+    {adding ? (
+      <AddPlanSheet
+        people={activePeople}
+        medications={medications}
+        onClose={() => setAdding(false)}
+        onQueued={() => void afterAdded()}
       />
     ) : null}
     </>
@@ -246,6 +280,8 @@ function PlanCard({
           ))}
         </View>
       ) : null}
+
+      {row.versionId.startsWith('pending:') ? <Text style={styles.muted}>{t('pendingPlanHint')}</Text> : null}
 
       {status !== 'ended' ? (
         <View style={styles.badges}>

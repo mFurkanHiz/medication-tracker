@@ -87,6 +87,9 @@ public sealed class MobileContractTests
     [
         "id", "ordinal", "label", "state", "isEmpty", "nominalCapacity", "remaining", "unit",
         "expiresOn", "ownerPersonId", "holderPersonId", "isPinned", "coverage",
+
+        // Read since mobile schema v7: the edit sheet sends every detail back whole.
+        "acquiredOn", "lotNumber", "barcode", "source", "storageLocation", "note",
     ];
 
     [PostgreSqlFact]
@@ -125,9 +128,11 @@ public sealed class MobileContractTests
             workspace.GetProperty("plans").EnumerateArray().Single(), WorkspacePlanFields);
         var medication = workspace.GetProperty("medications").EnumerateArray().Single();
         AssertEveryFieldPresent(medication, WorkspaceMedicationFields);
-        AssertEveryFieldPresent(
-            medication.GetProperty("packages").EnumerateArray().Single().GetProperty("view"),
-            WorkspacePackageFields);
+        var packageEntry = medication.GetProperty("packages").EnumerateArray().Single();
+        AssertEveryFieldPresent(packageEntry.GetProperty("view"), WorkspacePackageFields);
+
+        // The loan id rides beside the view; the phone needs it to return the box.
+        Assert.True(packageEntry.TryGetProperty("activeLoanId", out _), "the package entry lost activeLoanId");
 
         // The phone filters archived people out of its reminder query, so it has to be
         // told which they are rather than having them silently withheld.
@@ -432,6 +437,71 @@ public sealed class MobileContractTests
         Assert.Equal("application/json", export.Content.Headers.ContentType?.MediaType);
         Assert.StartsWith("medication-tracker-export-", export.Content.Headers.ContentDisposition?.FileName?.Trim('"') ?? "");
         Assert.EndsWith(".json", export.Content.Headers.ContentDisposition?.FileName?.Trim('"') ?? "");
+    }
+
+    /// <summary>
+    /// The box and plan decisions the phone queues answer a replay as the decision already
+    /// taken: restarting a restarted plan, assigning the same owner, lending to the borrower
+    /// who already holds it; and bringing back a box already back or returning a returned
+    /// loan are refused with the codes the phone reads as "already done".
+    /// </summary>
+    [PostgreSqlFact]
+    public async Task The_box_and_plan_decisions_the_phone_queues_can_be_replayed()
+    {
+        await using var harness = new ApiTestHarness();
+        var (client, household) = await harness.NewHouseholdAsync();
+        var (person, definition) = await SyntheticHouseholdAsync(client, household);
+        var plan = await PlanAsync(client, household, person, definition);
+        var borrower = await client.PostId($"/api/households/{household}/people", new { name = "Synthetic borrower" });
+
+        // Ending on a day, twice, is one version; restarting on a day, twice, is one version.
+        var ended = await client.PostOk($"/api/households/{household}/plans/{plan}/end", new { endsOn = "2026-10-20" });
+        var endedAgain = await client.PostOk($"/api/households/{household}/plans/{plan}/end", new { endsOn = "2026-10-20" });
+        Assert.Equal(ended.GetProperty("versionId").GetGuid(), endedAgain.GetProperty("versionId").GetGuid());
+
+        var restarted = await client.PostOk($"/api/households/{household}/plans/{plan}/restart", new { startsOn = "2026-11-01" });
+        var restartedAgain = await client.PostOk($"/api/households/{household}/plans/{plan}/restart", new { startsOn = "2026-11-01" });
+        Assert.Equal(restarted.GetProperty("versionId").GetGuid(), restartedAgain.GetProperty("versionId").GetGuid());
+
+        // A box lost and found: bringing it back twice puts its amount back once.
+        var inventory = await client.GetOk($"/api/households/{household}/inventory/{definition}");
+        var box = inventory.GetProperty("packages").EnumerateArray().Single().GetProperty("id").GetGuid();
+        var boxes = $"/api/households/{household}/inventory/packages/{box}";
+
+        Assert.Equal(HttpStatusCode.NoContent, (await client.PostAsJsonAsync($"{boxes}/retire", new { state = "Lost" })).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, (await client.PostAsJsonAsync($"{boxes}/reinstate", new { })).StatusCode);
+
+        // The second reinstatement is refused with the code the phone reads as "already
+        // back" — the web's rule for a box that was never lost stays as it was.
+        var reinstatedAgain = await client.PostAsJsonAsync($"{boxes}/reinstate", new { });
+        Assert.Equal(HttpStatusCode.Conflict, reinstatedAgain.StatusCode);
+        Assert.Equal("package_not_retired", await reinstatedAgain.RefusalCode());
+        var after = await client.GetOk($"/api/households/{household}/inventory/{definition}");
+        Assert.Equal("20", after.GetProperty("total").Quantity());
+
+        // The same owner twice, the same borrower twice, the same return twice.
+        Assert.Equal(HttpStatusCode.NoContent, (await client.PostAsJsonAsync($"{boxes}/owner", new { personId = person })).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, (await client.PostAsJsonAsync($"{boxes}/owner", new { personId = person })).StatusCode);
+
+        var lent = await client.PostOk($"{boxes}/loans", new { borrowerPersonId = borrower });
+        var lentAgain = await client.PostOk($"{boxes}/loans", new { borrowerPersonId = borrower });
+        Assert.Equal(lent.GetProperty("id").GetGuid(), lentAgain.GetProperty("id").GetGuid());
+        Assert.True(lentAgain.GetProperty("replayed").GetBoolean());
+
+        var loan = lent.GetProperty("id").GetGuid();
+        Assert.Equal(HttpStatusCode.NoContent, (await client.PostAsJsonAsync($"/api/households/{household}/inventory/loans/{loan}/return", new { })).StatusCode);
+
+        // Likewise a second return: refused with the code the phone reads as "already returned".
+        var returnedAgain = await client.PostAsJsonAsync($"/api/households/{household}/inventory/loans/{loan}/return", new { });
+        Assert.Equal(HttpStatusCode.Conflict, returnedAgain.StatusCode);
+        Assert.Equal("already_returned", await returnedAgain.RefusalCode());
+
+        // Lending to somebody else while the loan is out is still a refusal the phone shows.
+        await client.PostOk($"{boxes}/loans", new { borrowerPersonId = borrower });
+        var other = await client.PostId($"/api/households/{household}/people", new { name = "Synthetic other" });
+        var refused = await client.PostAsJsonAsync($"{boxes}/loans", new { borrowerPersonId = other });
+        Assert.Equal(HttpStatusCode.Conflict, refused.StatusCode);
+        Assert.Equal("already_on_loan", await refused.RefusalCode());
     }
 
     private static void AssertEveryFieldPresent(JsonElement row, string[] fields)

@@ -1,4 +1,11 @@
-import type { AddStockRequest, CountLineInput, CountRequest, RetirePackageRequest, SetPlanPausedRequest } from './api';
+import type {
+  AddStockRequest,
+  CountLineInput,
+  CountRequest,
+  RetirePackageRequest,
+  SetPlanPausedRequest,
+  UpdatePackageRequest,
+} from './api';
 import type { MessageKey, Translate } from './i18n';
 import { compareQuantities, formatQuantity, parseQuantity, type Quantity } from './quantity';
 
@@ -9,14 +16,41 @@ import { compareQuantities, formatQuantity, parseQuantity, type Quantity } from 
  * unit-tested.
  */
 
-export type CommandKind = 'plan.pause' | 'stock.add' | 'package.pin' | 'package.retire' | 'inventory.count';
+export type CommandKind =
+  | 'plan.pause'
+  | 'plan.end'
+  | 'plan.restart'
+  | 'stock.add'
+  | 'package.pin'
+  | 'package.unpin'
+  | 'package.retire'
+  | 'package.reinstate'
+  | 'package.update'
+  | 'package.assign'
+  | 'package.lend'
+  | 'loan.return'
+  | 'inventory.count';
 
 export type CommandPayload =
   | { kind: 'plan.pause'; body: SetPlanPausedRequest }
+  | { kind: 'plan.end'; body: { endsOn: string } }
+  | { kind: 'plan.restart'; body: { startsOn: string } }
   | { kind: 'stock.add'; body: AddStockRequest }
   | { kind: 'package.pin'; body: Record<string, never> }
+  | { kind: 'package.unpin'; body: Record<string, never> }
   | { kind: 'package.retire'; body: RetirePackageRequest }
+  | { kind: 'package.reinstate'; body: Record<string, never> }
+  | { kind: 'package.update'; body: UpdatePackageRequest }
+  | { kind: 'package.assign'; body: { personId: string | null } }
+  | { kind: 'package.lend'; body: { borrowerPersonId: string } }
+  /** `packageId` rides along so the phone can show the box again once the loan is back. */
+  | { kind: 'loan.return'; body: { packageId: string } }
   | { kind: 'inventory.count'; body: CountRequest };
+
+/** The kinds whose target is a box, for the queue's joins and the Stock screen's badges. */
+export const PACKAGE_COMMAND_KINDS: readonly CommandKind[] = [
+  'package.pin', 'package.unpin', 'package.retire', 'package.reinstate', 'package.update', 'package.assign', 'package.lend',
+];
 
 /** The command's name in the reader's words: "Şimdilik ara ver", "Stok ekle: 2 kutu". */
 export function describeCommand(kind: string, payload: unknown, t: Translate): string {
@@ -25,10 +59,26 @@ export function describeCommand(kind: string, payload: unknown, t: Translate): s
   switch (kind as CommandKind) {
     case 'plan.pause':
       return t(body.isPaused ? 'pausePlan' : 'resumePlan');
+    case 'plan.end':
+      return `${t('endPlan')} · ${String(body.endsOn ?? '')}`;
+    case 'plan.restart':
+      return `${t('restartPlan')} · ${String(body.startsOn ?? '')}`;
     case 'package.pin':
       return t('makeActive');
+    case 'package.unpin':
+      return t('unpin');
     case 'package.retire':
       return t(body.state === 'Disposed' ? 'markDisposed' : 'markLost');
+    case 'package.reinstate':
+      return t('reinstatePackage');
+    case 'package.update':
+      return t('editPackage');
+    case 'package.assign':
+      return body.personId ? t('assignTo') : t('noOwner');
+    case 'package.lend':
+      return t('lend');
+    case 'loan.return':
+      return t('returnLoan');
     case 'stock.add':
       return `${t('addStock')}: ${describeStock(body as Partial<AddStockRequest>, t)}`;
     case 'inventory.count': {
@@ -220,4 +270,29 @@ export function buildCountLines(entries: Record<string, string>): CountOutcome {
   }
 
   return lines.length === 0 ? { ok: false, error: 'countingNothingEntered' } : { ok: true, lines };
+}
+
+/** A calendar day typed as `YYYY-MM-DD` and real: 2026-02-30 is not a day. */
+export function isValidDay(text: string): boolean {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text.trim());
+  if (!match) {
+    return false;
+  }
+
+  const [, year, month, day] = match.map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
+}
+
+/**
+ * A refusal that says the command's goal is already reached: a box the server says is
+ * not retired is back, a loan it says is already returned is home. The web shows these
+ * as errors for a double click; the phone, replaying a command whose answer never
+ * arrived, treats them as done rather than as a failure to show.
+ */
+export function alreadyDone(kind: string, code: string): boolean {
+  return (
+    (kind === 'package.reinstate' && code === 'package_not_retired') ||
+    (kind === 'loan.return' && code === 'already_returned')
+  );
 }

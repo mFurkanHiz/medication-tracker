@@ -108,9 +108,25 @@ until a release channel exists.
   screen (one number per medicine, or box by box), queued as a command with the server's
   idempotency key and applied to the cached stock at once. Past counts and corrections
   stay on the web. Still nothing seen on a device.
-- Next: the server-side fix for the latest-version-only gap below; then, if wanted, the
-  commands still on the web (edit, end and restart a plan; edit a box; lend and return;
-  reinstate a lost box; correct a count).
+- PR #66: the remaining box and plan decisions, through the outbox — end and restart a
+  plan (a date, today offered), clear the active box, bring a lost box back, edit a box's
+  name, expiry, coverage, lot number, storage place and note, assign a box to a person,
+  lend it and mark it returned. Schema v7 caches the owner, the loan and the details the
+  edit sheet must send back whole. On the server a replayed restart answers with the
+  restarted version, the same owner twice writes no second event, and a loan replayed to
+  the borrower who already holds it answers with that loan; a reinstated box reinstated
+  again and a returned loan returned again stay refusals on the web and are read as
+  "already done" by the phone. Still nothing seen on a device.
+- **Where this leaves parity.** Everything the web can *decide* about existing people,
+  medicines, boxes and plans is now on the phone, offline. What the web can do and the
+  phone still cannot: **create** a person, a medicine or a plan; **edit** a person's name,
+  a medicine's definition (strength, cautions, tags, coverage default) or a plan's dose
+  and schedule; archive and restore people and medicines; correct an accepted count
+  (revisions) and a dose's stock source (allocation corrections); delete a plan made by
+  mistake. Each is an outbox command whose create needs a server-side idempotency key it
+  does not have yet, or a form larger than a phone sheet should be.
+- Next: the server-side fix for the latest-version-only gap below; then, if wanted,
+  creation on the phone (person, medicine, plan) with idempotency keys on those endpoints.
 
 ## Known gap
 

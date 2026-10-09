@@ -13,6 +13,7 @@ import { STATUS_KEYS, describeSchedule, planStatus, type PlanStatus } from '../l
 import { formatQuantity } from '../lib/quantity';
 import { reconcileReminders } from '../notifications/reminders';
 import { startOfDayParts } from '../notifications/schedule';
+import { DateSheet } from '../ui/DateSheet';
 import { RefusedCommands } from '../ui/RefusedCommands';
 import { Badge, Button, Card, Notice, SectionTitle, palette, useTranslate } from '../ui/theme';
 
@@ -20,9 +21,9 @@ import { Badge, Button, Card, Notice, SectionTitle, palette, useTranslate } from
  * Every plan the household has, grouped by person, with the schedule in words and
  * where it stands today — the web's plans screen, read from the cached snapshot.
  *
- * Pausing and resuming queue a command: the plan flips on the phone at once, its
- * reminders stop or start, and the server hears on the next sync. Editing, ending and
- * restarting a plan still go through the web, and the screen says so.
+ * Pausing, resuming, ending and restarting queue a command: the plan changes on the phone
+ * at once, its reminders follow, and the server hears on the next sync. Editing a plan's
+ * dose or schedule still goes through the web, and the screen says so.
  */
 export function PlansScreen({ session }: { session: Session }) {
   const { t, locale } = useTranslate();
@@ -31,6 +32,7 @@ export function PlansScreen({ session }: { session: Session }) {
   const [rows, setRows] = useState<PlanRow[]>([]);
   const [queued, setQueued] = useState<CommandRow[]>([]);
   const [refused, setRefused] = useState<CommandRow[]>([]);
+  const [decision, setDecision] = useState<{ kind: 'end' | 'restart'; row: PlanRow } | null>(null);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [offline, setOffline] = useState(false);
@@ -42,8 +44,8 @@ export function PlansScreen({ session }: { session: Session }) {
 
   const reload = useCallback(async () => {
     setRows(await readPlans(db));
-    setQueued((await listCommands(db, 'queued')).filter((row) => row.kind === 'plan.pause'));
-    setRefused((await listCommands(db, 'rejected')).filter((row) => row.kind === 'plan.pause'));
+    setQueued((await listCommands(db, 'queued')).filter((row) => row.kind.startsWith('plan.')));
+    setRefused((await listCommands(db, 'rejected')).filter((row) => row.kind.startsWith('plan.')));
     setLoading(false);
   }, [db]);
 
@@ -71,6 +73,22 @@ export function PlansScreen({ session }: { session: Session }) {
     );
 
     // The phone's own reminders follow the decision now, not after the next sync.
+    await reconcileReminders(db, await readReminderPlans(db), t, new Date());
+    await reload();
+    void refresh();
+  }
+
+  /** The last day, or the first day again: a version appended on the server, a date here. */
+  async function decide(row: PlanRow, kind: 'end' | 'restart', day: string) {
+    await enqueueCommand(
+      db,
+      kind === 'end'
+        ? { kind: 'plan.end', targetId: row.id, medicationId: row.medicationId, body: { endsOn: day } }
+        : { kind: 'plan.restart', targetId: row.id, medicationId: row.medicationId, body: { startsOn: day } },
+      new Date().toISOString(),
+    );
+
+    setDecision(null);
     await reconcileReminders(db, await readReminderPlans(db), t, new Date());
     await reload();
     void refresh();
@@ -108,6 +126,7 @@ export function PlansScreen({ session }: { session: Session }) {
   const pendingFor = (planId: string) => queued.filter((row) => row.targetId === planId);
 
   return (
+    <>
     <ScrollView
       contentContainerStyle={styles.container}
       refreshControl={<RefreshControl refreshing={syncing} onRefresh={() => void refresh()} />}
@@ -135,6 +154,7 @@ export function PlansScreen({ session }: { session: Session }) {
               locale={locale}
               pending={pendingFor(row.id)}
               onTogglePause={() => void togglePause(row)}
+              onEnd={() => setDecision({ kind: 'end', row })}
             />
           ))}
         </View>
@@ -144,11 +164,30 @@ export function PlansScreen({ session }: { session: Session }) {
         <View style={styles.group}>
           <Text style={styles.person}>{t('pastPlans')}</Text>
           {past.map(({ row, status }) => (
-            <PlanCard key={row.versionId} row={row} status={status} locale={locale} pending={[]} />
+            <PlanCard
+              key={row.versionId}
+              row={row}
+              status={status}
+              locale={locale}
+              pending={pendingFor(row.id)}
+              onRestart={() => setDecision({ kind: 'restart', row })}
+            />
           ))}
         </View>
       ) : null}
     </ScrollView>
+
+    {decision ? (
+      <DateSheet
+        title={`${t(decision.kind === 'end' ? 'endPlan' : 'restartPlan')} — ${decision.row.medicationName}`}
+        label={t(decision.kind === 'end' ? 'lastDayLabel' : 'restartsOn')}
+        hint={t(decision.kind === 'end' ? 'endPlanHint' : 'restartPlanHint')}
+        confirmLabel={t(decision.kind === 'end' ? 'endPlan' : 'restartPlan')}
+        onClose={() => setDecision(null)}
+        onConfirm={(day) => decide(decision.row, decision.kind, day)}
+      />
+    ) : null}
+    </>
   );
 }
 
@@ -158,12 +197,16 @@ function PlanCard({
   locale,
   pending,
   onTogglePause,
+  onEnd,
+  onRestart,
 }: {
   row: PlanRow;
   status: PlanStatus;
   locale: string;
   pending: CommandRow[];
   onTogglePause?: () => void;
+  onEnd?: () => void;
+  onRestart?: () => void;
 }) {
   const { t } = useTranslate();
   const meal = enumKey(row.mealRelation);
@@ -204,8 +247,15 @@ function PlanCard({
         </View>
       ) : null}
 
-      {onTogglePause && status !== 'ended' ? (
-        <Button tone="secondary" label={t(row.isPaused ? 'resumePlan' : 'pausePlan')} onPress={onTogglePause} />
+      {status !== 'ended' ? (
+        <View style={styles.badges}>
+          {onTogglePause ? (
+            <Button tone="secondary" label={t(row.isPaused ? 'resumePlan' : 'pausePlan')} onPress={onTogglePause} />
+          ) : null}
+          {onEnd ? <Button tone="danger" label={t('endPlan')} onPress={onEnd} /> : null}
+        </View>
+      ) : onRestart ? (
+        <Button tone="secondary" label={t('restartPlan')} onPress={onRestart} />
       ) : null}
     </Card>
   );

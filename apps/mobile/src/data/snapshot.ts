@@ -142,8 +142,9 @@ async function writeMedications(db: SQLiteDatabase, workspace: WorkspaceResponse
         `INSERT INTO packages (
            id, medication_id, ordinal, state, remaining_numerator, remaining_denominator,
            capacity_numerator, capacity_denominator, holder_person_id, is_pinned,
-           label, expires_on, coverage
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           label, expires_on, coverage,
+           owner_person_id, active_loan_id, acquired_on, lot_number, barcode, source, storage_location, note
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         view.id,
         medication.id,
         view.ordinal,
@@ -157,6 +158,14 @@ async function writeMedications(db: SQLiteDatabase, workspace: WorkspaceResponse
         view.label ?? null,
         view.expiresOn ?? null,
         view.coverage ?? null,
+        view.ownerPersonId,
+        entry.activeLoanId,
+        view.acquiredOn ?? null,
+        view.lotNumber ?? null,
+        view.barcode ?? null,
+        view.source ?? null,
+        view.storageLocation ?? null,
+        view.note ?? null,
       );
     }
   }
@@ -611,6 +620,16 @@ export type StockPackage = {
   holderName: string | null;
   isPinned: boolean;
   coverage: string | null;
+  ownerPersonId: string | null;
+  ownerName: string | null;
+  /** The server's loan id, `'pending'` while a loan queued here awaits its id, null when home. */
+  activeLoanId: string | null;
+  acquiredOn: string | null;
+  lotNumber: string | null;
+  barcode: string | null;
+  source: string | null;
+  storageLocation: string | null;
+  note: string | null;
 };
 
 export type StockRow = MedicationStock & {
@@ -666,6 +685,15 @@ export async function readStockWithPackages(db: SQLiteDatabase): Promise<StockRo
     holderName: string | null;
     isPinned: number;
     coverage: string | null;
+    ownerPersonId: string | null;
+    ownerName: string | null;
+    activeLoanId: string | null;
+    acquiredOn: string | null;
+    lotNumber: string | null;
+    barcode: string | null;
+    source: string | null;
+    storageLocation: string | null;
+    note: string | null;
   }>(
     `SELECT pk.id, pk.medication_id AS medicationId, pk.ordinal, pk.label, pk.state,
             pk.remaining_numerator AS remainingNumerator,
@@ -675,9 +703,19 @@ export async function readStockWithPackages(db: SQLiteDatabase): Promise<StockRo
             pk.expires_on AS expiresOn,
             p.name AS holderName,
             pk.is_pinned AS isPinned,
-            pk.coverage
+            pk.coverage,
+            pk.owner_person_id AS ownerPersonId,
+            o.name AS ownerName,
+            pk.active_loan_id AS activeLoanId,
+            pk.acquired_on AS acquiredOn,
+            pk.lot_number AS lotNumber,
+            pk.barcode,
+            pk.source,
+            pk.storage_location AS storageLocation,
+            pk.note
        FROM packages pk
        LEFT JOIN people p ON p.id = pk.holder_person_id
+       LEFT JOIN people o ON o.id = pk.owner_person_id
       ORDER BY CASE pk.state WHEN 'Opened' THEN 0 WHEN 'Sealed' THEN 1 ELSE 2 END, pk.ordinal`,
   );
 
@@ -695,6 +733,15 @@ export async function readStockWithPackages(db: SQLiteDatabase): Promise<StockRo
         holderName: row.holderName,
         isPinned: row.isPinned === 1,
         coverage: row.coverage,
+        ownerPersonId: row.ownerPersonId,
+        ownerName: row.ownerName,
+        activeLoanId: row.activeLoanId,
+        acquiredOn: row.acquiredOn,
+        lotNumber: row.lotNumber,
+        barcode: row.barcode,
+        source: row.source,
+        storageLocation: row.storageLocation,
+        note: row.note,
       }));
 
     const total = { numerator: medication.totalNumerator, denominator: medication.totalDenominator };

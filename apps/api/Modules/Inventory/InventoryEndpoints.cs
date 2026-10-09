@@ -409,6 +409,8 @@ public static class InventoryEndpoints
                 return Results.NotFound();
             }
 
+            // Refused with a stable code: the phone, replaying a reinstatement whose answer
+            // never arrived, reads this one as "already back" rather than as a failure.
             if (package.RetiredAt is not { } retiredAt)
             {
                 return ApiResults.Conflict("package_not_retired");
@@ -542,6 +544,12 @@ public static class InventoryEndpoints
                 return ApiResults.Conflict("package_on_loan");
             }
 
+            // The same owner again writes no second assignment event: a replay is a no-op.
+            if (package.OwnerPersonId == request.PersonId && package.HolderPersonId == request.PersonId)
+            {
+                return Results.NoContent();
+            }
+
             var now = DateTimeOffset.UtcNow;
             var previousOwner = package.OwnerPersonId;
 
@@ -588,10 +596,16 @@ public static class InventoryEndpoints
                 return ApiResults.Invalid("borrowerPersonId", "unknown_person");
             }
 
-            if (await db.PackageLoans.AsNoTracking().AnyAsync(
-                    loan => loan.PackageId == packageId && loan.ReturnedAt == null, ct))
+            var outstanding = await db.PackageLoans.AsNoTracking().SingleOrDefaultAsync(
+                loan => loan.PackageId == packageId && loan.ReturnedAt == null, ct);
+
+            if (outstanding is not null)
             {
-                return ApiResults.Conflict("already_on_loan");
+                // The same borrower already holds it: the phone is replaying a loan whose
+                // answer never arrived, so the answer is that loan.
+                return outstanding.BorrowerPersonId == request.BorrowerPersonId
+                    ? Results.Ok(new { outstanding.Id, replayed = true })
+                    : ApiResults.Conflict("already_on_loan");
             }
 
             var accountId = HouseholdAccess.RequireAccountId(context);
@@ -634,6 +648,7 @@ public static class InventoryEndpoints
                 return Results.NotFound();
             }
 
+            // Refused with a stable code; the phone reads it as "already returned".
             if (!loan.IsOutstanding)
             {
                 return ApiResults.Conflict("already_returned");

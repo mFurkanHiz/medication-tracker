@@ -6,6 +6,7 @@ import {
   api,
   type AddStockRequest,
   type ApiConfig,
+  type CountRequest,
   type DoseSource,
   type RecordDoseRequest,
   type RetirePackageRequest,
@@ -147,7 +148,8 @@ export type CommandInput =
   | { kind: 'plan.pause'; targetId: string; medicationId: string | null; body: SetPlanPausedRequest }
   | { kind: 'stock.add'; targetId: string; medicationId: string; body: Omit<AddStockRequest, 'idempotencyKey'> }
   | { kind: 'package.pin'; targetId: string; medicationId: string; body: Record<string, never> }
-  | { kind: 'package.retire'; targetId: string; medicationId: string; body: RetirePackageRequest };
+  | { kind: 'package.retire'; targetId: string; medicationId: string; body: RetirePackageRequest }
+  | { kind: 'inventory.count'; targetId: string; medicationId: null; body: Omit<CountRequest, 'idempotencyKey'> };
 
 /**
  * Queues a command and applies what it will do to the cached snapshot, in one
@@ -156,9 +158,11 @@ export type CommandInput =
  */
 export async function enqueueCommand(db: SQLiteDatabase, input: CommandInput, now: string): Promise<string> {
   const idempotencyKey = Crypto.randomUUID();
-  // Added stock is the one command the server cannot tell apart from a second
-  // addition on its own, so the key travels in the body as well.
-  const payload = JSON.stringify(input.kind === 'stock.add' ? { ...input.body, idempotencyKey } : input.body);
+  // Added stock and a count are the commands the server cannot tell apart from a second
+  // one on its own, so for them the key travels in the body as well.
+  const payload = JSON.stringify(
+    input.kind === 'stock.add' || input.kind === 'inventory.count' ? { ...input.body, idempotencyKey } : input.body,
+  );
 
   await db.withTransactionAsync(async () => {
     await db.runAsync(
@@ -341,6 +345,9 @@ async function sendCommand(
         break;
       case 'package.retire':
         await api.retirePackage(config, householdId, row.targetId, body as RetirePackageRequest);
+        break;
+      case 'inventory.count':
+        await api.countStock(config, householdId, body as CountRequest);
         break;
       default:
         // A kind this build does not know cannot be sent; shown rather than retried forever.

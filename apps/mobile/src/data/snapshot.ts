@@ -262,6 +262,17 @@ async function writeActivity(db: SQLiteDatabase, activity: ActivityResponse): Pr
   }
 }
 
+/** Every person's and medicine's name by id, archived ones included: a report may name them. */
+export async function readNames(db: SQLiteDatabase): Promise<{ people: Map<string, string>; medications: Map<string, string> }> {
+  const people = await db.getAllAsync<{ id: string; name: string }>('SELECT id, name FROM people');
+  const medications = await db.getAllAsync<{ id: string; name: string }>('SELECT id, name FROM medications');
+
+  return {
+    people: new Map(people.map((row) => [row.id, row.name])),
+    medications: new Map(medications.map((row) => [row.id, row.name])),
+  };
+}
+
 export type PersonRow = {
   id: string;
   name: string;

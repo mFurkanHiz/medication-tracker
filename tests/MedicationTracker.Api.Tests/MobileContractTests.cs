@@ -354,6 +354,86 @@ public sealed class MobileContractTests
         Assert.Equal("package_not_available", await pinRetired.RefusalCode());
     }
 
+    /// <summary>Every field the phone's Reports screen reads from the two reports.</summary>
+    private static readonly string[] AdherenceTallyFields =
+    [
+        "scheduledDoses", "onScheduleDoses", "missedDoses", "skipped", "partialDoses", "extraDoses", "onScheduleRatio",
+    ];
+
+    private static readonly string[] InventoryReportRowFields =
+    [
+        "medicationDefinitionId", "name", "strength", "unit", "isArchived", "total", "packageCount",
+        "isForecastable", "projectedDepletionOn", "daysOfStockRemaining", "isLowStock", "hasRefillGap", "refillGapDays",
+    ];
+
+    [PostgreSqlFact]
+    public async Task The_reports_still_carry_every_field_the_phone_reads()
+    {
+        await using var harness = new ApiTestHarness();
+        var (client, household) = await harness.NewHouseholdAsync();
+        var (person, definition) = await SyntheticHouseholdAsync(client, household);
+        await PlanAsync(client, household, person, definition);
+
+        var adherence = await client.GetOk(
+            $"/api/households/{household}/reports/adherence?from=2026-10-01&to=2026-10-08&timeZoneId=UTC");
+
+        foreach (var field in new[] { "from", "to", "timeZoneId", "rows", "total", "unknownTimeZoneIds" })
+        {
+            Assert.True(adherence.TryGetProperty(field, out _), $"adherence report lost {field}");
+        }
+
+        AssertEveryFieldPresent(adherence.GetProperty("total"), AdherenceTallyFields);
+
+        var row = adherence.GetProperty("rows").EnumerateArray().First();
+        Assert.True(row.TryGetProperty("personId", out _));
+        Assert.True(row.TryGetProperty("medicationDefinitionId", out _));
+        AssertEveryFieldPresent(row.GetProperty("tally"), AdherenceTallyFields);
+
+        var inventory = await client.GetOk($"/api/households/{household}/reports/inventory");
+        foreach (var field in new[] { "asOf", "rows", "lowStockCount", "refillGapCount" })
+        {
+            Assert.True(inventory.TryGetProperty(field, out _), $"inventory report lost {field}");
+        }
+
+        AssertEveryFieldPresent(inventory.GetProperty("rows").EnumerateArray().Single(), InventoryReportRowFields);
+    }
+
+    /// <summary>
+    /// The phone queues a count offline and retries it with the same key; the retry must
+    /// answer with the batch already accepted, not count the shelf a second time. The
+    /// export is what the phone hands to the share sheet, under the server's file name.
+    /// </summary>
+    [PostgreSqlFact]
+    public async Task A_replayed_count_is_one_count_and_the_export_is_a_named_json_file()
+    {
+        await using var harness = new ApiTestHarness();
+        var (client, household) = await harness.NewHouseholdAsync();
+        var (_, definition) = await SyntheticHouseholdAsync(client, household);
+
+        var count = new
+        {
+            idempotencyKey = Guid.NewGuid().ToString(),
+            lines = new[] { new { medicationDefinitionId = definition, observedNumerator = 18, observedDenominator = 1 } },
+            note = "synthetic shelf count",
+        };
+
+        var first = await client.PostOk($"/api/households/{household}/inventory/count-sessions", count);
+        var second = await client.PostOk($"/api/households/{household}/inventory/count-sessions", count);
+
+        Assert.False(first.GetProperty("replayed").GetBoolean());
+        Assert.True(second.GetProperty("replayed").GetBoolean());
+        Assert.Equal(first.GetProperty("batchId").GetGuid(), second.GetProperty("batchId").GetGuid());
+
+        var inventory = await client.GetOk($"/api/households/{household}/inventory/{definition}");
+        Assert.Equal("18", inventory.GetProperty("total").Quantity());
+
+        var export = await client.GetAsync($"/api/households/{household}/export");
+        Assert.Equal(HttpStatusCode.OK, export.StatusCode);
+        Assert.Equal("application/json", export.Content.Headers.ContentType?.MediaType);
+        Assert.StartsWith("medication-tracker-export-", export.Content.Headers.ContentDisposition?.FileName?.Trim('"') ?? "");
+        Assert.EndsWith(".json", export.Content.Headers.ContentDisposition?.FileName?.Trim('"') ?? "");
+    }
+
     private static void AssertEveryFieldPresent(JsonElement row, string[] fields)
     {
         var missing = fields.Where(field => !row.TryGetProperty(field, out _)).ToArray();

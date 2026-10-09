@@ -1,4 +1,4 @@
-import type { AddStockRequest, RetirePackageRequest, SetPlanPausedRequest } from './api';
+import type { AddStockRequest, CountLineInput, CountRequest, RetirePackageRequest, SetPlanPausedRequest } from './api';
 import type { MessageKey, Translate } from './i18n';
 import { compareQuantities, formatQuantity, parseQuantity, type Quantity } from './quantity';
 
@@ -9,13 +9,14 @@ import { compareQuantities, formatQuantity, parseQuantity, type Quantity } from 
  * unit-tested.
  */
 
-export type CommandKind = 'plan.pause' | 'stock.add' | 'package.pin' | 'package.retire';
+export type CommandKind = 'plan.pause' | 'stock.add' | 'package.pin' | 'package.retire' | 'inventory.count';
 
 export type CommandPayload =
   | { kind: 'plan.pause'; body: SetPlanPausedRequest }
   | { kind: 'stock.add'; body: AddStockRequest }
   | { kind: 'package.pin'; body: Record<string, never> }
-  | { kind: 'package.retire'; body: RetirePackageRequest };
+  | { kind: 'package.retire'; body: RetirePackageRequest }
+  | { kind: 'inventory.count'; body: CountRequest };
 
 /** The command's name in the reader's words: "Şimdilik ara ver", "Stok ekle: 2 kutu". */
 export function describeCommand(kind: string, payload: unknown, t: Translate): string {
@@ -30,6 +31,10 @@ export function describeCommand(kind: string, payload: unknown, t: Translate): s
       return t(body.state === 'Disposed' ? 'markDisposed' : 'markLost');
     case 'stock.add':
       return `${t('addStock')}: ${describeStock(body as Partial<AddStockRequest>, t)}`;
+    case 'inventory.count': {
+      const lines = Array.isArray(body.lines) ? body.lines.length : 0;
+      return `${t('counting')}: ${lines} ${t('countLines')}`;
+    }
     default:
       return kind;
   }
@@ -180,4 +185,39 @@ export function describeTarget(
     parts.push(`${t('packageOrdinal')} ${row.packageOrdinal}`);
   }
   return parts.join(' · ');
+}
+
+export type CountOutcome =
+  | { ok: true; lines: CountLineInput[] }
+  | { ok: false; error: 'countingInvalidAmount' | 'countingNothingEntered' };
+
+/**
+ * What was typed on the counting sheet, as the server's lines. Keys are a medicine's id,
+ * or `medicine:box` for one box. Blank rows are left alone; one unreadable row refuses
+ * the whole count, because a count that quietly dropped a row would write a
+ * reconciliation the household did not agree to — the web's rule, kept.
+ */
+export function buildCountLines(entries: Record<string, string>): CountOutcome {
+  const lines: CountLineInput[] = [];
+
+  for (const [key, raw] of Object.entries(entries)) {
+    if (raw.trim() === '') {
+      continue;
+    }
+
+    const parsed = parseQuantity(raw);
+    if (!parsed || parsed.numerator < 0) {
+      return { ok: false, error: 'countingInvalidAmount' };
+    }
+
+    const [medicationDefinitionId, packageId] = key.split(':');
+    lines.push({
+      medicationDefinitionId,
+      observedNumerator: parsed.numerator,
+      observedDenominator: parsed.denominator,
+      ...(packageId ? { packageId } : {}),
+    });
+  }
+
+  return lines.length === 0 ? { ok: false, error: 'countingNothingEntered' } : { ok: true, lines };
 }

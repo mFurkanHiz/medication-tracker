@@ -99,8 +99,18 @@ until a release channel exists.
   reason and dismissed, never retried forever. The server's add-stock endpoint gained an
   idempotency key (replayed through the sync receipts), and retiring a box twice is one
   decision. Still nothing seen on a device.
-- Next, each its own slice: reports, export and counting on the phone; the server-side
-  fix for the latest-version-only gap below.
+- PR #65: a sixth tab, **Reports** — the web's screen, read from the server (the phone
+  never computes a report itself, so the two clients cannot disagree), with the period
+  selector, the per-person-and-medicine tallies, the household total, the inventory rows
+  with their low-stock and refill-gap badges, and the last answer cached and shown with
+  its time when the server cannot be reached; **export** hands the server's JSON file,
+  under the server's name, to the share sheet; **counting** is a sheet on the Stock
+  screen (one number per medicine, or box by box), queued as a command with the server's
+  idempotency key and applied to the cached stock at once. Past counts and corrections
+  stay on the web. Still nothing seen on a device.
+- Next: the server-side fix for the latest-version-only gap below; then, if wanted, the
+  commands still on the web (edit, end and restart a plan; edit a box; lend and return;
+  reinstate a lost box; correct a count).
 
 ## Known gap
 

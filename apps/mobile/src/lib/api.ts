@@ -1,4 +1,5 @@
 import type { Quantity } from './quantity';
+import { exportFilename } from './reports';
 
 /**
  * The server contract, as the device sees it.
@@ -237,6 +238,68 @@ export type AddStockRequest = {
 
 export type RetirePackageRequest = { state: 'Lost' | 'Disposed'; reason?: string | null };
 
+/** One counted target: the whole medicine, or one box when `packageId` is set. */
+export type CountLineInput = {
+  medicationDefinitionId: string;
+  observedNumerator: number;
+  observedDenominator: number;
+  packageId?: string;
+};
+
+/** A count session; the key makes a replay return the same batch rather than count twice. */
+export type CountRequest = {
+  idempotencyKey: string;
+  lines: CountLineInput[];
+  note?: string | null;
+};
+
+/** What the server counted for one person and medicine over a period — the web's shape. */
+export type AdherenceTally = {
+  scheduledDoses: number;
+  recordedSlots: number;
+  onScheduleDoses: number;
+  missedDoses: number;
+  taken: number;
+  skipped: number;
+  partialDoses: number;
+  extraDoses: number;
+  recordedDoses: number;
+  onScheduleRatio: { numerator: number; denominator: number } | null;
+};
+
+export type AdherenceReport = {
+  from: string;
+  to: string;
+  timeZoneId: string;
+  rows: { personId: string; medicationDefinitionId: string; tally: AdherenceTally }[];
+  total: AdherenceTally;
+  /** Non-empty only when a plan's stored time zone is missing from the server. */
+  unknownTimeZoneIds: string[];
+};
+
+export type InventoryReportRow = {
+  medicationDefinitionId: string;
+  name: string;
+  strength: string | null;
+  unit: string;
+  isArchived: boolean;
+  total: ApiQuantity;
+  packageCount: number;
+  isForecastable: boolean;
+  projectedDepletionOn: string | null;
+  daysOfStockRemaining: number | null;
+  isLowStock: boolean;
+  hasRefillGap: boolean;
+  refillGapDays: number | null;
+};
+
+export type InventoryReport = {
+  asOf: string;
+  rows: InventoryReportRow[];
+  lowStockCount: number;
+  refillGapCount: number;
+};
+
 export type ApiConfig = {
   apiUrl: string;
   accessToken: string;
@@ -397,4 +460,44 @@ export const api = {
       method: 'POST',
       body,
     }),
+
+  countStock: (config: ApiConfig, household: string, body: CountRequest) =>
+    request<{ batchId: string; replayed: boolean }>(config, `/households/${household}/inventory/count-sessions`, {
+      method: 'POST',
+      body,
+    }),
+
+  adherenceReport: (config: ApiConfig, household: string, from: string, to: string, timeZoneId: string) =>
+    request<AdherenceReport>(
+      config,
+      `/households/${household}/reports/adherence?from=${from}&to=${to}&timeZoneId=${encodeURIComponent(timeZoneId)}`,
+    ),
+
+  inventoryReport: (config: ApiConfig, household: string) =>
+    request<InventoryReport>(config, `/households/${household}/reports/inventory`),
+
+  /**
+   * The household's own data as the server's file: the text and the name it was given,
+   * so the phone can hand the same file to the share sheet that the browser downloads.
+   */
+  async exportHousehold(config: ApiConfig, household: string): Promise<{ text: string; filename: string }> {
+    let response: Response;
+
+    try {
+      response = await fetch(`${config.apiUrl}/api/households/${household}/export`, {
+        headers: { Authorization: `Bearer ${config.accessToken}`, [CLIENT_HEADER]: '1' },
+      });
+    } catch (caught) {
+      throw new NetworkError(caught);
+    }
+
+    if (!response.ok) {
+      throw new ApiError(response.status, await refusalCode(response));
+    }
+
+    return {
+      text: await response.text(),
+      filename: exportFilename(response.headers.get('content-disposition'), 'medication-tracker-export.json'),
+    };
+  },
 };

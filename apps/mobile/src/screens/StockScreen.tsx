@@ -13,6 +13,7 @@ import { formatQuantity, isPositive } from '../lib/quantity';
 import { RefusedCommands } from '../ui/RefusedCommands';
 import { Badge, Button, Card, Notice, SectionTitle, palette, useTranslate } from '../ui/theme';
 import { AddStockSheet } from './AddStockSheet';
+import { CountingSheet } from './CountingSheet';
 
 /**
  * What the household has, box by box — the same picture the web's medications screen
@@ -31,6 +32,7 @@ export function StockScreen({ session }: { session: Session }) {
   const [queued, setQueued] = useState<CommandRow[]>([]);
   const [refused, setRefused] = useState<CommandRow[]>([]);
   const [adding, setAdding] = useState<StockRow | null>(null);
+  const [counting, setCounting] = useState(false);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [offline, setOffline] = useState(false);
@@ -119,6 +121,19 @@ export function StockScreen({ session }: { session: Session }) {
 
         <RefusedCommands rows={refused} onDismiss={(key) => void dismiss(key)} />
 
+        {rows.length > 0 ? <Button tone="secondary" label={t('countNow')} onPress={() => setCounting(true)} /> : null}
+
+        {queued
+          .filter((command) => command.kind === 'inventory.count')
+          .map((command) => (
+            <Card key={command.idempotencyKey}>
+              <View style={styles.pendingRow}>
+                <Text style={styles.pendingText}>{describeCommand(command.kind, JSON.parse(command.payload), t)}</Text>
+                <Badge tone="warning" label={t('queuedCommand')} />
+              </View>
+            </Card>
+          ))}
+
         {rows.length === 0 ? (
           <Card>
             <Text style={styles.muted}>{t('stockEmpty')}</Text>
@@ -137,6 +152,18 @@ export function StockScreen({ session }: { session: Session }) {
           ))
         )}
       </ScrollView>
+
+      {counting ? (
+        <CountingSheet
+          rows={rows}
+          householdId={session.householdId}
+          onClose={() => setCounting(false)}
+          onQueued={() => {
+            setCounting(false);
+            void afterQueued();
+          }}
+        />
+      ) : null}
 
       {adding ? (
         <AddStockSheet
@@ -323,6 +350,6 @@ const styles = StyleSheet.create({
   boxName: { fontSize: 15, fontWeight: '700', color: palette.ink, flex: 1 },
   boxAmount: { fontSize: 15, fontWeight: '700', color: palette.ink },
   actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  pendingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, borderTopWidth: 1, borderTopColor: palette.line, paddingTop: 10 },
+  pendingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   pendingText: { flex: 1, fontSize: 14, fontWeight: '700', color: palette.ink },
 });

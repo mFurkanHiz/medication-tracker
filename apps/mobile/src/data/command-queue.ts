@@ -1,5 +1,6 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
-import { ZERO, compareQuantities, subtractQuantity } from '../lib/quantity';
+import type { CountLineInput } from '../lib/api';
+import { ZERO, addQuantities, compareQuantities, subtractQuantity, type Quantity } from '../lib/quantity';
 
 /**
  * The command queue's SQL: what is waiting, what was refused, and what each queued
@@ -141,6 +142,69 @@ export async function applyLocalEffect(db: SQLiteDatabase, command: Pick<Command
         String(body.state ?? 'Lost'),
         command.targetId,
       );
+      return;
+    }
+
+    case 'inventory.count': {
+      // The server reconciles each line to what was found: a box line sets that box and
+      // moves the medicine's total by the difference; a whole-medicine line sets the
+      // total (the ledger entry lands on the loose stock). Done here the same way.
+      const lines = Array.isArray(body.lines) ? (body.lines as CountLineInput[]) : [];
+
+      for (const line of lines) {
+        const observed: Quantity = { numerator: line.observedNumerator, denominator: line.observedDenominator || 1 };
+
+        if (line.packageId) {
+          const box = await db.getFirstAsync<{ medicationId: string; remainingNumerator: number; remainingDenominator: number }>(
+            `SELECT medication_id AS medicationId, remaining_numerator AS remainingNumerator,
+                    remaining_denominator AS remainingDenominator
+               FROM packages WHERE id = ?`,
+            line.packageId,
+          );
+
+          if (!box) {
+            continue;
+          }
+
+          const medication = await db.getFirstAsync<{ totalNumerator: number; totalDenominator: number }>(
+            'SELECT total_numerator AS totalNumerator, total_denominator AS totalDenominator FROM medications WHERE id = ?',
+            box.medicationId,
+          );
+
+          if (medication) {
+            const difference = subtractQuantity(observed, {
+              numerator: box.remainingNumerator,
+              denominator: box.remainingDenominator,
+            });
+            const total = addQuantities([
+              { numerator: medication.totalNumerator, denominator: medication.totalDenominator },
+              difference,
+            ]);
+            const clamped = compareQuantities(total, ZERO) < 0 ? ZERO : total;
+
+            await db.runAsync(
+              'UPDATE medications SET total_numerator = ?, total_denominator = ? WHERE id = ?',
+              clamped.numerator,
+              clamped.denominator,
+              box.medicationId,
+            );
+          }
+
+          await db.runAsync(
+            'UPDATE packages SET remaining_numerator = ?, remaining_denominator = ? WHERE id = ?',
+            observed.numerator,
+            observed.denominator,
+            line.packageId,
+          );
+        } else {
+          await db.runAsync(
+            'UPDATE medications SET total_numerator = ?, total_denominator = ? WHERE id = ?',
+            observed.numerator,
+            observed.denominator,
+            line.medicationDefinitionId,
+          );
+        }
+      }
       return;
     }
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildAddStock, describeCommand, describeTarget, interleave } from './commands';
+import { buildAddStock, buildCountLines, describeCommand, describeTarget, interleave } from './commands';
 import { dictionaries, type MessageKey } from './i18n';
 
 const t = (key: MessageKey) => dictionaries.tr[key];
@@ -22,6 +22,11 @@ describe('describeCommand', () => {
       ),
     ).toBe('Stok ekle: 2 kapalı kutu + açık kutu (8) + ½ kutusuz miktar');
     expect(describeCommand('stock.add', { fullPackages: 1, openedPackages: [] }, t)).toBe('Stok ekle: 1 kapalı kutu');
+  });
+
+  it('says how many rows a count carries', () => {
+    expect(describeCommand('inventory.count', { lines: [{}, {}, {}] }, t)).toBe('Sayım: 3 satır');
+    expect(describeCommand('inventory.count', {}, t)).toBe('Sayım: 0 satır');
   });
 
   it('shows an unknown kind by its name rather than crashing', () => {
@@ -133,5 +138,31 @@ describe('describeTarget', () => {
     expect(describeTarget({ medicationName: 'Parol', personName: null, packageLabel: 'Yatak odası', packageOrdinal: 3 }, t)).toBe('Parol · Yatak odası');
     expect(describeTarget({ medicationName: 'Parol', personName: null, packageLabel: null, packageOrdinal: null }, t)).toBe('Parol');
     expect(describeTarget({ medicationName: null, personName: null, packageLabel: null, packageOrdinal: null }, t)).toBe('');
+  });
+});
+
+describe('buildCountLines', () => {
+  it('turns the rows that were filled in into exact lines, a box when the key names one', () => {
+    expect(buildCountLines({ m1: '12', 'm2:b7': '7,5', m3: '' })).toEqual({
+      ok: true,
+      lines: [
+        { medicationDefinitionId: 'm1', observedNumerator: 12, observedDenominator: 1 },
+        { medicationDefinitionId: 'm2', observedNumerator: 15, observedDenominator: 2, packageId: 'b7' },
+      ],
+    });
+  });
+
+  it('accepts a count of nothing left, but not a negative one', () => {
+    expect(buildCountLines({ m1: '0' })).toEqual({
+      ok: true,
+      lines: [{ medicationDefinitionId: 'm1', observedNumerator: 0, observedDenominator: 1 }],
+    });
+    expect(buildCountLines({ m1: '-1' })).toEqual({ ok: false, error: 'countingInvalidAmount' });
+  });
+
+  it('refuses the whole count when one row cannot be read, and an empty count', () => {
+    expect(buildCountLines({ m1: '12', m2: 'on iki' })).toEqual({ ok: false, error: 'countingInvalidAmount' });
+    expect(buildCountLines({ m1: '', m2: '  ' })).toEqual({ ok: false, error: 'countingNothingEntered' });
+    expect(buildCountLines({})).toEqual({ ok: false, error: 'countingNothingEntered' });
   });
 });

@@ -12,11 +12,12 @@ reconstructing the product history from a long conversation.
   `v1.0.0` tag untouched (ADR 0017). Release notes: `docs/releases/v1.0.1.md`. `docs/v1-acceptance.md` is the authority on scope; ADR 0013
   explains the rebuild, ADR 0015 the owner-approved mobile deferral.
 - Production tracks `main`: every merge deploys by itself, so the live revision is
-  whatever `main` last squashed to — `7202149` (PR #63, CI run `37839379068`) as of
+  whatever `main` last squashed to — `5b6d4f3` (PR #64, CI run `37847789550`) as of
   2026-10-08, with migrations 1–18 applied, the API on the confined database role, and
   `GET /api/version` answering `1.0.1` (the server's behaviour has not changed since the
-  `v1.0.1` cut at `214dee4`; the merges since are mobile code, tests and documentation,
-  and PR #64 adds an idempotency key to the add-stock endpoint for the phone).
+  `v1.0.1` cut at `214dee4` except for PR #64's idempotency key on the add-stock
+  endpoint and its retire no-op, both for the phone; the other merges since are mobile
+  code, tests and documentation).
   Documentation-only merges do not redeploy (`paths-ignore` on push).
 - **The owner's live-test round of 2026-10-05 is closed.** Sprint 7 shipped every note
   and decision (D1–D6) in seven slices (PR #50–#55, migrations 15–18), then the general
@@ -27,11 +28,11 @@ reconstructing the product history from a long conversation.
 - The mobile client resumed on 2026-10-05 on the owner's word ("Mobile başla"). The
   owner chose USB from their own computer over EAS Build; schema v3 and the server's
   due-day rule (PR #58), every read-only screen the web has — Stock, Plans (PR #62),
-  People, History (PR #63) — and the first commands through the outbox (pause and resume
-  a plan, add stock, make a box active, mark a box lost or disposed; PR #64) are in, none
-  yet seen on a device; the install itself runs from a session on the owner's computer
-  (`docs/mobile-device-install.md`), which a cloud session cannot do. Plan and progress:
-  `docs/mobile-resume-plan.md`.
+  People, History (PR #63) — the first commands through the outbox (pause and resume a
+  plan, add stock, make a box active, mark a box lost or disposed; PR #64) and reports,
+  export and counting (PR #65) are in, none yet seen on a device; the install itself
+  runs from a session on the owner's computer (`docs/mobile-device-install.md`), which a
+  cloud session cannot do. Plan and progress: `docs/mobile-resume-plan.md`.
 
 ## What the rebuild has delivered
 
@@ -70,12 +71,12 @@ retire and recreate it, or name the first accepted release `v1.0.1`).
 
 1. **Mobile catch-up continues** — the owner's priority (2026-10-08: "mobil gerideyse
    öncelik mobil versiyonu web'e eşitlemek"), code only until a device is attached. Every
-   read-only screen the web has is on the phone (PR #62, #63), and the everyday commands
-   go through the outbox (PR #64: pause and resume a plan, add stock, make a box active,
-   mark a box lost or disposed). Next, each as its own slice with typecheck and unit
-   tests: reports, export and counting on the phone; then the server-side fix for the
-   latest-version-only gap (`docs/mobile-resume-plan.md`, "Known gap"). Editing, ending
-   and restarting a plan, editing a box, lending and reinstating stay on the web.
+   read-only screen the web has is on the phone (PR #62, #63), the everyday commands go
+   through the outbox (PR #64), and reports, export and counting are in (PR #65). Next,
+   each as its own slice with typecheck and unit tests: the server-side fix for the
+   latest-version-only gap (`docs/mobile-resume-plan.md`, "Known gap"); then, if the
+   owner wants them on the phone, the commands still on the web — edit, end and restart
+   a plan, edit a box, lend and return, reinstate a lost box, correct a count.
 2. **On the owner's computer**, when they next open a session there: push the `v1.0.1`
    tag (one command, at the top of `docs/mobile-device-install.md`), then the install
    per that runbook, then the physical-device acceptance rows (28, 29), then the
@@ -1279,6 +1280,30 @@ all). The whole queue — enqueue, effects, a refresh that keeps them, a drain w
 refusal and a dead network, dismissal, the retry — ran against node's SQLite with a fake
 server (19 checks). Still nothing seen on a device.
 
+### Slice 7 — reports, export and counting on the phone — PR #65
+
+A sixth tab, **Reports**: the web's screen, read from the server rather than computed on
+the phone, so the two clients cannot disagree — the period selector (last 7, 30, 90
+days, this month, counted inclusively in the device's calendar), one card per person and
+medicine with the on-schedule share as the server's exact pair and the counts behind it,
+the household total when there is more than one row, the plain statement that the
+numbers describe and do not judge, and the inventory rows with remaining, box count,
+depletion estimate or "not forecastable", and the low-stock and refill-gap badges. The
+last answer is cached in `snapshot_meta` and shown with its time when the server cannot
+be reached. **Export** at the bottom of the same tab fetches the server's JSON file,
+writes it to the cache directory under the server's own name and hands it to the share
+sheet (`expo-file-system`, `expo-sharing`, both new dependencies at the SDK 57 versions).
+**Counting** is a sheet opened from the Stock screen: one number per medicine, or box by
+box behind a switch, a note, the web's rule that one unreadable row refuses the whole
+count; queued as an `inventory.count` command carrying the server's idempotency key and
+applied to the cached stock at once the way the server reconciles (a box line sets the
+box and moves the total by the difference; a whole-medicine line sets the total). Past
+counts and corrections stay on the web, and the sheet says so. `reports.test.ts` pins the
+period arithmetic, the percentage and the file-name parsing; `commands.test.ts` the count
+lines and the command's wording (60 mobile tests in all); `MobileContractTests` pins the
+two reports' fields, the count replay and the export file. The count ran end to end
+against node's SQLite with a fake server (8 checks). Still nothing seen on a device.
+
 ### What the cloud session could not do
 
 Install on the phone. The owner asked "yapamaz mısın oradan?" — no: this session runs in
@@ -1301,8 +1326,9 @@ was cut as `v1.0.1` on 2026-10-08, with the tag's push left to the owner's compu
 **V1 is complete.** What follows is Sprint 8: the phone catching up with the web.
 
 **Exact next action.** The mobile catch-up, as the *Next exact action* section at the
-top describes: the read-only screens (PR #62, #63) and the everyday commands (PR #64)
-are in; next reports, export and counting on the phone.
+top describes: the read-only screens (PR #62, #63), the everyday commands (PR #64) and
+reports, export and counting (PR #65) are in; next the server-side fix for the
+latest-version-only gap, then the commands still on the web if the owner wants them.
 
 Still open for the owner, unchanged: which production household is theirs, so the
 synthetic ones left by smoke tests can be cleaned; and the `VPS_SSH_KEY` rotation.

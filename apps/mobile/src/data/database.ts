@@ -385,6 +385,8 @@ export const META = {
   reminderTimeZone: 'reminderTimeZone',
   /** A hash of the plan set, so reminders are only rebuilt when something changed. */
   reminderSignature: 'reminderSignature',
+  /** The last reports the server answered with, so the screen has something offline. */
+  reportsCache: 'reportsCache',
 } as const;
 
 export async function readMeta(db: SQLiteDatabase, key: string): Promise<string | null> {

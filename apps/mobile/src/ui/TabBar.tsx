@@ -1,7 +1,7 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { palette, useTranslate } from './theme';
 
-export type Tab = 'today' | 'stock' | 'plans' | 'people' | 'history';
+export type Tab = 'today' | 'stock' | 'plans' | 'people' | 'history' | 'reports';
 
 /** The places the phone can show; a tab is a tab to a screen reader too. */
 export function TabBar({ tab, onChange }: { tab: Tab; onChange: (next: Tab) => void }) {
@@ -12,6 +12,7 @@ export function TabBar({ tab, onChange }: { tab: Tab; onChange: (next: Tab) => v
     { key: 'plans', label: t('plans') },
     { key: 'people', label: t('people') },
     { key: 'history', label: t('history') },
+    { key: 'reports', label: t('reports') },
   ];
 
   return (
@@ -43,6 +44,6 @@ const styles = StyleSheet.create({
   },
   tab: { flex: 1, minHeight: 52, alignItems: 'center', justifyContent: 'center' },
   selected: { borderTopWidth: 3, borderTopColor: palette.accent },
-  label: { fontSize: 13, fontWeight: '700', color: palette.inkMuted },
+  label: { fontSize: 12, fontWeight: '700', color: palette.inkMuted },
   selectedLabel: { color: palette.accentInk },
 });

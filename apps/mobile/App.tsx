@@ -7,6 +7,7 @@ import { LOCALES, dictionaries, type Locale, type MessageKey } from './src/lib/i
 import { HistoryScreen } from './src/screens/HistoryScreen';
 import { PeopleScreen } from './src/screens/PeopleScreen';
 import { PlansScreen } from './src/screens/PlansScreen';
+import { ReportsScreen } from './src/screens/ReportsScreen';
 import { SignInScreen } from './src/screens/SignInScreen';
 import { StockScreen } from './src/screens/StockScreen';
 import { TodayScreen } from './src/screens/TodayScreen';
@@ -90,8 +91,10 @@ export default function App() {
                 <PlansScreen session={session} />
               ) : tab === 'people' ? (
                 <PeopleScreen session={session} />
-              ) : (
+              ) : tab === 'history' ? (
                 <HistoryScreen session={session} />
+              ) : (
+                <ReportsScreen session={session} />
               )}
             </View>
             <TabBar tab={tab} onChange={setTab} />

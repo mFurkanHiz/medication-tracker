@@ -127,15 +127,16 @@ until a release channel exists.
   source (allocation corrections); delete a plan made by mistake. The medicine sheet
   asks the everyday fields only; cautions and tags are the web's larger form, once the
   medicine has synced.
-- Next: the server-side fix for the latest-version-only gap below; then, if wanted,
-  editing on the phone (the same shape as ending a plan: a version appended by command).
+- Next, if wanted: editing on the phone (the same shape as ending a plan: a version
+  appended by command); then archive and restore, and plan deletion.
 
-## Known gap
+## Known gap, closed (PR #68)
 
-The workspace sends each plan's latest version only. The server's rule gives a day to
-the highest-numbered version that had started by then, so an edit dated in the future
-leaves the *previous* version governing until the new one starts — and the phone does not
-have the previous version. Its Today list is still right, because that comes from the
-server; its local reminders for those in-between days are missing. Rare (a future-dated
-edit), stated in the schedule module's header, and the fix is a server change: send the
-version governing each of the next days, or every version.
+The workspace used to send each plan's latest version only. The server's rule gives a
+day to the highest-numbered version that had started by then, so an edit dated in the
+future left the *previous* version governing until the new one started — and the phone
+did not have it, so its local reminders for those in-between days were missing. Since
+PR #68 the workspace lists every version under each plan, the phone keeps them (schema
+v8) and applies the same rule itself (`governedVersions`, a port of
+`ScheduledSlots.Governing`), so the earlier version reminds until the day before the new
+one starts. The Today list was always the server's and was never wrong.

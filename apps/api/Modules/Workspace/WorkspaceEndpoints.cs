@@ -4,6 +4,7 @@ using MedicationTracker.Api.Modules.Catalog;
 using MedicationTracker.Api.Domain.Quantities;
 using MedicationTracker.Api.Modules.Inventory;
 using MedicationTracker.Api.Modules.Sync;
+using MedicationTracker.Api.Modules.Treatments;
 using MedicationTracker.Api.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -77,33 +78,47 @@ public static class WorkspaceEndpoints
 
             var currentPlans = plans
                 .GroupBy(row => row.plan.Id)
-                .Select(group => group.OrderByDescending(row => row.version.VersionNumber).First())
-                .Select(row => new
+                .Select(group =>
                 {
-                    id = row.plan.Id,
-                    versionId = row.version.Id,
-                    versionNumber = row.version.VersionNumber,
-                    personId = row.plan.PersonId,
-                    medicationDefinitionId = row.plan.MedicationDefinitionId,
-                    dose = InventoryEndpoints.Quantity(row.version.Dose),
-                    kind = row.version.Kind.ToString(),
-                    pattern = row.version.Pattern.ToString(),
-                    weekdayMask = row.version.WeekdayMask,
-                    intervalDays = row.version.IntervalDays,
-                    dayOfMonth = row.version.DayOfMonth,
-                    intervalMonths = row.version.IntervalMonths,
-                    effectiveFrom = row.version.EffectiveFrom,
-                    effectiveTo = row.version.EffectiveTo,
-                    localTime = row.version.LocalTime,
-                    timeZoneId = row.version.TimeZoneId,
-                    dayPeriod = row.version.DayPeriod?.ToString(),
-                    mealRelation = row.version.MealRelation?.ToString(),
-                    minimumIntervalMinutes = row.version.MinimumIntervalMinutes,
-                    instructions = row.version.Instructions,
+                    var row = group.OrderByDescending(entry => entry.version.VersionNumber).First();
 
-                    // Exposed, not filtered: a paused plan has to stay visible or there is
-                    // nothing left to resume it from.
-                    isPaused = row.version.IsPaused,
+                    return new
+                    {
+                        id = row.plan.Id,
+                        versionId = row.version.Id,
+                        versionNumber = row.version.VersionNumber,
+                        personId = row.plan.PersonId,
+                        medicationDefinitionId = row.plan.MedicationDefinitionId,
+                        dose = InventoryEndpoints.Quantity(row.version.Dose),
+                        kind = row.version.Kind.ToString(),
+                        pattern = row.version.Pattern.ToString(),
+                        weekdayMask = row.version.WeekdayMask,
+                        intervalDays = row.version.IntervalDays,
+                        dayOfMonth = row.version.DayOfMonth,
+                        intervalMonths = row.version.IntervalMonths,
+                        effectiveFrom = row.version.EffectiveFrom,
+                        effectiveTo = row.version.EffectiveTo,
+                        localTime = row.version.LocalTime,
+                        timeZoneId = row.version.TimeZoneId,
+                        dayPeriod = row.version.DayPeriod?.ToString(),
+                        mealRelation = row.version.MealRelation?.ToString(),
+                        minimumIntervalMinutes = row.version.MinimumIntervalMinutes,
+                        instructions = row.version.Instructions,
+
+                        // Exposed, not filtered: a paused plan has to stay visible or there is
+                        // nothing left to resume it from.
+                        isPaused = row.version.IsPaused,
+
+                        // Every version, oldest first, so the phone can apply the governing-version
+                        // rule (ScheduledSlots.Governing) to the days ahead: after an edit dated in
+                        // the future the previous version still governs until then, and the phone
+                        // needs it to remind on those days. The fields above stay the latest
+                        // version, which is what the web shows.
+                        versions = group
+                            .OrderBy(entry => entry.version.VersionNumber)
+                            .Select(entry => VersionView(entry.version))
+                            .ToList(),
+                    };
                 })
                 .ToList();
 
@@ -546,6 +561,29 @@ public static class WorkspaceEndpoints
         Guid packageId) =>
         packageBalances.TryGetValue(packageId, out var balance) ? balance : ExactQuantity.Zero;
 
+
+    /// <summary>One version as the workspace lists it under its plan: the rule, the dose and the dates.</summary>
+    private static object VersionView(TreatmentPlanVersion version) => new
+    {
+        versionId = version.Id,
+        versionNumber = version.VersionNumber,
+        dose = InventoryEndpoints.Quantity(version.Dose),
+        kind = version.Kind.ToString(),
+        pattern = version.Pattern.ToString(),
+        weekdayMask = version.WeekdayMask,
+        intervalDays = version.IntervalDays,
+        dayOfMonth = version.DayOfMonth,
+        intervalMonths = version.IntervalMonths,
+        effectiveFrom = version.EffectiveFrom,
+        effectiveTo = version.EffectiveTo,
+        localTime = version.LocalTime,
+        timeZoneId = version.TimeZoneId,
+        dayPeriod = version.DayPeriod?.ToString(),
+        mealRelation = version.MealRelation?.ToString(),
+        minimumIntervalMinutes = version.MinimumIntervalMinutes,
+        instructions = version.Instructions,
+        isPaused = version.IsPaused,
+    };
 }
 
 public sealed record BulkInventoryCountRequest(

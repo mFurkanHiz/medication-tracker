@@ -161,8 +161,70 @@ export async function applyLocalEffect(db: SQLiteDatabase, command: Pick<Command
     }
 
     case 'plan.restart': {
+      // On the server a restart appends a version that starts on the day, and the ended
+      // version keeps governing until then, so the days in between still ask for nothing.
+      // The same here: the latest version goes to the history (already there when the
+      // server listed it) and the plan row becomes the new one, under a pending id until
+      // the server names it.
+      const current = await db.getFirstAsync<{
+        versionId: string;
+        versionNumber: number;
+        doseNumerator: number;
+        doseDenominator: number;
+        kind: string;
+        pattern: string;
+        weekdayMask: number | null;
+        intervalDays: number | null;
+        dayOfMonth: number | null;
+        intervalMonths: number | null;
+        effectiveFrom: string | null;
+        effectiveTo: string | null;
+        localTime: string | null;
+        timeZoneId: string;
+        isPaused: number;
+      }>(
+        `SELECT version_id AS versionId, version_number AS versionNumber,
+                dose_numerator AS doseNumerator, dose_denominator AS doseDenominator, kind, pattern,
+                weekday_mask AS weekdayMask, interval_days AS intervalDays,
+                day_of_month AS dayOfMonth, interval_months AS intervalMonths,
+                effective_from AS effectiveFrom, effective_to AS effectiveTo,
+                local_time AS localTime, time_zone_id AS timeZoneId, is_paused AS isPaused
+           FROM plans WHERE id = ?`,
+        command.targetId,
+      );
+
+      if (!current) {
+        return;
+      }
+
       await db.runAsync(
-        'UPDATE plans SET effective_from = ?, effective_to = NULL, is_paused = 0 WHERE id = ?',
+        `INSERT OR IGNORE INTO plan_versions (
+           version_id, plan_id, version_number, dose_numerator, dose_denominator, kind, pattern,
+           weekday_mask, interval_days, day_of_month, interval_months, effective_from, effective_to,
+           local_time, time_zone_id, is_paused
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        current.versionId,
+        command.targetId,
+        current.versionNumber,
+        current.doseNumerator,
+        current.doseDenominator,
+        current.kind,
+        current.pattern,
+        current.weekdayMask,
+        current.intervalDays,
+        current.dayOfMonth,
+        current.intervalMonths,
+        current.effectiveFrom,
+        current.effectiveTo,
+        current.localTime,
+        current.timeZoneId,
+        current.isPaused,
+      );
+      await db.runAsync(
+        `UPDATE plans SET version_id = ?, version_number = version_number + 1,
+                          effective_from = ?, effective_to = NULL, is_paused = 0
+          WHERE id = ?`,
+        `pending:${command.targetId}`,
         String(body.startsOn ?? ''),
         command.targetId,
       );

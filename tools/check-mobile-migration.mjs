@@ -78,6 +78,7 @@ const ADDED_IN = {
   4: { medications: ['coverage TEXT'], packages: ['label TEXT', 'expires_on TEXT', 'coverage TEXT'], plans: ['meal_relation TEXT'] },
   6: { medications: ['default_capacity_numerator INTEGER', 'default_capacity_denominator INTEGER CHECK(default_capacity_denominator IS NULL OR default_capacity_denominator > 0)'] },
   7: { packages: ['owner_person_id TEXT', 'active_loan_id TEXT', 'acquired_on TEXT', 'lot_number TEXT', 'barcode TEXT', 'source TEXT', 'storage_location TEXT', 'note TEXT'] },
+  8: { plans: ['version_number INTEGER NOT NULL DEFAULT 1'] },
 };
 
 /** Whole tables a step migration created, by the version it upgrades TO. Frozen too. */
@@ -96,6 +97,15 @@ const TABLES_ADDED_IN = {
       'idempotency_key TEXT PRIMARY KEY', 'kind TEXT NOT NULL', 'target_id TEXT NOT NULL', 'medication_id TEXT',
       'payload TEXT NOT NULL', 'created_at TEXT NOT NULL', 'attempts INTEGER NOT NULL DEFAULT 0',
       'last_attempt_at TEXT', 'last_error TEXT', 'rejected_code TEXT', 'rejected_status INTEGER', 'rejected_at TEXT',
+    ],
+  },
+  8: {
+    plan_versions: [
+      'version_id TEXT PRIMARY KEY', 'plan_id TEXT NOT NULL', 'version_number INTEGER NOT NULL',
+      'dose_numerator INTEGER NOT NULL', 'dose_denominator INTEGER NOT NULL CHECK(dose_denominator > 0)',
+      'kind TEXT NOT NULL', 'pattern TEXT NOT NULL', 'weekday_mask INTEGER', 'interval_days INTEGER',
+      'day_of_month INTEGER', 'interval_months INTEGER', 'effective_from TEXT', 'effective_to TEXT',
+      'local_time TEXT', 'time_zone_id TEXT NOT NULL', 'is_paused INTEGER NOT NULL DEFAULT 0',
     ],
   },
 };
@@ -303,6 +313,12 @@ try {
     // otherwise treat every plan as set aside and go silent until the next sync.
     check('defaults the existing plan to not paused', row?.is_paused === 0,
       `is_paused was ${row?.is_paused}`);
+
+    // The one version a phone held so far is that plan's first; the history table is
+    // empty until the next sync lists the rest.
+    check('counts the existing plan as its first version, with no history yet',
+      row?.version_number === 1 && db.prepare('SELECT count(*) AS n FROM plan_versions').get().n === 0,
+      `version_number was ${row?.version_number}`);
 
     // A plan from before the monthly patterns has no monthly fields, which is the truth;
     // likewise no meal relation until the next sync says otherwise.

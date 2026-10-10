@@ -175,6 +175,26 @@ export type CreatePlanRequest = {
 /** What a create answers: the id (the phone's own) and whether this was the second send. */
 export type CreatedResponse = { id: string; replayed: boolean };
 
+/** One effective-dated version of a plan, as the workspace lists them under the plan. */
+export type WorkspacePlanVersion = {
+  versionId: string;
+  versionNumber: number;
+  dose: ApiQuantity;
+  kind: 'Scheduled' | 'AsNeeded';
+  pattern: RecurrencePattern;
+  weekdayMask: number | null;
+  intervalDays: number | null;
+  dayOfMonth: number | null;
+  intervalMonths: number | null;
+  effectiveFrom: string | null;
+  effectiveTo: string | null;
+  localTime: string | null;
+  timeZoneId: string;
+  dayPeriod: string | null;
+  mealRelation: string | null;
+  isPaused: boolean;
+};
+
 export type WorkspaceResponse = {
   householdId: string;
   people: { id: string; name: string; isArchived: boolean }[];
@@ -213,6 +233,14 @@ export type WorkspaceResponse = {
     mealRelation: string | null;
     /** Set aside by the household. The server still lists it, so it can be resumed. */
     isPaused: boolean;
+    /** The latest version's number. */
+    versionNumber?: number;
+    /**
+     * Every version, oldest first, so the phone can apply the server's governing-version
+     * rule to the days ahead. Additive: an older server omits it and the latest version
+     * stands alone, as before.
+     */
+    versions?: WorkspacePlanVersion[];
   }[];
 };
 

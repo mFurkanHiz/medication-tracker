@@ -67,6 +67,17 @@ public sealed class MobileContractTests
 
         // Read since mobile schema v3: the monthly patterns of server Sprint 7.
         "dayOfMonth", "intervalMonths",
+
+        // Read since mobile schema v8: every version, for the governing-version rule.
+        "versionNumber", "versions",
+    ];
+
+    /// <summary>Every field the phone's cached plan-version row needs (mobile schema v8).</summary>
+    private static readonly string[] WorkspacePlanVersionFields =
+    [
+        "versionId", "versionNumber", "dose", "kind", "pattern", "weekdayMask", "intervalDays",
+        "dayOfMonth", "intervalMonths", "effectiveFrom", "effectiveTo", "localTime", "timeZoneId",
+        "dayPeriod", "mealRelation", "isPaused",
     ];
 
     /// <summary>Every field the phone's cached medication row needs.</summary>
@@ -682,6 +693,65 @@ public sealed class MobileContractTests
         {
             Assert.Equal(unit, units[form]);
         }
+    }
+
+    /// <summary>
+    /// The workspace lists every version under a plan, oldest first, so the phone can apply
+    /// the governing-version rule to the days ahead. After an edit dated in the future the
+    /// previous version is still listed, still open, and still what the server's Today gives
+    /// the days before the edit to; the top-level fields stay the latest version, as the web
+    /// reads them.
+    /// </summary>
+    [PostgreSqlFact]
+    public async Task The_workspace_sends_every_version_so_the_phone_can_apply_the_governing_rule()
+    {
+        await using var harness = new ApiTestHarness();
+        var (client, household) = await harness.NewHouseholdAsync();
+        var (person, definition) = await SyntheticHouseholdAsync(client, household);
+        var plan = await PlanAsync(client, household, person, definition);
+
+        var farAhead = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(60).ToString("yyyy-MM-dd");
+        var edit = await client.PutAsJsonAsync($"/api/households/{household}/plans/{plan}", new
+        {
+            personId = person,
+            medicationDefinitionId = definition,
+            doseNumerator = 1,
+            doseDenominator = 1,
+            timeZoneId = "UTC",
+            kind = "Scheduled",
+            pattern = "Daily",
+            localTime = "20:00:00",
+            effectiveFrom = farAhead,
+        });
+        Assert.Equal(HttpStatusCode.OK, edit.StatusCode);
+        var editedVersion = (await edit.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("versionId").GetGuid();
+
+        var workspace = await client.GetOk($"/api/households/{household}/workspace");
+        var listed = workspace.GetProperty("plans").EnumerateArray().Single();
+        AssertEveryFieldPresent(listed, WorkspacePlanFields);
+        Assert.Equal(2, listed.GetProperty("versionNumber").GetInt32());
+        Assert.Equal(editedVersion, listed.GetProperty("versionId").GetGuid());
+
+        var versions = listed.GetProperty("versions").EnumerateArray().ToList();
+        Assert.Equal(2, versions.Count);
+        foreach (var version in versions)
+        {
+            AssertEveryFieldPresent(version, WorkspacePlanVersionFields);
+        }
+
+        // The earlier version stays open: this is the gap the phone now closes itself, by
+        // bounding it at the day before the later one starts.
+        Assert.Equal(1, versions[0].GetProperty("versionNumber").GetInt32());
+        Assert.Equal(JsonValueKind.Null, versions[0].GetProperty("effectiveTo").ValueKind);
+        Assert.Equal("08:00:00", versions[0].GetProperty("localTime").GetString());
+        Assert.Equal(editedVersion, versions[1].GetProperty("versionId").GetGuid());
+        Assert.Equal(farAhead, versions[1].GetProperty("effectiveFrom").GetString());
+        Assert.Equal("20:00:00", versions[1].GetProperty("localTime").GetString());
+
+        // Today the server still gives the day to the earlier version — the rule the phone mirrors.
+        var today = await client.GetOk($"/api/households/{household}/today");
+        var due = today.GetProperty("due").EnumerateArray().Single();
+        Assert.Equal(versions[0].GetProperty("versionId").GetGuid(), due.GetProperty("planVersionId").GetGuid());
     }
 
     private static void AssertEveryFieldPresent(JsonElement row, string[] fields)

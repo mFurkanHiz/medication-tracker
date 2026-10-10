@@ -5,8 +5,8 @@ import type { SQLiteDatabase } from 'expo-sqlite';
  *
  * Two kinds of table live here and they are not interchangeable:
  *
- *  - **Snapshot tables** (`people`, `medications`, `packages`, `plans`, `due_doses`,
- *    `activity_entries`) are a cache of what the server last said. They are replaced wholesale on every
+ *  - **Snapshot tables** (`people`, `medications`, `packages`, `plans`, `plan_versions`,
+ *    `due_doses`, `activity_entries`) are a cache of what the server last said. They are replaced wholesale on every
  *    refresh and nothing is ever lost by discarding them.
  *  - **Local tables** (`local_doses`, `outbox`, `commands`, `rejections`, `reminders`) hold
  *    what this device knows and the server may not. They are authoritative until the
@@ -14,7 +14,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
  */
 
 /** Bumped only for a change that needs a migration; see {@link migrateDatabase}. */
-export const SCHEMA_VERSION = 7;
+export const SCHEMA_VERSION = 8;
 
 /**
  * The database file name.
@@ -67,6 +67,9 @@ export async function migrateDatabase(db: SQLiteDatabase): Promise<void> {
     }
     if (version < 7) {
       await db.execAsync(MIGRATE_6_TO_7);
+    }
+    if (version < 8) {
+      await db.execAsync(MIGRATE_7_TO_8);
     }
   }
 
@@ -137,6 +140,8 @@ CREATE INDEX ix_packages_medication ON packages (medication_id, ordinal);
 CREATE TABLE plans (
   id TEXT PRIMARY KEY,
   version_id TEXT NOT NULL,
+  -- The latest version's number; the earlier ones are in plan_versions below.
+  version_number INTEGER NOT NULL DEFAULT 1,
   person_id TEXT NOT NULL,
   medication_id TEXT NOT NULL,
   dose_numerator INTEGER NOT NULL,
@@ -159,6 +164,32 @@ CREATE TABLE plans (
   -- reminders: the one defect on the mobile list that told somebody something untrue.
   is_paused INTEGER NOT NULL DEFAULT 0
 );
+
+-- Every version of each plan, so the phone can apply the server's governing-version rule
+-- to the days ahead: the highest-numbered version that had started by a day governs it,
+-- while it has not ended. The plans table holds the latest version (what the screens
+-- show); this one holds the history the reminders need when an edit is dated in the
+-- future and the earlier version still governs until then.
+CREATE TABLE plan_versions (
+  version_id TEXT PRIMARY KEY,
+  plan_id TEXT NOT NULL,
+  version_number INTEGER NOT NULL,
+  dose_numerator INTEGER NOT NULL,
+  dose_denominator INTEGER NOT NULL CHECK(dose_denominator > 0),
+  kind TEXT NOT NULL,
+  pattern TEXT NOT NULL,
+  weekday_mask INTEGER,
+  interval_days INTEGER,
+  day_of_month INTEGER,
+  interval_months INTEGER,
+  effective_from TEXT,
+  effective_to TEXT,
+  local_time TEXT,
+  time_zone_id TEXT NOT NULL,
+  is_paused INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX ix_plan_versions_plan ON plan_versions (plan_id, version_number);
 
 -- What the server said is due, for the day last refreshed.
 CREATE TABLE due_doses (
@@ -404,6 +435,38 @@ ALTER TABLE packages ADD COLUMN barcode TEXT;
 ALTER TABLE packages ADD COLUMN source TEXT;
 ALTER TABLE packages ADD COLUMN storage_location TEXT;
 ALTER TABLE packages ADD COLUMN note TEXT;
+`;
+
+/**
+ * v7 → v8: every version of a plan, for the governing-version rule.
+ *
+ * A defaulted column (the one version a phone held so far is its first) and a new
+ * snapshot table, empty until the next sync fills it; nothing a phone already holds is
+ * touched. Until that sync the reminders come from the latest version alone, as before.
+ */
+const MIGRATE_7_TO_8 = `
+ALTER TABLE plans ADD COLUMN version_number INTEGER NOT NULL DEFAULT 1;
+
+CREATE TABLE plan_versions (
+  version_id TEXT PRIMARY KEY,
+  plan_id TEXT NOT NULL,
+  version_number INTEGER NOT NULL,
+  dose_numerator INTEGER NOT NULL,
+  dose_denominator INTEGER NOT NULL CHECK(dose_denominator > 0),
+  kind TEXT NOT NULL,
+  pattern TEXT NOT NULL,
+  weekday_mask INTEGER,
+  interval_days INTEGER,
+  day_of_month INTEGER,
+  interval_months INTEGER,
+  effective_from TEXT,
+  effective_to TEXT,
+  local_time TEXT,
+  time_zone_id TEXT NOT NULL,
+  is_paused INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX ix_plan_versions_plan ON plan_versions (plan_id, version_number);
 `;
 
 /** Keys used in {@link snapshot_meta}. */

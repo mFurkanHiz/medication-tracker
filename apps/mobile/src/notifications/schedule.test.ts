@@ -3,6 +3,7 @@ import {
   canRepeatOnDevice,
   dueDaysFrom,
   formatDay,
+  governedVersions,
   instantForWallClock,
   isDueOn,
   parseDay,
@@ -197,5 +198,69 @@ describe('wall clocks', () => {
   it('reads the calendar day in the plan zone, not in UTC', () => {
     expect(formatDay(startOfDayParts(new Date('2026-10-05T22:30:00Z'), 'Europe/Istanbul')))
       .toBe('2026-10-06');
+  });
+});
+
+/**
+ * Mirrors the server's `ScheduledSlots.Governing`: the highest-numbered version that had
+ * started by a day governs it, while it has not ended. On the phone the rule is applied
+ * ahead of time, as a window per version.
+ */
+describe('the governing-version rule across a plan\'s versions', () => {
+  const versioned = (versionNumber: number, overrides: Partial<DueRule>) => ({ ...rule(overrides), versionNumber });
+
+  it('bounds an earlier version by the day before the next one starts, and leaves the last one alone', () => {
+    const [first, second] = governedVersions([versioned(1, {}), versioned(2, { effectiveFrom: '2026-10-20' })]);
+    expect(first.effectiveTo).toBe('2026-10-19');
+    expect(second).toEqual(versioned(2, { effectiveFrom: '2026-10-20' }));
+  });
+
+  it('reminds on every day up to a future-dated edit from the version in force, never twice on one day', () => {
+    const versions = governedVersions([versioned(1, {}), versioned(2, { effectiveFrom: '2026-10-08' })]);
+    const days = versions.flatMap((version) =>
+      upcomingDueDays(version, TODAY).map((day) => `${version.versionNumber}:${formatDay(day)}`),
+    );
+
+    expect(days.slice(0, 5)).toEqual(['1:2026-10-05', '1:2026-10-06', '1:2026-10-07', '2:2026-10-08', '2:2026-10-09']);
+    expect(new Set(days.map((entry) => entry.split(':')[1])).size).toBe(days.length);
+  });
+
+  it('drops a version a later one supersedes from the beginning', () => {
+    const numbers = (versions: ReturnType<typeof versioned>[]) => governedVersions(versions).map((v) => v.versionNumber);
+
+    expect(numbers([versioned(1, {}), versioned(2, {})])).toEqual([2]);
+    expect(numbers([versioned(1, { effectiveFrom: '2026-10-10' }), versioned(2, { effectiveFrom: '2026-10-10' })])).toEqual([2]);
+    expect(numbers([versioned(1, { effectiveFrom: '2026-10-10' }), versioned(2, { effectiveFrom: '2026-10-01' })])).toEqual([2]);
+  });
+
+  it('keeps an end of its own that comes first, and the days after it ask nothing of anyone', () => {
+    const [first, second] = governedVersions([
+      versioned(1, { effectiveTo: '2026-10-06' }),
+      versioned(2, { effectiveFrom: '2026-10-20' }),
+    ]);
+
+    expect(first.effectiveTo).toBe('2026-10-06');
+    expect(isDueOn(first, parseDay('2026-10-10'))).toBe(false);
+    expect(isDueOn(second, parseDay('2026-10-10'))).toBe(false);
+  });
+
+  it('hands each day to the highest-numbered version that had started, whatever order it was given', () => {
+    const governed = governedVersions([
+      versioned(3, { effectiveFrom: '2026-10-01' }),
+      versioned(1, {}),
+      versioned(2, { effectiveFrom: '2026-10-10' }),
+    ]);
+
+    expect(governed.map((v) => [v.versionNumber, v.effectiveTo])).toEqual([[1, '2026-09-30'], [3, null]]);
+  });
+
+  it('lets only the last version repeat on the device', () => {
+    const [only] = governedVersions([versioned(1, {})]);
+    expect(only).toEqual(versioned(1, {}));
+    expect(canRepeatOnDevice(only, TODAY)).toBe(true);
+
+    const [earlier, latest] = governedVersions([versioned(1, {}), versioned(2, { effectiveFrom: '2026-10-20' })]);
+    expect(canRepeatOnDevice(earlier, TODAY)).toBe(false);
+    expect(canRepeatOnDevice(latest, TODAY)).toBe(false);
   });
 });

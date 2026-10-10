@@ -12,13 +12,13 @@ reconstructing the product history from a long conversation.
   `v1.0.0` tag untouched (ADR 0017). Release notes: `docs/releases/v1.0.1.md`. `docs/v1-acceptance.md` is the authority on scope; ADR 0013
   explains the rebuild, ADR 0015 the owner-approved mobile deferral.
 - Production tracks `main`: every merge deploys by itself, so the live revision is
-  whatever `main` last squashed to — `5c36c17` (PR #66, CI run `37957991072`) as of
-  2026-10-09, with migrations 1–18 applied, the API on the confined database role, and
+  whatever `main` last squashed to — `4b896e2` (PR #67, CI run `37997420853`) as of
+  2026-10-10, with migrations 1–18 applied, the API on the confined database role, and
   `GET /api/version` answering `1.0.1` (the server's behaviour has not changed since the
-  `v1.0.1` cut at `214dee4` except for the replay guards the phone needs: PR #64's
-  add-stock key and retire no-op, PR #66's restart, assign and lend replays, PR #67's
-  optional client id and key on the three creates; the other merges since are mobile
-  code, tests and documentation).
+  `v1.0.1` cut at `214dee4` except for what the phone needs: PR #64's add-stock key and
+  retire no-op, PR #66's restart, assign and lend replays, PR #67's optional client id
+  and key on the three creates, PR #68's `versions` list under each workspace plan; the
+  other merges since are mobile code, tests and documentation).
   Documentation-only merges do not redeploy (`paths-ignore` on push).
 - **The owner's live-test round of 2026-10-05 is closed.** Sprint 7 shipped every note
   and decision (D1–D6) in seven slices (PR #50–#55, migrations 15–18), then the general
@@ -33,8 +33,9 @@ reconstructing the product history from a long conversation.
   plan, add stock, make a box active, mark a box lost or disposed; PR #64), reports,
   export and counting (PR #65), the remaining box and plan decisions (end and restart
   a plan, clear the active box, bring a box back, edit a box, assign, lend and return;
-  PR #66) and creation of a person, a medicine and a plan (PR #67) are in, none yet seen
-  on a device; the install itself runs from a session on
+  PR #66), creation of a person, a medicine and a plan (PR #67) and every plan version
+  for the phone's reminders (PR #68) are in, none yet seen on a device; the install
+  itself runs from a session on
   the owner's computer (`docs/mobile-device-install.md`), which a cloud session cannot
   do. Plan and progress: `docs/mobile-resume-plan.md`.
 
@@ -81,9 +82,12 @@ retire and recreate it, or name the first accepted release `v1.0.1`).
    created on the phone (PR #67). What the phone still cannot do, and the web can: edit
    a person's name, a medicine's definition or a plan's dose and schedule; archive and
    restore; correct a count or a dose's stock source; delete a plan
-   (`docs/mobile-resume-plan.md`, "Where this leaves parity"). Next, each as its own
-   slice with typecheck and unit tests: the server-side fix for the latest-version-only
-   gap (same file, "Known gap"); then, if the owner wants it, editing on the phone.
+   (`docs/mobile-resume-plan.md`, "Where this leaves parity"). The latest-version-only
+   gap is closed (PR #68: the workspace lists every version, the phone applies the
+   governing-version rule; schema v8). Next, each as its own slice with typecheck and
+   unit tests: editing on the phone (a person's name, a medicine's everyday fields, a
+   plan's dose and schedule as a version appended by command), then archive and
+   restore, and plan deletion.
 2. **On the owner's computer**, when they next open a session there: push the `v1.0.1`
    tag (one command, at the top of `docs/mobile-device-install.md`), then the install
    per that runbook, then the physical-device acceptance rows (28, 29), then the
@@ -1360,6 +1364,25 @@ people, medicines and plans, archive and restore, count revisions, allocation co
 and plan deletion remain web-only (`docs/mobile-resume-plan.md`, "Where this leaves
 parity").
 
+### Slice 10 — the latest-version-only gap, closed — PR #68
+
+The workspace now lists every version under each plan (`versions`, oldest first; the
+top-level fields stay the latest version, which is what the web shows), and the phone
+holds them (schema v8: `plans.version_number`, `plan_versions`) and applies the server's
+governing-version rule itself (`governedVersions` in `notifications/schedule.ts`, a port
+of `ScheduledSlots.Governing`): the highest-numbered version that had started by a day
+governs it, while it has not ended, so each earlier version is bounded by the next one's
+start. An edit dated in the future therefore leaves the earlier version reminding until
+the new one begins, and never both at once — the gap `docs/mobile-resume-plan.md` had
+stated since Sprint 8's first slice. The latest version still comes from the plan row,
+where a decision queued on the phone is already applied; a restart queued on the phone
+now appends a version the way the server does, so the days between the end and the
+restart ask for nothing. `schedule.test.ts` pins the rule case by case (80 mobile tests);
+`MobileContractTests` pins the version fields and the gap case on the server (264 API
+tests); the migration check upgrades the v1–v7 fixtures to v8; a scratch run under
+`node:sqlite` covered the history, the four queued decisions over it and an older server
+that lists no versions. Still nothing seen on a device.
+
 ### What the cloud session could not do
 
 Install on the phone. The owner asked "yapamaz mısın oradan?" — no: this session runs in
@@ -1383,9 +1406,9 @@ was cut as `v1.0.1` on 2026-10-08, with the tag's push left to the owner's compu
 
 **Exact next action.** The mobile catch-up, as the *Next exact action* section at the
 top describes: the read-only screens (PR #62, #63), the everyday commands (PR #64),
-reports, export and counting (PR #65), the remaining decisions (PR #66) and creation
-(PR #67) are in; next the server-side fix for the latest-version-only gap, then editing
-on the phone if the owner wants it.
+reports, export and counting (PR #65), the remaining decisions (PR #66), creation
+(PR #67) and the governing-version rule on the phone (PR #68) are in; next editing on
+the phone if the owner wants it, then archive and restore, and plan deletion.
 
 Still open for the owner, unchanged: which production household is theirs, so the
 synthetic ones left by smoke tests can be cleaned; and the `VPS_SSH_KEY` rotation.

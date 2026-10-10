@@ -11,6 +11,7 @@ import {
 import { ZERO, addQuantities, compareQuantities, formatQuantity, subtractQuantity, type Quantity } from '../lib/quantity';
 import type { PlanShape } from '../lib/plans';
 import type { ReminderPlan } from '../notifications/reminders';
+import { governedVersions } from '../notifications/schedule';
 import { applyQueuedEffects, listCommands, type CommandRow } from './command-queue';
 import { META, writeMeta } from './database';
 
@@ -88,7 +89,7 @@ export async function refreshSnapshot(
 
   await db.withTransactionAsync(async () => {
     await db.execAsync(
-      'DELETE FROM people; DELETE FROM medications; DELETE FROM packages; DELETE FROM plans; DELETE FROM due_doses; DELETE FROM activity_entries;',
+      'DELETE FROM people; DELETE FROM medications; DELETE FROM packages; DELETE FROM plans; DELETE FROM plan_versions; DELETE FROM due_doses; DELETE FROM activity_entries;',
     );
 
     await writePeople(db, workspace);
@@ -175,12 +176,13 @@ async function writePlans(db: SQLiteDatabase, workspace: WorkspaceResponse): Pro
   for (const plan of workspace.plans) {
     await db.runAsync(
       `INSERT INTO plans (
-         id, version_id, person_id, medication_id, dose_numerator, dose_denominator,
+         id, version_id, version_number, person_id, medication_id, dose_numerator, dose_denominator,
          kind, pattern, weekday_mask, interval_days, day_of_month, interval_months,
          effective_from, effective_to, local_time, time_zone_id, day_period, meal_relation, is_paused
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       plan.id,
       plan.versionId,
+      plan.versionNumber ?? 1,
       plan.personId,
       plan.medicationDefinitionId,
       plan.dose.numerator,
@@ -199,6 +201,34 @@ async function writePlans(db: SQLiteDatabase, workspace: WorkspaceResponse): Pro
       plan.mealRelation ?? null,
       plan.isPaused ? 1 : 0,
     );
+
+    // The history behind the latest version, for the governing-version rule. An older
+    // server sends none, and the latest version then stands alone, as before.
+    for (const version of plan.versions ?? []) {
+      await db.runAsync(
+        `INSERT INTO plan_versions (
+           version_id, plan_id, version_number, dose_numerator, dose_denominator, kind, pattern,
+           weekday_mask, interval_days, day_of_month, interval_months, effective_from, effective_to,
+           local_time, time_zone_id, is_paused
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        version.versionId,
+        plan.id,
+        version.versionNumber,
+        version.dose.numerator,
+        version.dose.denominator,
+        version.kind,
+        version.pattern,
+        version.weekdayMask,
+        version.intervalDays,
+        version.dayOfMonth ?? null,
+        version.intervalMonths ?? null,
+        version.effectiveFrom,
+        version.effectiveTo,
+        version.localTime,
+        version.timeZoneId,
+        version.isPaused ? 1 : 0,
+      );
+    }
   }
 }
 
@@ -888,67 +918,107 @@ export async function readPackageOptions(
   }));
 }
 
-/** Reads the cached plans in the shape the reminder scheduler needs. */
-export async function readReminderPlans(db: SQLiteDatabase): Promise<ReminderPlan[]> {
-  const rows = await db.getAllAsync<{
-    planVersionId: string;
-    medicationName: string | null;
-    personName: string | null;
-    doseNumerator: number;
-    doseDenominator: number;
-    kind: 'Scheduled' | 'AsNeeded';
-    pattern: RecurrencePattern;
-    weekdayMask: number | null;
-    intervalDays: number | null;
-    dayOfMonth: number | null;
-    intervalMonths: number | null;
-    effectiveFrom: string | null;
-    effectiveTo: string | null;
-    localTime: string | null;
-    timeZoneId: string;
-    isPaused: number;
-  }>(
-    `SELECT pl.version_id AS planVersionId,
-            m.name        AS medicationName,
-            p.name        AS personName,
-            pl.dose_numerator AS doseNumerator,
-            pl.dose_denominator AS doseDenominator,
-            pl.kind, pl.pattern,
-            pl.weekday_mask AS weekdayMask,
-            pl.interval_days AS intervalDays,
-            pl.day_of_month AS dayOfMonth,
-            pl.interval_months AS intervalMonths,
-            pl.effective_from AS effectiveFrom,
-            pl.effective_to AS effectiveTo,
-            pl.local_time AS localTime,
-            pl.time_zone_id AS timeZoneId,
-            pl.is_paused AS isPaused
-       FROM plans pl
-       LEFT JOIN medications m ON m.id = pl.medication_id
-       LEFT JOIN people p      ON p.id = pl.person_id
-      -- An archived person's plans were kept out of the server's Today list in the same
-      -- slice that made archiving pause them. The phone filtered the medication but not
-      -- the person, so a household member who had been archived could still be reminded
-      -- by name from a snapshot taken before that cascade existed.
+/** One version of a plan as the reminder query reads it, before the governing rule. */
+type ReminderVersionRow = {
+  planId: string;
+  planVersionId: string;
+  versionNumber: number;
+  medicationName: string | null;
+  personName: string | null;
+  doseNumerator: number;
+  doseDenominator: number;
+  kind: 'Scheduled' | 'AsNeeded';
+  pattern: RecurrencePattern;
+  weekdayMask: number | null;
+  intervalDays: number | null;
+  dayOfMonth: number | null;
+  intervalMonths: number | null;
+  effectiveFrom: string | null;
+  effectiveTo: string | null;
+  localTime: string | null;
+  timeZoneId: string;
+  isPaused: number;
+};
+
+// An archived person's plans were kept out of the server's Today list in the same slice
+// that made archiving pause them. The phone filtered the medication but not the person,
+// so a household member who had been archived could still be reminded by name from a
+// snapshot taken before that cascade existed.
+const REMINDER_VERSION_COLUMNS = `
+            m.name AS medicationName,
+            p.name AS personName,
+            v.dose_numerator AS doseNumerator,
+            v.dose_denominator AS doseDenominator,
+            v.kind, v.pattern,
+            v.weekday_mask AS weekdayMask,
+            v.interval_days AS intervalDays,
+            v.day_of_month AS dayOfMonth,
+            v.interval_months AS intervalMonths,
+            v.effective_from AS effectiveFrom,
+            v.effective_to AS effectiveTo,
+            v.local_time AS localTime,
+            v.time_zone_id AS timeZoneId,
+            v.is_paused AS isPaused`;
+
+const REMINDER_VERSION_FILTER = `
       WHERE (m.is_archived = 0 OR m.is_archived IS NULL)
-        AND (p.is_archived = 0 OR p.is_archived IS NULL)`,
+        AND (p.is_archived = 0 OR p.is_archived IS NULL)`;
+
+/**
+ * Every plan version that may govern a day ahead, with the names the reminder shows.
+ *
+ * The latest version comes from `plans`, where a decision queued on the phone (a pause,
+ * an end, a restart, a plan created here) is already applied; the earlier ones from
+ * `plan_versions`. The server's governing-version rule then bounds each by the next
+ * one's start, so an edit dated in the future leaves the earlier version reminding until
+ * the new one begins, and never both at once.
+ */
+export async function readReminderPlans(db: SQLiteDatabase): Promise<ReminderPlan[]> {
+  const latest = await db.getAllAsync<ReminderVersionRow>(
+    `SELECT v.id AS planId, v.version_id AS planVersionId, v.version_number AS versionNumber,${REMINDER_VERSION_COLUMNS}
+       FROM plans v
+       LEFT JOIN medications m ON m.id = v.medication_id
+       LEFT JOIN people p      ON p.id = v.person_id${REMINDER_VERSION_FILTER}`,
+  );
+  const earlier = await db.getAllAsync<ReminderVersionRow>(
+    `SELECT v.plan_id AS planId, v.version_id AS planVersionId, v.version_number AS versionNumber,${REMINDER_VERSION_COLUMNS}
+       FROM plan_versions v
+       JOIN plans pl           ON pl.id = v.plan_id
+       LEFT JOIN medications m ON m.id = pl.medication_id
+       LEFT JOIN people p      ON p.id = pl.person_id${REMINDER_VERSION_FILTER}
+        AND v.version_id <> pl.version_id
+        AND v.version_number < pl.version_number`,
   );
 
-  return rows.map((row) => ({
-    planVersionId: row.planVersionId,
-    medicationName: row.medicationName ?? '—',
-    personName: row.personName ?? '—',
-    doseLabel: formatQuantity({ numerator: row.doseNumerator, denominator: row.doseDenominator }),
-    kind: row.kind,
-    pattern: row.pattern,
-    weekdayMask: row.weekdayMask,
-    intervalDays: row.intervalDays,
-    dayOfMonth: row.dayOfMonth,
-    intervalMonths: row.intervalMonths,
-    effectiveFrom: row.effectiveFrom,
-    effectiveTo: row.effectiveTo,
-    localTime: row.localTime,
-    isPaused: row.isPaused === 1,
-    timeZoneId: row.timeZoneId,
-  }));
+  const byPlan = new Map<string, (Omit<ReminderVersionRow, 'isPaused'> & { isPaused: boolean })[]>();
+  for (const row of [...earlier, ...latest]) {
+    const versions = byPlan.get(row.planId) ?? [];
+    versions.push({ ...row, isPaused: row.isPaused === 1 });
+    byPlan.set(row.planId, versions);
+  }
+
+  const plans: ReminderPlan[] = [];
+  for (const versions of byPlan.values()) {
+    for (const version of governedVersions(versions)) {
+      plans.push({
+        planVersionId: version.planVersionId,
+        medicationName: version.medicationName ?? '—',
+        personName: version.personName ?? '—',
+        doseLabel: formatQuantity({ numerator: version.doseNumerator, denominator: version.doseDenominator }),
+        kind: version.kind,
+        pattern: version.pattern,
+        weekdayMask: version.weekdayMask,
+        intervalDays: version.intervalDays,
+        dayOfMonth: version.dayOfMonth,
+        intervalMonths: version.intervalMonths,
+        effectiveFrom: version.effectiveFrom,
+        effectiveTo: version.effectiveTo,
+        localTime: version.localTime,
+        isPaused: version.isPaused,
+        timeZoneId: version.timeZoneId,
+      });
+    }
+  }
+
+  return plans;
 }

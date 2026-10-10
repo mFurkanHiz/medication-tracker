@@ -11,13 +11,12 @@
  * would drift by an hour across a daylight-saving transition and eventually move a plan
  * onto the wrong local day, so elapsed time is never used to advance a recurrence.
  *
- * What the phone holds is each plan's latest version — the workspace sends one row per
- * plan, the highest version number — and the server rule says exactly that version
- * governs every day from its start to its end, and nothing governs the days after the
- * end. So "the latest version, bounded by its own dates" is the whole rule on the phone.
- * One gap, stated rather than hidden: an edit dated in the future leaves the previous
- * version governing until then on the server, and the phone does not have that version,
- * so those days get no reminder until the new version starts.
+ * The phone holds every version of a plan (the workspace lists them under the plan, the
+ * latest also standing as the plan row), and `governedVersions` applies the server's
+ * governing-version rule from `ScheduledSlots.Governing`: the highest-numbered version
+ * that had started by a day governs it, while it has not ended. Each version is thereby
+ * bounded by the next one's start, so an edit dated in the future leaves the previous
+ * version reminding until the new one begins, and never both at once.
  */
 
 export type RecurrencePattern =
@@ -43,6 +42,53 @@ export type DueRule = {
   /** Set aside by the household. A paused version promises no doses, so it asks for none. */
   isPaused: boolean;
 };
+
+/**
+ * The server's governing-version rule, applied ahead of time to a plan's versions.
+ *
+ * `ScheduledSlots.Governing` gives a day to the highest-numbered version that had started
+ * by then (a version with no start date has always started), and to nothing when that
+ * version has ended. Expressed per version, that is a window: from its own start to the
+ * day before the next version starts, or to its own end if that comes first. A version a
+ * later one supersedes from the beginning — the later one has no start date, or starts no
+ * later than this one — governs no day and is dropped. The last version keeps its own
+ * dates, so it alone can be open-ended and get a repeating trigger.
+ */
+export function governedVersions<T extends DueRule & { versionNumber: number }>(versions: readonly T[]): T[] {
+  const ordered = [...versions].sort((left, right) => left.versionNumber - right.versionNumber);
+  const governed: T[] = [];
+
+  for (let index = 0; index < ordered.length; index += 1) {
+    const version = ordered[index];
+    const later = ordered.slice(index + 1);
+
+    if (later.length === 0) {
+      governed.push(version);
+      continue;
+    }
+
+    // A later version with no start date has always started, so this one never governs.
+    if (later.some((candidate) => candidate.effectiveFrom === null)) {
+      continue;
+    }
+
+    const nextStart = later
+      .map((candidate) => parseDay(candidate.effectiveFrom!))
+      .reduce((earliest, day) => (compareDays(day, earliest) < 0 ? day : earliest));
+    const lastGovernedDay = addDays(nextStart, -1);
+
+    if (version.effectiveFrom !== null && compareDays(parseDay(version.effectiveFrom), lastGovernedDay) > 0) {
+      continue;
+    }
+
+    const ownEnd = version.effectiveTo === null ? null : parseDay(version.effectiveTo);
+    const end = ownEnd !== null && compareDays(ownEnd, lastGovernedDay) < 0 ? ownEnd : lastGovernedDay;
+
+    governed.push({ ...version, effectiveTo: formatDay(end) });
+  }
+
+  return governed;
+}
 
 /** How many occurrences to hold as exact-instant notifications, topped up on later reconciles. */
 export const REMINDER_HORIZON = 14;

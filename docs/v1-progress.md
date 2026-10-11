@@ -98,8 +98,41 @@ retire and recreate it, or name the first accepted release `v1.0.1`).
    USB on a Huawei SNE-LX1 (EMUI 12, Android 10); it replaced a debug build `1.0.0` from
    2026-09 of the same package and launched on the sign-in screen showing `v1.0.1`. The
    build needed a Windows long-path workaround (`docs/mobile-device-install.md`). Sign-in
-   is the owner's step (no password is held by a session); the in-app test and rows 28, 29
-   follow it. Evidence for those rows goes in this file as it is produced.
+   is the owner's step (no password is held by a session).
+
+   **Device evidence, 2026-10-12** (Huawei SNE-LX1, EMUI 12, Android 10, API 29; the phone
+   clock is Europe/Istanbul, UTC+3, no DST):
+
+   | What | Result |
+   | --- | --- |
+   | Sign-in, Today, sync | Works after PR #70 (below). Before it the phone could never sync. |
+   | All six tabs | Worked only after PR #71 (below). Before it no tab ever changed. |
+   | Create a plan on the phone (every day, exact time) | Saved offline, synced; `1 planlı hatırlatıcı`, one `RTC_WAKEUP` alarm in `dumpsys alarm` at the exact minute. |
+   | Reminder fires | Notification `İlaç zamanı`, importance HIGH, channel `medication-reminders` with the default sound, posted at 01:43:00 for a 01:43 plan. |
+   | Record a dose offline | Wi-Fi off, `Alındı` shown as `1 bekleyen kayıt` / `Çevrimdışı kaydedildi`. |
+   | Survives app termination | `am force-stop`, relaunch: the pending record and the dose card are still there. |
+   | Sync idempotency | Reconnected and synced twice: History shows one `Alındı` and one `-1`; the server holds one allocation for it. |
+   | Doze | `dumpsys deviceidle force-idle` (state `IDLE`, screen off): the 02:07 reminder posted at 02:07:02. |
+   | Reboot | **Failed on this phone.** After `adb reboot` the app was never started and `dumpsys alarm` held no alarm for it; the 01:54 reminder did not fire (nothing by 02:00). Opening the app showed `2 planlı hatırlatıcı` while AlarmManager held none: the screen read the library's own stored list, which a reboot leaves intact. Cause of the missing boot broadcast not yet isolated (EMUI auto-launch is the suspect). |
+   | Permission revoke, time-zone change, DST | Not yet run: changing system settings is done by the owner on the phone. |
+
+   Defects found by the device and fixed:
+
+   - **PR #70** — the live API answered 500 on every query touching the `administrations`,
+     `refill` and `subscriptions` schemas (`permission denied for schema administrations`):
+     the least-privilege role list named eight schemas. 30 failures in 24 h; CI connects as
+     the superuser and never saw it. Grant list fixed, `LeastPrivilegeSchemaCoverageTests`,
+     and `apply-least-privilege.sh` now proves the role reads from them. Applied in
+     production by the job's own run `38179391202` (the three reads, `rolsuper = f`, 22
+     foreign containers untouched, `GET /` 200, `/api/auth/session` 401).
+   - **PR #71** — no tab ever changed. `SQLiteProvider` is a `React.memo` whose comparator
+     ignores `children`, and `App` held the tab state above it. The tab now lives in a
+     `Shell` rendered inside the provider; `shell-structure.test.ts` pins it. Also: a tap on
+     Save while the keyboard was open only dismissed the keyboard, so every form needed two
+     taps (`keyboardShouldPersistTaps` on the seven sheets), and the reminders are armed
+     again after an hour (`dueForRearm`, tested) because the phone cannot see its own OS alarms.
+   - Not defects: the dev-only `expo-notifications: Custom sound 'default' not found`
+     console error (the channel does get the system default sound).
 3. **Rotation, when wanted:** re-running the *Apply least privilege* workflow (dispatch
    with the confirmation, or the request file again) gives the confined role a new
    password and restarts only the api container.

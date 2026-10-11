@@ -42,11 +42,19 @@
 --
 -- VERIFIED, not assumed. Run against a throwaway database on 2026-10-04 and again on
 -- 2026-10-05 after the default-privilege clause was added: the role was created
--- NOSUPERUSER / NOCREATEDB / NOCREATEROLE / NOBYPASSRLS, it owned the eight schemas, it
+-- NOSUPERUSER / NOCREATEDB / NOCREATEROLE / NOBYPASSRLS, it owned the schemas, it
 -- could CREATE TABLE and INSERT inside them, it could read and write a table the
 -- superuser created afterwards, and COPY ... TO PROGRAM was refused with "Only roles with
 -- privileges of the pg_execute_server_program role may COPY to or from an external
 -- program" — which is the specific power this file exists to take away.
+--
+-- A SCHEMA MISSING FROM THE LIST BREAKS THE LIVE API. 2026-10-12: the list below named
+-- eight schemas and the rebuilt model also uses administrations, refill and subscriptions.
+-- The confined role could not read them, so every doses/refill query answered 500
+-- ("permission denied for schema administrations") and the phone could not sync at all;
+-- CI never saw it because it connects as the superuser. LeastPrivilegeSchemaCoverageTests
+-- now fails when the model maps a schema this list omits, and apply-least-privilege.sh
+-- proves the role can read from them before the API is pointed at it.
 
 \set ON_ERROR_STOP on
 
@@ -84,8 +92,8 @@ DECLARE
     target text;
 BEGIN
     FOREACH target IN ARRAY ARRAY[
-        'care', 'catalog', 'households', 'identity', 'inventory', 'sync', 'treatments',
-        'infrastructure'
+        'administrations', 'care', 'catalog', 'households', 'identity', 'inventory', 'refill',
+        'subscriptions', 'sync', 'treatments', 'infrastructure'
     ]
     LOOP
         EXECUTE format('CREATE SCHEMA IF NOT EXISTS %I', target);

@@ -100,6 +100,18 @@ households="$(as_app -c 'select count(*) from households.households')"
 test -n "$households"
 echo "    households.households holds $households row(s), readable by the role."
 
+# One schema at a time, because a schema missing from the grant list fails only the
+# queries that touch it (2026-10-12: administrations and refill, which answered 500).
+for table in administrations.administration_events refill.medication_refill_policies subscriptions.subscriptions; do
+  schema="${table%%.*}"
+  if as_app -c "select count(*) from $table" >/dev/null 2>&1; then
+    echo "    $table readable by the role."
+  else
+    echo "FAILED: the role cannot read $table; schema $schema is missing from deploy/least-privilege-database-role.sql." >&2
+    exit 1
+  fi
+done
+
 echo 'Proving the role is not a superuser and cannot run programs on the host...'
 test "$(as_app -c "select rolsuper from pg_roles where rolname = 'medication_tracker_app'")" = 'f'
 if as_app -c "copy (select 1) to program 'true'" >/dev/null 2>&1; then

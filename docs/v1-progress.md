@@ -12,7 +12,7 @@ reconstructing the product history from a long conversation.
   `v1.0.0` tag untouched (ADR 0017). Release notes: `docs/releases/v1.0.1.md`. `docs/v1-acceptance.md` is the authority on scope; ADR 0013
   explains the rebuild, ADR 0015 the owner-approved mobile deferral.
 - Production tracks `main`: every merge deploys by itself, so the live revision is
-  whatever `main` last squashed to — `4b896e2` (PR #67, CI run `37997420853`) as of
+  whatever `main` last squashed to — `060d093` (PR #68, CI run `38068556628`) as of
   2026-10-10, with migrations 1–18 applied, the API on the confined database role, and
   `GET /api/version` answering `1.0.1` (the server's behaviour has not changed since the
   `v1.0.1` cut at `214dee4` except for what the phone needs: PR #64's add-stock key and
@@ -88,7 +88,8 @@ retire and recreate it, or name the first accepted release `v1.0.1`).
    unit tests: editing on the phone (a person's name, a medicine's everyday fields, a
    plan's dose and schedule as a version appended by command), then archive and
    restore, and plan deletion.
-2. **On the owner's computer**, when they next open a session there: push the `v1.0.1`
+2. **On the owner's computer**, a second session takes over the device work (hand-off
+   prompt and Devir Notu on the Notion project page, 2026-10-11). It does, in order: push the `v1.0.1`
    tag (one command, at the top of `docs/mobile-device-install.md`), then the install
    per that runbook, then the physical-device acceptance rows (28, 29), then the
    `mobile-v1.0.1` tag.
@@ -135,6 +136,12 @@ they are here rather than in a conversation.
   `ProjectSample` in the Project Management space is the guide to follow; `Psicologa`
   and `SargasmGames` may be read once to learn the conventions and never touched
   again. Write only inside the **Medication Tracker** project.
+- **There is no separate live environment (owner decision 2026-10-10, ADR 0018).** The
+  single deployed environment is a *test* environment, and it stays that way for now.
+  Merging to `main` deploys to it without asking ("bana sormadan canlıya al"). This
+  overrides the shared "production only on 'canlıya al'" rule for this project only; it
+  does not relax the rest of the shared-server rules, and secrets still live only in the
+  HASSAS page.
 - **Address the owner as Furkan**, reply in Turkish, and end a turn with a short
   summary of what was done since their last message.
 

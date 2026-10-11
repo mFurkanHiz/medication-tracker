@@ -1,0 +1,14 @@
+// Moves each Android module's CMake build tree to a short path, because the pnpm
+// virtual-store paths exceed CMake's 250-character object-file limit on Windows.
+allprojects { p ->
+  def relocate = {
+    def ext = p.extensions.findByName('android')
+    if (ext != null) {
+      ext.externalNativeBuild.cmake.buildStagingDirectory = new File("C:/mtcxx/${p.name}")
+    }
+  }
+  p.pluginManager.withPlugin('com.android.library') {
+    if (p.name == 'expo-modules-core' || p.file('CMakeLists.txt').exists() || p.file('android/CMakeLists.txt').exists()) relocate()
+  }
+  p.pluginManager.withPlugin('com.android.application') { relocate() }
+}

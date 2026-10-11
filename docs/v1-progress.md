@@ -93,6 +93,13 @@ retire and recreate it, or name the first accepted release `v1.0.1`).
    tag (one command, at the top of `docs/mobile-device-install.md`), then the install
    per that runbook, then the physical-device acceptance rows (28, 29), then the
    `mobile-v1.0.1` tag.
+   **Device session, 2026-10-11 (in progress):** `v1.0.1` tag pushed (`a6cb4b8` → `214dee4`).
+   Release APK of main `43b2e90` built on the owner's Windows computer and installed over
+   USB on a Huawei SNE-LX1 (EMUI 12, Android 10); it replaced a debug build `1.0.0` from
+   2026-09 of the same package and launched on the sign-in screen showing `v1.0.1`. The
+   build needed a Windows long-path workaround (`docs/mobile-device-install.md`). Sign-in
+   is the owner's step (no password is held by a session); the in-app test and rows 28, 29
+   follow it. Evidence for those rows goes in this file as it is produced.
 3. **Rotation, when wanted:** re-running the *Apply least privilege* workflow (dispatch
    with the confirmation, or the request file again) gives the confined role a new
    password and restarts only the api container.

@@ -25,7 +25,6 @@ export default function App() {
   const [locale, setLocale] = useState<Locale>('tr');
   const [session, setSession] = useState<Session | null>(null);
   const [checked, setChecked] = useState(false);
-  const [tab, setTab] = useState<Tab>('today');
 
   const t = useMemo(() => (key: MessageKey) => dictionaries[locale][key], [locale]);
 
@@ -78,32 +77,53 @@ export default function App() {
           </View>
         ) : session ? (
           <SQLiteProvider
-            key={session.householdId}
+            key={`${session.householdId}:${session.accessToken}`}
             databaseName={databaseNameFor(session.householdId)}
             onInit={migrateDatabase}
           >
-            <View style={styles.body}>
-              {tab === 'today' ? (
-                <TodayScreen session={session} onSignedOut={() => void endSession()} />
-              ) : tab === 'stock' ? (
-                <StockScreen session={session} />
-              ) : tab === 'plans' ? (
-                <PlansScreen session={session} />
-              ) : tab === 'people' ? (
-                <PeopleScreen session={session} />
-              ) : tab === 'history' ? (
-                <HistoryScreen session={session} />
-              ) : (
-                <ReportsScreen session={session} />
-              )}
-            </View>
-            <TabBar tab={tab} onChange={setTab} />
+            <Shell session={session} onSignedOut={() => void endSession()} />
           </SQLiteProvider>
         ) : (
           <SignInScreen onSignedIn={setSession} />
         )}
       </SafeAreaView>
     </LocaleProvider>
+  );
+}
+
+/**
+ * The signed-in screens and their tab bar, which own the selected tab.
+ *
+ * The tab state must live here, inside SQLiteProvider, not in App. expo-sqlite's
+ * SQLiteProvider is a React.memo whose comparator ignores `children`, so when App
+ * re-rendered with a new tab the provider kept showing the old children and no tab ever
+ * changed — found on the owner's phone on 2026-10-12, where the language buttons (a
+ * context update) worked and every tab press did nothing. State inside a child
+ * re-renders that child directly, so this does not depend on the provider re-rendering.
+ * The provider's key carries the session, so a new sign-in remounts it with fresh props.
+ */
+function Shell({ session, onSignedOut }: { session: Session; onSignedOut: () => void }) {
+  const [tab, setTab] = useState<Tab>('today');
+
+  return (
+    <>
+      <View style={styles.body}>
+        {tab === 'today' ? (
+          <TodayScreen session={session} onSignedOut={onSignedOut} />
+        ) : tab === 'stock' ? (
+          <StockScreen session={session} />
+        ) : tab === 'plans' ? (
+          <PlansScreen session={session} />
+        ) : tab === 'people' ? (
+          <PeopleScreen session={session} />
+        ) : tab === 'history' ? (
+          <HistoryScreen session={session} />
+        ) : (
+          <ReportsScreen session={session} />
+        )}
+      </View>
+      <TabBar tab={tab} onChange={setTab} />
+    </>
   );
 }
 

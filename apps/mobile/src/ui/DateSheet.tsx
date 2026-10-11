@@ -49,7 +49,7 @@ export function DateSheet({
 
   return (
     <Modal visible animationType="slide" onRequestClose={onClose} transparent={false}>
-      <ScrollView contentContainerStyle={styles.container}>
+      <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
         <Text accessibilityRole="header" style={styles.title}>
           {title}
         </Text>

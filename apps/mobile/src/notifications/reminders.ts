@@ -5,6 +5,7 @@ import { META, readMeta, writeMeta } from '../data/database';
 import type { Translate } from '../lib/i18n';
 import {
   canRepeatOnDevice,
+  dueForRearm,
   expoWeekdays,
   instantForWallClock,
   parseLocalTime,
@@ -21,8 +22,11 @@ import {
  * What the installed `expo-notifications` (57.0.21) handles for us, verified from its
  * Android manifest rather than assumed: it declares `POST_NOTIFICATIONS` and
  * `RECEIVE_BOOT_COMPLETED` and registers a receiver for `BOOT_COMPLETED` and
- * `MY_PACKAGE_REPLACED`, so **scheduled notifications survive a reboot and an app
- * update** without the app doing anything.
+ * `MY_PACKAGE_REPLACED`, so scheduled notifications survive a reboot and an app update
+ * **where the vendor delivers those broadcasts**. On the owner's Huawei (EMUI 12) it does
+ * not: after a reboot the app was never started and AlarmManager held no alarm, while the
+ * library's own list still said two were scheduled. `dueForRearm` is the answer inside
+ * the app: the first foreground after an hour arms everything again.
  *
  * What it does **not** handle, and this module therefore must:
  *  - **Time-zone changes.** There is no `TIMEZONE_CHANGED` receiver. A repeating
@@ -147,6 +151,7 @@ export async function reconcileReminders(
   const signature = signatureFor(plans);
   const previousSignature = await readMeta(db, META.reminderSignature);
   const previousZone = await readMeta(db, META.reminderTimeZone);
+  const armedAt = await readMeta(db, META.reminderArmedAt);
 
   const known = await db.getAllAsync<{ notificationId: string }>(
     'SELECT notification_id AS notificationId FROM reminders',
@@ -160,7 +165,11 @@ export async function reconcileReminders(
     // The OS still holds everything we expect, and nothing about the plans or the
     // device's zone has changed. Leave it alone — rescheduling would churn the
     // notification list for no reason.
-    if (stillScheduled.length === known.length && !(await needsTopUp(db, plans, deviceZone, now))) {
+    if (
+      stillScheduled.length === known.length &&
+      !dueForRearm(armedAt, now) &&
+      !(await needsTopUp(db, plans, deviceZone, now))
+    ) {
       return {
         permitted: true,
         scheduled: known.length,
@@ -234,6 +243,7 @@ export async function reconcileReminders(
 
   await writeMeta(db, META.reminderSignature, signature);
   await writeMeta(db, META.reminderTimeZone, deviceZone);
+  await writeMeta(db, META.reminderArmedAt, now.toISOString());
 
   return { permitted: true, scheduled, skippedWithoutTime };
 }

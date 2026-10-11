@@ -293,6 +293,29 @@ export function canRepeatOnDevice(rule: DueRule, today: DayParts): boolean {
 
 // --------------------------------------------------------------- wall clocks ----
 
+/**
+ * How long a schedule is trusted without arming it again.
+ *
+ * The phone cannot see its own OS alarms: `getAllScheduledNotificationsAsync` reads the
+ * library's stored list, which a reboot leaves intact while the alarms themselves are
+ * gone unless the vendor delivers BOOT_COMPLETED to the app. On the owner's Huawei
+ * (EMUI 12) it does not, and the phone reported "2 scheduled reminders" with no alarm in
+ * AlarmManager. Arming again is cheap, so the first foreground after this long does it.
+ */
+export const REARM_AFTER_MS = 60 * 60 * 1000;
+
+/** True when the OS alarms were never armed, or were armed long enough ago to be re-armed. */
+export function dueForRearm(armedAtIso: string | null, now: Date): boolean {
+  if (armedAtIso === null) {
+    return true;
+  }
+
+  const armedAt = Date.parse(armedAtIso);
+
+  // A clock moved backwards, or a value we cannot read, is also a reason to arm again.
+  return Number.isNaN(armedAt) || armedAt > now.getTime() || now.getTime() - armedAt >= REARM_AFTER_MS;
+}
+
 export function parseLocalTime(value: string): [number, number] {
   const [hour, minute] = value.split(':');
   return [Number(hour), Number(minute)];

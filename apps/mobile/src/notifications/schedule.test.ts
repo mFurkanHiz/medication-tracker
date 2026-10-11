@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   canRepeatOnDevice,
   dueDaysFrom,
+  dueForRearm,
   formatDay,
   governedVersions,
   instantForWallClock,
@@ -262,5 +263,27 @@ describe('the governing-version rule across a plan\'s versions', () => {
     const [earlier, latest] = governedVersions([versioned(1, {}), versioned(2, { effectiveFrom: '2026-10-20' })]);
     expect(canRepeatOnDevice(earlier, TODAY)).toBe(false);
     expect(canRepeatOnDevice(latest, TODAY)).toBe(false);
+  });
+});
+
+describe('when the OS alarms are armed again', () => {
+  const now = new Date('2026-10-12T12:00:00Z');
+
+  it('arms when they never were', () => {
+    expect(dueForRearm(null, now)).toBe(true);
+  });
+
+  it('leaves a fresh arming alone', () => {
+    expect(dueForRearm('2026-10-12T11:30:00Z', now)).toBe(false);
+  });
+
+  it('arms again once the arming is an hour old', () => {
+    expect(dueForRearm('2026-10-12T11:00:00Z', now)).toBe(true);
+    expect(dueForRearm('2026-10-11T12:00:00Z', now)).toBe(true);
+  });
+
+  it('arms again when the clock went backwards or the value is unreadable', () => {
+    expect(dueForRearm('2026-10-12T13:00:00Z', now)).toBe(true);
+    expect(dueForRearm('not a date', now)).toBe(true);
   });
 });

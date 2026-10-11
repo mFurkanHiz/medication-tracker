@@ -477,6 +477,8 @@ export const META = {
   reminderTimeZone: 'reminderTimeZone',
   /** A hash of the plan set, so reminders are only rebuilt when something changed. */
   reminderSignature: 'reminderSignature',
+  /** When the OS alarms were last armed, so they are re-armed now and then even if nothing changed. */
+  reminderArmedAt: 'reminderArmedAt',
   /** The last reports the server answered with, so the screen has something offline. */
   reportsCache: 'reportsCache',
 } as const;
